@@ -1,0 +1,30 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
+import 'package:lumen_core/lumen_core.dart';
+
+/// Renders one photo for the editor canvas.
+///
+/// Implementations: `GpuPhotoRenderer` (fragment shaders, interactive) and
+/// [CpuPhotoRenderer] (reference pipeline in an isolate; fallback + tests).
+abstract interface class PhotoRenderer {
+  /// The latest rendered frame (null until the first render completes).
+  ValueListenable<ui.Image?> get output;
+
+  /// The unedited preview (for before/after).
+  ui.Image? get before;
+
+  /// 512 px proxy of the unedited source, for analysis and auto-edit.
+  RgbaBuffer? get analysisProxy;
+
+  /// Decodes [original] into a preview and analysis proxy.
+  Future<void> open(Uint8List original);
+
+  /// Requests a render of [settings]; implementations coalesce (latest wins).
+  void update(DevelopSettings settings, {bool interactive = false});
+
+  /// Renders [settings] onto a small square-ish thumbnail and returns PNG bytes.
+  Future<Uint8List> renderThumbnail(DevelopSettings settings, {int longEdge = 384});
+
+  void dispose();
+}
