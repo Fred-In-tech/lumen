@@ -152,9 +152,11 @@ class _AutoEditToggle extends StatelessWidget {
                 : null,
           ),
           const SizedBox(width: Sp.s2),
-          Text(
-            'Auto-edit photos when I import them',
-            style: LumenType.body().copyWith(color: t.textSecondary),
+          Flexible(
+            child: Text(
+              'Auto-edit photos when I import them',
+              style: LumenType.body().copyWith(color: t.textSecondary),
+            ),
           ),
         ],
       ),

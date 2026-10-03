@@ -138,21 +138,37 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
     final t = context.tokens;
     final n = widget.assetIds.length;
     final title = n == 1 ? 'Export photo' : 'Export $n photos';
+    final narrow = MediaQuery.sizeOf(context).width < 520;
+    // Desktop: label column + control. Phone: label above a horizontally scrollable control.
     Widget row(String label, Widget child) => Padding(
       padding: const EdgeInsets.only(bottom: Sp.s3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              label,
-              style: LumenType.label().copyWith(color: t.textSecondary),
+      child: narrow
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: LumenType.label().copyWith(color: t.textSecondary),
+                ),
+                const SizedBox(height: Sp.s1_5),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: child,
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                SizedBox(
+                  width: 96,
+                  child: Text(
+                    label,
+                    style: LumenType.label().copyWith(color: t.textSecondary),
+                  ),
+                ),
+                Expanded(child: child),
+              ],
             ),
-          ),
-          Expanded(child: child),
-        ],
-      ),
     );
     return Dialog(
       backgroundColor: t.surface2,
@@ -205,15 +221,20 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
                 if (_format == ExportFormat.jpeg)
                   row(
                     'Quality',
-                    LumenSlider(
-                      label: '',
-                      value: _quality,
-                      min: 1,
-                      max: 100,
-                      defaultValue: 90,
-                      bipolar: false,
-                      onChanged: (v) => setState(() => _quality = v),
-                      onCommit: (v) => setState(() => _quality = v),
+                    SizedBox(
+                      width: narrow
+                          ? MediaQuery.sizeOf(context).width - 140
+                          : null,
+                      child: LumenSlider(
+                        label: 'JPEG quality',
+                        value: _quality,
+                        min: 1,
+                        max: 100,
+                        defaultValue: 90,
+                        bipolar: false,
+                        onChanged: (v) => setState(() => _quality = v),
+                        onCommit: (v) => setState(() => _quality = v),
+                      ),
                     ),
                   ),
                 row(
