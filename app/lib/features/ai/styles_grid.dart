@@ -37,7 +37,13 @@ class StylesGrid extends ConsumerWidget {
   };
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context, WidgetRef ref) =>
+      ValueListenableBuilder<bool>(
+        valueListenable: session.ready,
+        builder: (context, _, _) => _build(context, ref),
+      );
+
+  Widget _build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final st = ref.read(editorProvider(session.assetId)).value;
     final base = st?.doc.ai?.preAi ?? st?.settings ?? DevelopSettings.defaults;

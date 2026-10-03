@@ -128,7 +128,13 @@ class EditorSession {
   Future<Map<AiStyle, Uint8List>> stylePreviews(
     AutoEditProvider local,
     DevelopSettings base,
-  ) => _stylePreviews ??= _computeStylePreviews(local, base);
+  ) {
+    // Not cached until the photo is open, so an early call can't pin an empty result.
+    if (!ready.value || renderer.analysisProxy == null) {
+      return Future.value(const {});
+    }
+    return _stylePreviews ??= _computeStylePreviews(local, base);
+  }
 
   Future<Map<AiStyle, Uint8List>> _computeStylePreviews(
     AutoEditProvider local,
