@@ -230,7 +230,7 @@ void main() {
     test('changes carry instruction reasons', () {
       final out = Lexicon.parse('a bit warmer').apply(_d);
       final temp = out.changes.firstWhere((c) => c.param == P.temp);
-      expect(temp.reason, 'Temp +8 for “a bit warmer”');
+      expect(temp.reason, 'Temp +8');
     });
 
     test('"less X" at the baseline explains why nothing changed', () {

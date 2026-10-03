@@ -114,7 +114,7 @@ void main() {
       expect(o.suggestions, isEmpty);
       expect(o.confidence, 1);
       final temp = o.changes.firstWhere((c) => c.param == P.temp);
-      expect(temp.reason, contains('warmer and brighten the shadows a bit'));
+      expect(temp.reason, startsWith('Temp +'));
     });
 
     test('instruct guards brightness words but not explicit numbers', () async {

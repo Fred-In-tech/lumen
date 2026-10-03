@@ -56,7 +56,8 @@ abstract final class Reasons {
     double to,
   ) => '$styleLabel look: ${paramName(param)} ${formatDelta(param, to - from)}';
 
-  /// Reason for a change requested by an instruction.
+  /// Reason for a change requested by an instruction. The instruction itself
+  /// is shown once as the card's intent line, so it is not repeated here.
   static String instruction(
     String instruction,
     ParamId param,
@@ -65,7 +66,7 @@ abstract final class Reasons {
   ) {
     final name = paramName(param);
     final cap = name.isEmpty ? name : name[0].toUpperCase() + name.substring(1);
-    return '$cap ${formatDelta(param, to - from)} for “${instruction.trim()}”';
+    return '$cap ${formatDelta(param, to - from)}';
   }
 
   /// Every scalar, treatment and master-curve difference between [from] and

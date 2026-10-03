@@ -96,7 +96,7 @@ void main() {
       );
       expect(
         Reasons.instruction('a bit warmer ', P.temp, 0, 7.5),
-        'Temp +8 for “a bit warmer”',
+        'Temp +8',
       );
     });
 
