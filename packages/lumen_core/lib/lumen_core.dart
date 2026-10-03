@@ -14,3 +14,13 @@ export 'src/model/geometry.dart';
 export 'src/model/mask.dart';
 export 'src/model/tone_curve.dart';
 export 'src/model/treatment.dart';
+export 'src/model/exif_summary.dart';
+export 'src/render/reference_pipeline.dart';
+export 'src/render/rgba_buffer.dart';
+// Workstream barrels (each workstream owns its own barrel file):
+export 'src/model/model.dart';
+export 'src/render/render.dart';
+export 'src/analysis/analysis.dart';
+export 'src/auto/auto.dart';
+export 'src/api/api.dart';
+export 'src/testing/testing.dart';
