@@ -148,7 +148,7 @@ class EditorSession {
               proxy: proxy,
               exif: entry?.exif,
             );
-            final outcome = await Isolate.run(() => local.autoEdit(input));
+            final outcome = await _autoEditIsolated(local, input);
             if (_disposed) return;
             out[style] = await renderer.renderThumbnail(
               outcome.settings,
@@ -243,3 +243,8 @@ Future<AiRunResult?> runInstruction(
     ctl.setAiBusy(false);
   }
 }
+
+Future<AutoEditOutcome> _autoEditIsolated(
+  AutoEditProvider engine,
+  AutoEditInput input,
+) => Isolate.run(() => engine.autoEdit(input));

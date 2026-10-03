@@ -86,7 +86,7 @@ class AutoEditService {
     );
     final engine = local;
     final localOutcome = isolateLocal
-        ? await Isolate.run(() => engine.autoEdit(input))
+        ? await _autoEditInIsolate(engine, input)
         : await engine.autoEdit(input);
     onLocal?.call(localOutcome);
     var outcome = localOutcome;
@@ -177,7 +177,7 @@ class AutoEditService {
       final engine = local;
       final input = build();
       result = isolateLocal
-          ? await Isolate.run(() => engine.instruct(input))
+          ? await _instructInIsolate(engine, input)
           : await engine.instruct(input);
     }
     final record = AiRecord(
@@ -200,3 +200,15 @@ class AutoEditService {
     );
   }
 }
+
+// Top-level so the isolate closure captures only the engine and its input
+// (a closure inside a method would drag the whole scope, including UI objects).
+Future<AutoEditOutcome> _autoEditInIsolate(
+  AutoEditProvider engine,
+  AutoEditInput input,
+) => Isolate.run(() => engine.autoEdit(input));
+
+Future<AutoEditOutcome> _instructInIsolate(
+  AutoEditProvider engine,
+  InstructInput input,
+) => Isolate.run(() => engine.instruct(input));
