@@ -2,6 +2,7 @@ import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:lumen/import/folder_expansion.dart';
 import 'package:lumen/import/import_file.dart';
 
 /// Where imported files come from. Swapped for a fake in tests.
@@ -24,8 +25,10 @@ class PickerImportSource implements ImportSource {
   }
 }
 
-/// Reads dropped or picked files, skipping anything without a photo extension.
-Future<List<ImportFile>> readXFiles(List<XFile> files) async {
+/// Reads dropped or picked files (folders are expanded), skipping anything
+/// without a photo extension.
+Future<List<ImportFile>> readXFiles(List<XFile> items) async {
+  final files = await expandFolders(items);
   final out = <ImportFile>[];
   for (final f in files) {
     final ext = p.extension(f.name).replaceFirst('.', '').toLowerCase();
