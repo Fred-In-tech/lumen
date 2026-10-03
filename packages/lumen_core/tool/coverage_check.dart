@@ -11,6 +11,8 @@ void main(List<String> args) {
     if (line.startsWith('LH:')) hit += int.parse(line.substring(3));
   }
   final pct = found == 0 ? 0.0 : hit * 100 / found;
-  stdout.writeln('Line coverage: ${pct.toStringAsFixed(1)}% ($hit/$found), threshold $threshold%');
+  stdout.writeln(
+    'Line coverage: ${pct.toStringAsFixed(1)}% ($hit/$found), threshold $threshold%',
+  );
   if (pct < threshold) exitCode = 1;
 }

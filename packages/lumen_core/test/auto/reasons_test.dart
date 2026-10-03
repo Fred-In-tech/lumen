@@ -94,10 +94,7 @@ void main() {
         Reasons.style('Moody', P.vignetteAmount, 0, -12),
         'Moody look: vignette −12',
       );
-      expect(
-        Reasons.instruction('a bit warmer ', P.temp, 0, 7.5),
-        'Temp +8',
-      );
+      expect(Reasons.instruction('a bit warmer ', P.temp, 0, 7.5), 'Temp +8');
     });
 
     test('diff lists scalar, treatment and curve changes in order', () {

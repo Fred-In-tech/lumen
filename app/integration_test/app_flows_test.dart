@@ -226,6 +226,25 @@ void main() {
     );
     ctl.redo();
 
+    // No gateway running: the app says so and still edits on-device (DoD 26).
+    expect(find.text('Basic auto (offline)'), findsWidgets);
+
+    // Hold-to-compare shows the unedited photo with a BEFORE chip; side by side shows both (DoD 34).
+    ctl.setShowingBefore(true);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 600)),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('BEFORE'), findsOneWidget);
+    ctl.setShowingBefore(false);
+    ctl.setCompare(CompareMode.sideBySide);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 600)),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('AFTER'), findsOneWidget);
+    await _screenshot(tester, '05b_side_by_side');
+
     // Split compare renders.
     ctl.setCompare(CompareMode.split);
     await tester.pump(const Duration(milliseconds: 500));
