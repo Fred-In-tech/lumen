@@ -86,6 +86,10 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
     final height = MediaQuery.sizeOf(context).height;
     final entry = widget.session.entry;
     final aspect = entry == null || entry.height == 0 ? 1.5 : entry.width / entry.height;
+    ref.listen(editorProvider(id).select((s) => s.value?.cropMode ?? false), (_, crop) {
+      if (crop && _tab != _Tab.crop) setState(() => _tab = _Tab.crop);
+      if (!crop && _tab == _Tab.crop) setState(() => _tab = _Tab.light);
+    });
     return SafeArea(
       child: Column(children: [
         SizedBox(

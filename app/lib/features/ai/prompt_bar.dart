@@ -82,9 +82,7 @@ class _PromptBarState extends ConsumerState<PromptBar> {
                   child: MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: Container(
-                      height: 28,
-                      padding: const EdgeInsets.symmetric(horizontal: Sp.s3),
-                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: Sp.s3, vertical: Sp.s1_5),
                       decoration: BoxDecoration(color: t.surface3, borderRadius: BorderRadius.circular(Rad.pill), boxShadow: Elevation.e2),
                       child: Text(s, style: LumenType.label().copyWith(color: t.textPrimary)),
                     ),

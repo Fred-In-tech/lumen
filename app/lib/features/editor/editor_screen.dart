@@ -101,7 +101,6 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
     final ctl = ref.read(editorProvider(_assetId).notifier);
     SingleActivator cmd(LogicalKeyboardKey k, {bool shift = false}) =>
         SingleActivator(k, meta: apple, control: !apple, shift: shift);
-    final session = _session;
     return {
       cmd(LogicalKeyboardKey.keyZ): ctl.undo,
       cmd(LogicalKeyboardKey.keyZ, shift: true): ctl.redo,
@@ -109,25 +108,49 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
       cmd(LogicalKeyboardKey.keyC, shift: true): () => copySettings(context, ref, _assetId),
       cmd(LogicalKeyboardKey.keyV, shift: true): () => pasteSettingsInto(context, ref, _assetId),
       cmd(LogicalKeyboardKey.keyE): () => showExportDialog(context, ref, [_assetId]),
-      const SingleActivator(LogicalKeyboardKey.keyY): () {
-        final s = ref.read(editorProvider(_assetId)).value;
-        ctl.setCompare(s?.compare == CompareMode.split ? CompareMode.off : CompareMode.split);
-      },
-      const SingleActivator(LogicalKeyboardKey.keyR): () => ctl.setCropMode(true),
-      const SingleActivator(LogicalKeyboardKey.keyA): () {
-        if (session != null) runAutoEdit(ref, session);
-      },
-      const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () => _step(1),
-      const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () => _step(-1),
-      const SingleActivator(LogicalKeyboardKey.escape): () {
-        final s = ref.read(editorProvider(_assetId)).value;
-        if (s?.cropMode ?? false) {
-          ctl.setCropMode(false);
-        } else {
-          _close();
-        }
-      },
     };
+  }
+
+  /// True while a text field has focus: single-key shortcuts must not fire.
+  static bool _typing() {
+    final ctx = FocusManager.instance.primaryFocus?.context;
+    return ctx != null && (ctx.widget is EditableText || ctx.findAncestorWidgetOfExactType<EditableText>() != null);
+  }
+
+  /// Unmodified single-key shortcuts (DESIGN.md §6.3). Ignored while typing.
+  KeyEventResult _onKey(KeyEvent e) {
+    if (_typing()) return KeyEventResult.ignored;
+    final keys = HardwareKeyboard.instance;
+    if (keys.isMetaPressed || keys.isControlPressed) return KeyEventResult.ignored;
+    final ctl = ref.read(editorProvider(_assetId).notifier);
+    final s = ref.read(editorProvider(_assetId)).value;
+    final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.backslash) {
+      ctl.setShowingBefore(e is KeyDownEvent || e is KeyRepeatEvent);
+      return KeyEventResult.handled;
+    }
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    if (k == LogicalKeyboardKey.keyY) {
+      ctl.setCompare(s?.compare == CompareMode.split ? CompareMode.off : CompareMode.split);
+    } else if (k == LogicalKeyboardKey.keyR) {
+      ctl.setCropMode(true);
+    } else if (k == LogicalKeyboardKey.keyA) {
+      final session = _session;
+      if (session != null) runAutoEdit(ref, session);
+    } else if (k == LogicalKeyboardKey.arrowRight && keys.isAltPressed) {
+      _step(1);
+    } else if (k == LogicalKeyboardKey.arrowLeft && keys.isAltPressed) {
+      _step(-1);
+    } else if (k == LogicalKeyboardKey.escape) {
+      if (s?.cropMode ?? false) {
+        ctl.setCropMode(false);
+      } else {
+        _close();
+      }
+    } else {
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
   }
 
   @override
@@ -171,14 +194,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
       bindings: _shortcuts(platform.isApple),
       child: Focus(
         autofocus: true,
-        onKeyEvent: (node, e) {
-          if (e.logicalKey == LogicalKeyboardKey.backslash) {
-            final down = e is KeyDownEvent || e is KeyRepeatEvent;
-            ref.read(editorProvider(_assetId).notifier).setShowingBefore(down);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
+        onKeyEvent: (node, e) => _onKey(e),
         child: Scaffold(backgroundColor: t.surface0, body: body),
       ),
     );

@@ -74,8 +74,9 @@ class ImportService {
         importedAt: _clock().toUtc(),
         exif: exif,
       );
+      // Thumbnail first, so the library never shows the entry without one.
+      await _writeThumb(entry, file);
       final stored = await _catalog.add(entry, file.bytes);
-      await _writeThumb(stored, file);
       return Imported(file.name, stored);
     } on DecodeException catch (e) {
       final hint = format == PhotoFormat.heic

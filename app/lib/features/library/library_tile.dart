@@ -11,7 +11,7 @@ import 'package:lumen/design/type.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 
 /// Thumbnail bytes for (assetId, thumbVersion); refetched when the version bumps.
-final thumbProvider = FutureProvider.family<Uint8List?, (String, int)>(
+final thumbProvider = FutureProvider.autoDispose.family<Uint8List?, (String, int)>(
   (ref, key) => ref.watch(catalogRepositoryProvider).readThumb(key.$1),
 );
 
