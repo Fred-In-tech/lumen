@@ -63,7 +63,9 @@ class _LumenSliderState extends State<LumenSlider> {
 
   double get _range => widget.max - widget.min;
 
-  String _format(double v) => widget.bipolar ? formatSigned(v, decimals: widget.decimals) : v.toStringAsFixed(widget.decimals);
+  String _format(double v) => widget.bipolar
+      ? formatSigned(v, decimals: widget.decimals)
+      : v.toStringAsFixed(widget.decimals);
 
   double _clamp(double v) => v.clamp(widget.min, widget.max).toDouble();
 
@@ -80,19 +82,24 @@ class _LumenSliderState extends State<LumenSlider> {
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
     final keys = HardwareKeyboard.instance;
     final mult = keys.isShiftPressed ? 10.0 : (keys.isAltPressed ? 0.1 : 1.0);
     double? next;
-    if (e.logicalKey == LogicalKeyboardKey.arrowRight || e.logicalKey == LogicalKeyboardKey.arrowUp) {
+    if (e.logicalKey == LogicalKeyboardKey.arrowRight ||
+        e.logicalKey == LogicalKeyboardKey.arrowUp) {
       next = widget.value + widget.step * mult;
-    } else if (e.logicalKey == LogicalKeyboardKey.arrowLeft || e.logicalKey == LogicalKeyboardKey.arrowDown) {
+    } else if (e.logicalKey == LogicalKeyboardKey.arrowLeft ||
+        e.logicalKey == LogicalKeyboardKey.arrowDown) {
       next = widget.value - widget.step * mult;
     } else if (e.logicalKey == LogicalKeyboardKey.home) {
       next = widget.min;
     } else if (e.logicalKey == LogicalKeyboardKey.end) {
       next = widget.max;
-    } else if (e.logicalKey == LogicalKeyboardKey.backspace || e.logicalKey == LogicalKeyboardKey.delete) {
+    } else if (e.logicalKey == LogicalKeyboardKey.backspace ||
+        e.logicalKey == LogicalKeyboardKey.delete) {
       next = widget.defaultValue;
     }
     if (next == null) return KeyEventResult.ignored;
@@ -103,7 +110,10 @@ class _LumenSliderState extends State<LumenSlider> {
   void _startEdit() {
     setState(() => _editing = true);
     _field.text = widget.value.toStringAsFixed(widget.decimals);
-    _field.selection = TextSelection(baseOffset: 0, extentOffset: _field.text.length);
+    _field.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _field.text.length,
+    );
   }
 
   void _finishEdit({required bool commit}) {
@@ -126,7 +136,8 @@ class _LumenSliderState extends State<LumenSlider> {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final modified = (widget.value - widget.defaultValue).abs() > 1e-9;
-    final labelStyle = LumenType.label(touch: widget.touch).copyWith(color: modified ? t.textPrimary : t.textSecondary);
+    final labelStyle = LumenType.label(touch: widget.touch)
+        .copyWith(color: modified ? t.textPrimary : t.textSecondary);
     final trackHeight = widget.touch ? 32.0 : 20.0;
     return Semantics(
       slider: true,
@@ -145,35 +156,50 @@ class _LumenSliderState extends State<LumenSlider> {
           onExit: (_) => setState(() => _hover = false),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: Sp.s0_5),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              SizedBox(
-                height: widget.touch ? 22 : 18,
-                child: Row(children: [
-                  if (widget.aiReason != null) ...[
-                    Tooltip(
-                      message: widget.aiReason!,
-                      child: Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(gradient: LumenTokens.aiGradient, shape: BoxShape.circle),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: widget.touch ? 22 : 18,
+                  child: Row(
+                    children: [
+                      if (widget.aiReason != null) ...[
+                        Tooltip(
+                          message: widget.aiReason!,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              gradient: LumenTokens.aiGradient,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: Sp.s1_5),
+                      ],
+                      Expanded(
+                        child: GestureDetector(
+                          onDoubleTap: () =>
+                              widget.onCommit(widget.defaultValue),
+                          child: Text(
+                            widget.label,
+                            style: labelStyle,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: Sp.s1_5),
-                  ],
-                  Expanded(
-                    child: GestureDetector(
-                      onDoubleTap: () => widget.onCommit(widget.defaultValue),
-                      child: Text(widget.label, style: labelStyle, overflow: TextOverflow.ellipsis),
-                    ),
+                      _valueField(t),
+                    ],
                   ),
-                  _valueField(t),
-                ]),
-              ),
-              SizedBox(
-                height: trackHeight,
-                child: LayoutBuilder(builder: (context, c) => _track(t, c.maxWidth, trackHeight)),
-              ),
-            ]),
+                ),
+                SizedBox(
+                  height: trackHeight,
+                  child: LayoutBuilder(
+                    builder: (context, c) => _track(t, c.maxWidth, trackHeight),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -190,15 +216,28 @@ class _LumenSliderState extends State<LumenSlider> {
           controller: _field,
           autofocus: true,
           textAlign: TextAlign.right,
-          style: LumenType.value(touch: widget.touch).copyWith(color: t.textPrimary),
-          keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+          style: LumenType.value(touch: widget.touch)
+              .copyWith(color: t.textPrimary),
+          keyboardType: const TextInputType.numberWithOptions(
+            signed: true,
+            decimal: true,
+          ),
           decoration: InputDecoration(
             isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 4,
+              vertical: 2,
+            ),
             filled: true,
             fillColor: t.surface2,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Rad.xs), borderSide: BorderSide(color: t.accent)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Rad.xs), borderSide: BorderSide(color: t.accent)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(Rad.xs),
+              borderSide: BorderSide(color: t.accent),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(Rad.xs),
+              borderSide: BorderSide(color: t.accent),
+            ),
           ),
           onSubmitted: (_) => _finishEdit(commit: true),
           onTapOutside: (_) => _finishEdit(commit: true),
@@ -219,7 +258,8 @@ class _LumenSliderState extends State<LumenSlider> {
           ),
           child: Text(
             _format(widget.value),
-            style: LumenType.value(touch: widget.touch).copyWith(color: _dragging ? t.textPrimary : t.textSecondary),
+            style: LumenType.value(touch: widget.touch)
+                .copyWith(color: _dragging ? t.textPrimary : t.textSecondary),
           ),
         ),
       ),
@@ -227,8 +267,12 @@ class _LumenSliderState extends State<LumenSlider> {
   }
 
   Widget _track(LumenTokens t, double width, double height) {
-    final frac = _range == 0 ? 0.0 : ((widget.value - widget.min) / _range).clamp(0.0, 1.0);
-    final zeroFrac = widget.bipolar ? ((0 - widget.min) / _range).clamp(0.0, 1.0) : 0.0;
+    final frac = _range == 0
+        ? 0.0
+        : ((widget.value - widget.min) / _range).clamp(0.0, 1.0);
+    final zeroFrac = widget.bipolar
+        ? ((0 - widget.min) / _range).clamp(0.0, 1.0)
+        : 0.0;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onDoubleTap: () => widget.onCommit(widget.defaultValue),
@@ -236,7 +280,12 @@ class _LumenSliderState extends State<LumenSlider> {
           ? null
           : (d) {
               _focus.requestFocus();
-              widget.onCommit(_snap(widget.min + (d.localPosition.dx / width).clamp(0.0, 1.0) * _range));
+              widget.onCommit(
+                _snap(
+                  widget.min +
+                      (d.localPosition.dx / width).clamp(0.0, 1.0) * _range,
+                ),
+              );
             },
       onHorizontalDragStart: (d) {
         _focus.requestFocus();
@@ -248,7 +297,9 @@ class _LumenSliderState extends State<LumenSlider> {
       onHorizontalDragUpdate: (d) {
         final fine = HardwareKeyboard.instance.isAltPressed ? 0.1 : 1.0;
         _dragDx += d.delta.dx * fine;
-        widget.onChanged?.call(_snap(_dragStartValue + _dragDx / width * _range));
+        widget.onChanged?.call(
+          _snap(_dragStartValue + _dragDx / width * _range),
+        );
       },
       onHorizontalDragEnd: (_) {
         setState(() => _dragging = false);
@@ -271,9 +322,14 @@ class _LumenSliderState extends State<LumenSlider> {
             fill: t.accent,
             thumb: t.textPrimary,
             tick: t.textTertiary,
-            thumbRadius: (widget.touch ? (_dragging ? 12.0 : 10.0) : (_dragging ? 8.0 : (_hover ? 7.0 : 6.0))),
+            thumbRadius: (widget.touch
+                ? (_dragging ? 12.0 : 10.0)
+                : (_dragging ? 8.0 : (_hover ? 7.0 : 6.0))),
             trackWidth: widget.touch ? 3 : 2,
-            focused: _focus.hasFocus && FocusManager.instance.highlightMode == FocusHighlightMode.traditional,
+            focused:
+                _focus.hasFocus &&
+                FocusManager.instance.highlightMode ==
+                    FocusHighlightMode.traditional,
             focusColor: t.focusRing,
           ),
         ),
@@ -317,7 +373,13 @@ class _TrackPainter extends CustomPainter {
     final usable = size.width - 2 * pad;
     final cy = size.height / 2;
     final x = pad + usable * frac;
-    final track = RRect.fromLTRBR(pad, cy - trackWidth / 2, size.width - pad, cy + trackWidth / 2, const Radius.circular(2));
+    final track = RRect.fromLTRBR(
+      pad,
+      cy - trackWidth / 2,
+      size.width - pad,
+      cy + trackWidth / 2,
+      const Radius.circular(2),
+    );
     final trackPaint = Paint()..color = line;
     if (gradient != null) {
       trackPaint
@@ -327,29 +389,50 @@ class _TrackPainter extends CustomPainter {
     canvas.drawRRect(track, trackPaint);
     if (gradient == null) {
       final from = pad + usable * zeroFrac;
-      final rect = Rect.fromLTRB(from < x ? from : x, cy - trackWidth / 2, from < x ? x : from, cy + trackWidth / 2);
+      final rect = Rect.fromLTRB(
+        from < x ? from : x,
+        cy - trackWidth / 2,
+        from < x ? x : from,
+        cy + trackWidth / 2,
+      );
       canvas.drawRect(rect, Paint()..color = fill);
     }
     if (bipolar) {
       final zx = pad + usable * zeroFrac;
-      canvas.drawLine(Offset(zx, cy - 4), Offset(zx, cy + 4), Paint()
-        ..color = tick
-        ..strokeWidth = 1);
+      canvas.drawLine(
+        Offset(zx, cy - 4),
+        Offset(zx, cy + 4),
+        Paint()
+          ..color = tick
+          ..strokeWidth = 1,
+      );
     }
     if (focused) {
-      canvas.drawCircle(Offset(x, cy), thumbRadius + 3, Paint()
-        ..color = focusColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2);
+      canvas.drawCircle(
+        Offset(x, cy),
+        thumbRadius + 3,
+        Paint()
+          ..color = focusColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
     }
     canvas.drawCircle(Offset(x, cy), thumbRadius, Paint()..color = thumb);
-    canvas.drawCircle(Offset(x, cy), thumbRadius, Paint()
-      ..color = const Color(0x66000000)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1);
+    canvas.drawCircle(
+      Offset(x, cy),
+      thumbRadius,
+      Paint()
+        ..color = const Color(0x66000000)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
   }
 
   @override
   bool shouldRepaint(_TrackPainter o) =>
-      o.frac != frac || o.thumbRadius != thumbRadius || o.focused != focused || o.gradient != gradient || o.fill != fill;
+      o.frac != frac ||
+      o.thumbRadius != thumbRadius ||
+      o.focused != focused ||
+      o.gradient != gradient ||
+      o.fill != fill;
 }

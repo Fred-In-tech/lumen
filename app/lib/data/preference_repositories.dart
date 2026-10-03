@@ -18,7 +18,9 @@ class MemoryPresetRepository implements PresetRepository {
   final Map<String, Preset> _presets = {};
 
   @override
-  Future<List<Preset>> list() async => List.unmodifiable(_presets.values.toList()..sort((a, b) => a.name.compareTo(b.name)));
+  Future<List<Preset>> list() async => List.unmodifiable(
+    _presets.values.toList()..sort((a, b) => a.name.compareTo(b.name)),
+  );
 
   @override
   Future<void> save(Preset preset) async => _presets[preset.id] = preset;

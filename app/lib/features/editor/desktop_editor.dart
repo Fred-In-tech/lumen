@@ -24,7 +24,13 @@ enum _Flyout { ai, presets }
 
 /// Desktop/tablet-landscape editor shell (DESIGN.md §3.3).
 class DesktopEditor extends ConsumerStatefulWidget {
-  const DesktopEditor({super.key, required this.session, required this.assetIds, required this.onClose, required this.onOpen});
+  const DesktopEditor({
+    super.key,
+    required this.session,
+    required this.assetIds,
+    required this.onClose,
+    required this.onOpen,
+  });
 
   final EditorSession session;
   final List<String> assetIds;
@@ -46,10 +52,14 @@ class _DesktopEditorState extends ConsumerState<DesktopEditor> {
     final id = widget.session.assetId;
     final state = ref.watch(editorProvider(id)).value;
     final width = MediaQuery.sizeOf(context).width;
-    final panelWidth = width >= Layout.wideBreakpoint ? Layout.developPanelWide : Layout.developPanel;
+    final panelWidth = width >= Layout.wideBreakpoint
+        ? Layout.developPanelWide
+        : Layout.developPanel;
     final cropMode = state?.cropMode ?? false;
     final entry = widget.session.entry;
-    final imageAspect = entry == null || entry.height == 0 ? 1.5 : entry.width / entry.height;
+    final imageAspect = entry == null || entry.height == 0
+        ? 1.5
+        : entry.width / entry.height;
     final flyoutDocked = width >= 1280;
 
     final flyout = _flyout == null || cropMode
@@ -61,98 +71,164 @@ class _DesktopEditorState extends ConsumerState<DesktopEditor> {
               border: Border(right: BorderSide(color: t.line)),
               boxShadow: flyoutDocked ? null : Elevation.e2,
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(Sp.s4, Sp.s3, Sp.s2, Sp.s2),
-                child: Row(children: [
-                  Expanded(
-                    child: Text(_flyout == _Flyout.ai ? 'AI Studio' : 'Presets', style: LumenType.title().copyWith(color: t.textPrimary)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Sp.s4,
+                    Sp.s3,
+                    Sp.s2,
+                    Sp.s2,
                   ),
-                  LumenIconButton(icon: LucideIcons.x, tooltip: 'Close', onPressed: () => setState(() => _flyout = null)),
-                ]),
-              ),
-              Expanded(
-                child: ListView(padding: const EdgeInsets.fromLTRB(Sp.s4, 0, Sp.s4, Sp.s4), children: [
-                  if (_flyout == _Flyout.ai) ...[
-                    Text('Styles', style: LumenType.caption().copyWith(color: t.textTertiary)),
-                    const SizedBox(height: Sp.s2),
-                    StylesGrid(session: widget.session),
-                    const SizedBox(height: Sp.s4),
-                    Text(
-                      'Each style is the AI’s edit for this photo, set as sliders you can change.',
-                      style: LumenType.body().copyWith(color: t.textTertiary),
-                    ),
-                  ] else
-                    PresetsPanel(assetId: id),
-                ]),
-              ),
-            ]),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _flyout == _Flyout.ai ? 'AI Studio' : 'Presets',
+                          style: LumenType.title().copyWith(
+                            color: t.textPrimary,
+                          ),
+                        ),
+                      ),
+                      LumenIconButton(
+                        icon: LucideIcons.x,
+                        tooltip: 'Close',
+                        onPressed: () => setState(() => _flyout = null),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(Sp.s4, 0, Sp.s4, Sp.s4),
+                    children: [
+                      if (_flyout == _Flyout.ai) ...[
+                        Text(
+                          'Styles',
+                          style: LumenType.caption().copyWith(
+                            color: t.textTertiary,
+                          ),
+                        ),
+                        const SizedBox(height: Sp.s2),
+                        StylesGrid(session: widget.session),
+                        const SizedBox(height: Sp.s4),
+                        Text(
+                          'Each style is the AI’s edit for this photo, set as sliders you can change.',
+                          style: LumenType.body().copyWith(
+                            color: t.textTertiary,
+                          ),
+                        ),
+                      ] else
+                        PresetsPanel(assetId: id),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           );
 
-    final canvas = Stack(children: [
-      Positioned.fill(
-        child: ColoredBox(
-          color: t.surface0,
-          child: PhotoCanvas(
-            after: widget.session.renderer.output,
-            before: widget.session.renderer.before,
-            compare: state?.compare ?? CompareMode.off,
-            showingBefore: state?.showingBefore ?? false,
-            onHoldBefore: (v) => ref.read(editorProvider(id).notifier).setShowingBefore(v),
-            padding: Sp.s6,
-            overlay: cropMode ? CropOverlay(assetId: id, imageAspect: imageAspect) : null,
+    final canvas = Stack(
+      children: [
+        Positioned.fill(
+          child: ColoredBox(
+            color: t.surface0,
+            child: PhotoCanvas(
+              after: widget.session.renderer.output,
+              before: widget.session.renderer.before,
+              compare: state?.compare ?? CompareMode.off,
+              showingBefore: state?.showingBefore ?? false,
+              onHoldBefore: (v) =>
+                  ref.read(editorProvider(id).notifier).setShowingBefore(v),
+              padding: Sp.s6,
+              overlay: cropMode
+                  ? CropOverlay(assetId: id, imageAspect: imageAspect)
+                  : null,
+            ),
           ),
         ),
-      ),
-      if (state?.aiBusy ?? false)
-        Positioned(
-          left: Sp.s3,
-          top: Sp.s3,
-          child: StatusPill(label: state?.aiStatus ?? 'Developing…', leading: const AiGlyph(size: 14), elevated: true),
-        ),
-      if (!cropMode)
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: Sp.s6,
-          child: Center(child: PromptBar(session: widget.session, width: 520)),
-        ),
-      if (!flyoutDocked && flyout != null) Positioned(left: 0, top: 0, bottom: 0, child: flyout),
-    ]);
+        if (state?.aiBusy ?? false)
+          Positioned(
+            left: Sp.s3,
+            top: Sp.s3,
+            child: StatusPill(
+              label: state?.aiStatus ?? 'Developing…',
+              leading: const AiGlyph(size: 14),
+              elevated: true,
+            ),
+          ),
+        if (!cropMode)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: Sp.s6,
+            child: Center(
+              child: PromptBar(session: widget.session, width: 520),
+            ),
+          ),
+        if (!flyoutDocked && flyout != null)
+          Positioned(left: 0, top: 0, bottom: 0, child: flyout),
+      ],
+    );
 
-    return Column(children: [
-      _TopBar(session: widget.session, assetIds: widget.assetIds, onClose: widget.onClose),
-      Expanded(
-        child: Row(children: [
-          _Rail(
-            active: cropMode ? null : _flyout,
-            cropMode: cropMode,
-            onAi: () => _toggle(_Flyout.ai),
-            onPresets: () => _toggle(_Flyout.presets),
-            onCrop: () => ref.read(editorProvider(id).notifier).setCropMode(!cropMode),
-            onLibrary: widget.onClose,
-          ),
-          if (flyoutDocked && flyout != null) flyout,
-          Expanded(child: canvas),
-          if (cropMode)
-            Container(
-              width: panelWidth,
-              padding: const EdgeInsets.all(Sp.s4),
-              decoration: BoxDecoration(color: t.surface1, border: Border(left: BorderSide(color: t.line))),
-              child: SingleChildScrollView(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text('Crop & geometry', style: LumenType.title().copyWith(color: t.textPrimary)),
-                  const SizedBox(height: Sp.s4),
-                  CropPanel(assetId: id, imageAspect: imageAspect),
-                ]),
+    return Column(
+      children: [
+        _TopBar(
+          session: widget.session,
+          assetIds: widget.assetIds,
+          onClose: widget.onClose,
+        ),
+        Expanded(
+          child: Row(
+            children: [
+              _Rail(
+                active: cropMode ? null : _flyout,
+                cropMode: cropMode,
+                onAi: () => _toggle(_Flyout.ai),
+                onPresets: () => _toggle(_Flyout.presets),
+                onCrop: () => ref
+                    .read(editorProvider(id).notifier)
+                    .setCropMode(!cropMode),
+                onLibrary: widget.onClose,
               ),
-            )
-          else
-            DevelopPanel(session: widget.session, width: panelWidth),
-        ]),
-      ),
-      Filmstrip(assetIds: widget.assetIds, current: id, onOpen: widget.onOpen),
-    ]);
+              if (flyoutDocked && flyout != null) flyout,
+              Expanded(child: canvas),
+              if (cropMode)
+                Container(
+                  width: panelWidth,
+                  padding: const EdgeInsets.all(Sp.s4),
+                  decoration: BoxDecoration(
+                    color: t.surface1,
+                    border: Border(left: BorderSide(color: t.line)),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Crop & geometry',
+                          style: LumenType.title().copyWith(
+                            color: t.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: Sp.s4),
+                        CropPanel(assetId: id, imageAspect: imageAspect),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                DevelopPanel(session: widget.session, width: panelWidth),
+            ],
+          ),
+        ),
+        Filmstrip(
+          assetIds: widget.assetIds,
+          current: id,
+          onOpen: widget.onOpen,
+        ),
+      ],
+    );
   }
 }
 
@@ -176,43 +252,85 @@ class _Rail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    Widget item(Widget icon, String tip, bool selected, VoidCallback onTap) => Padding(
+    Widget item(Widget icon, String tip, bool selected, VoidCallback onTap) =>
+        Padding(
           padding: const EdgeInsets.only(bottom: Sp.s1),
-          child: Stack(children: [
-            Pressable(
-              onTap: onTap,
-              tooltip: tip,
-              semanticLabel: tip,
-              builder: (context, states) => Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: selected ? t.accentTint : (states.contains(WidgetState.hovered) ? t.hoverOverlay : Colors.transparent),
-                  borderRadius: BorderRadius.circular(Rad.sm),
+          child: Stack(
+            children: [
+              Pressable(
+                onTap: onTap,
+                tooltip: tip,
+                semanticLabel: tip,
+                builder: (context, states) => Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? t.accentTint
+                        : (states.contains(WidgetState.hovered)
+                              ? t.hoverOverlay
+                              : Colors.transparent),
+                    borderRadius: BorderRadius.circular(Rad.sm),
+                  ),
+                  child: Center(child: icon),
                 ),
-                child: Center(child: icon),
               ),
-            ),
-            if (selected) Positioned(left: -8, top: 12, child: Container(width: 2, height: 16, color: t.accent)),
-          ]),
+              if (selected)
+                Positioned(
+                  left: -8,
+                  top: 12,
+                  child: Container(width: 2, height: 16, color: t.accent),
+                ),
+            ],
+          ),
         );
-    Icon ic(IconData i, bool sel) => Icon(i, size: 18, color: sel ? t.accent : t.textSecondary);
+    Icon ic(IconData i, bool sel) =>
+        Icon(i, size: 18, color: sel ? t.accent : t.textSecondary);
     return Container(
       width: Layout.rail,
       padding: const EdgeInsets.only(top: Sp.s2),
-      decoration: BoxDecoration(color: t.surface1, border: Border(right: BorderSide(color: t.line))),
-      child: Column(children: [
-        item(ic(LucideIcons.layoutGrid, false), 'Library  G', false, onLibrary),
-        item(const AiGlyph(size: 18), 'AI Studio', active == _Flyout.ai, onAi),
-        item(ic(LucideIcons.swatchBook, active == _Flyout.presets), 'Presets', active == _Flyout.presets, onPresets),
-        item(ic(LucideIcons.crop, cropMode), 'Crop & geometry  R', cropMode, onCrop),
-      ]),
+      decoration: BoxDecoration(
+        color: t.surface1,
+        border: Border(right: BorderSide(color: t.line)),
+      ),
+      child: Column(
+        children: [
+          item(
+            ic(LucideIcons.layoutGrid, false),
+            'Library  G',
+            false,
+            onLibrary,
+          ),
+          item(
+            const AiGlyph(size: 18),
+            'AI Studio',
+            active == _Flyout.ai,
+            onAi,
+          ),
+          item(
+            ic(LucideIcons.swatchBook, active == _Flyout.presets),
+            'Presets',
+            active == _Flyout.presets,
+            onPresets,
+          ),
+          item(
+            ic(LucideIcons.crop, cropMode),
+            'Crop & geometry  R',
+            cropMode,
+            onCrop,
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.session, required this.assetIds, required this.onClose});
+  const _TopBar({
+    required this.session,
+    required this.assetIds,
+    required this.onClose,
+  });
 
   final EditorSession session;
   final List<String> assetIds;
@@ -228,35 +346,63 @@ class _TopBar extends ConsumerWidget {
     final pos = assetIds.indexOf(id) + 1;
     return Container(
       height: Layout.topBar,
-      padding: EdgeInsets.only(left: platform.isMacOS ? 78 : Sp.s3, right: Sp.s3),
-      decoration: BoxDecoration(color: t.surface1, border: Border(bottom: BorderSide(color: t.line))),
-      child: Row(children: [
-        LumenButton(label: 'Library', icon: const Icon(LucideIcons.chevronLeft), kind: ButtonKind.ghost, onPressed: onClose),
-        const SizedBox(width: Sp.s3),
-        Flexible(
-          child: Text(session.entry?.fileName ?? '', overflow: TextOverflow.ellipsis, style: LumenType.bodyStrong().copyWith(color: t.textPrimary)),
-        ),
-        if (assetIds.length > 1) ...[
-          const SizedBox(width: Sp.s1_5),
-          Text('· $pos of ${assetIds.length}', style: LumenType.caption().copyWith(color: t.textTertiary)),
+      padding: EdgeInsets.only(
+        left: platform.isMacOS ? 78 : Sp.s3,
+        right: Sp.s3,
+      ),
+      decoration: BoxDecoration(
+        color: t.surface1,
+        border: Border(bottom: BorderSide(color: t.line)),
+      ),
+      child: Row(
+        children: [
+          LumenButton(
+            label: 'Library',
+            icon: const Icon(LucideIcons.chevronLeft),
+            kind: ButtonKind.ghost,
+            onPressed: onClose,
+          ),
+          const SizedBox(width: Sp.s3),
+          Flexible(
+            child: Text(
+              session.entry?.fileName ?? '',
+              overflow: TextOverflow.ellipsis,
+              style: LumenType.bodyStrong().copyWith(color: t.textPrimary),
+            ),
+          ),
+          if (assetIds.length > 1) ...[
+            const SizedBox(width: Sp.s1_5),
+            Text(
+              '· $pos of ${assetIds.length}',
+              style: LumenType.caption().copyWith(color: t.textTertiary),
+            ),
+          ],
+          const SizedBox(width: Sp.s4),
+          LumenIconButton(
+            icon: LucideIcons.undo2,
+            tooltip: 'Undo',
+            onPressed: (state?.canUndo ?? false) ? ctl.undo : null,
+          ),
+          LumenIconButton(
+            icon: LucideIcons.redo2,
+            tooltip: 'Redo',
+            onPressed: (state?.canRedo ?? false) ? ctl.redo : null,
+          ),
+          const Spacer(),
+          _CompareButton(assetId: id),
+          const SizedBox(width: Sp.s1),
+          _HistoryButton(assetId: id),
+          const SizedBox(width: Sp.s3),
+          LumenButton(
+            label: 'Export',
+            kind: ButtonKind.primary,
+            onPressed: () async {
+              await ctl.flush();
+              if (context.mounted) await showExportDialog(context, ref, [id]);
+            },
+          ),
         ],
-        const SizedBox(width: Sp.s4),
-        LumenIconButton(icon: LucideIcons.undo2, tooltip: 'Undo', onPressed: (state?.canUndo ?? false) ? ctl.undo : null),
-        LumenIconButton(icon: LucideIcons.redo2, tooltip: 'Redo', onPressed: (state?.canRedo ?? false) ? ctl.redo : null),
-        const Spacer(),
-        _CompareButton(assetId: id),
-        const SizedBox(width: Sp.s1),
-        _HistoryButton(assetId: id),
-        const SizedBox(width: Sp.s3),
-        LumenButton(
-          label: 'Export',
-          kind: ButtonKind.primary,
-          onPressed: () async {
-            await ctl.flush();
-            if (context.mounted) await showExportDialog(context, ref, [id]);
-          },
-        ),
-      ]),
+      ),
     );
   }
 }
@@ -267,7 +413,10 @@ class _CompareButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(editorProvider(assetId).select((s) => s.value?.compare ?? CompareMode.off));
+    final mode = ref.watch(
+      editorProvider(assetId)
+          .select((s) => s.value?.compare ?? CompareMode.off),
+    );
     final ctl = ref.read(editorProvider(assetId).notifier);
     return PopupMenuButton<CompareMode>(
       tooltip: 'Compare (hold \\ for before)',
@@ -280,11 +429,25 @@ class _CompareButton extends ConsumerWidget {
           (CompareMode.split, 'Split wipe  Y'),
           (CompareMode.sideBySide, 'Side by side'),
         ])
-          PopupMenuItem(value: m, child: Text(label, style: LumenType.body().copyWith(color: context.tokens.textPrimary))),
+          PopupMenuItem(
+            value: m,
+            child: Text(
+              label,
+              style: LumenType.body().copyWith(
+                color: context.tokens.textPrimary,
+              ),
+            ),
+          ),
       ],
       child: Padding(
         padding: const EdgeInsets.all(Sp.s1_5),
-        child: Icon(LucideIcons.squareSplitHorizontal, size: 18, color: mode == CompareMode.off ? context.tokens.textSecondary : context.tokens.accent),
+        child: Icon(
+          LucideIcons.squareSplitHorizontal,
+          size: 18,
+          color: mode == CompareMode.off
+              ? context.tokens.textSecondary
+              : context.tokens.accent,
+        ),
       ),
     );
   }
@@ -297,13 +460,17 @@ class _HistoryButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
-    final history = ref.watch(editorProvider(assetId).select((s) => s.value?.history ?? HistoryStack.empty));
+    final history = ref.watch(
+      editorProvider(assetId)
+          .select((s) => s.value?.history ?? HistoryStack.empty),
+    );
     final ctl = ref.read(editorProvider(assetId).notifier);
     return PopupMenuButton<int>(
       tooltip: 'History',
       color: t.surface3,
       onSelected: (target) {
-        final cursor = ref.read(editorProvider(assetId)).value?.history.cursor ?? 0;
+        final cursor =
+            ref.read(editorProvider(assetId)).value?.history.cursor ?? 0;
         if (target < cursor) {
           for (var i = cursor; i > target; i--) {
             ctl.undo();
@@ -315,25 +482,41 @@ class _HistoryButton extends ConsumerWidget {
         }
       },
       itemBuilder: (_) => [
-        PopupMenuItem(value: 0, child: Text('Original', style: LumenType.body().copyWith(color: t.textSecondary))),
+        PopupMenuItem(
+          value: 0,
+          child: Text(
+            'Original',
+            style: LumenType.body().copyWith(color: t.textSecondary),
+          ),
+        ),
         for (var i = 0; i < history.entries.length; i++)
           PopupMenuItem(
             value: i + 1,
-            child: Row(children: [
-              if (history.entries[i].kind == HistoryKind.ai || history.entries[i].kind == HistoryKind.instruction) ...[
-                const AiGlyph(size: 12),
-                const SizedBox(width: Sp.s1_5),
-              ],
-              Expanded(
-                child: Text(
-                  history.entries[i].label,
-                  style: LumenType.body().copyWith(color: i < history.cursor ? t.textPrimary : t.textTertiary),
+            child: Row(
+              children: [
+                if (history.entries[i].kind == HistoryKind.ai ||
+                    history.entries[i].kind == HistoryKind.instruction) ...[
+                  const AiGlyph(size: 12),
+                  const SizedBox(width: Sp.s1_5),
+                ],
+                Expanded(
+                  child: Text(
+                    history.entries[i].label,
+                    style: LumenType.body().copyWith(
+                      color: i < history.cursor
+                          ? t.textPrimary
+                          : t.textTertiary,
+                    ),
+                  ),
                 ),
-              ),
-            ]),
+              ],
+            ),
           ),
       ].reversed.toList(),
-      child: Padding(padding: const EdgeInsets.all(Sp.s1_5), child: Icon(LucideIcons.history, size: 18, color: t.textSecondary)),
+      child: Padding(
+        padding: const EdgeInsets.all(Sp.s1_5),
+        child: Icon(LucideIcons.history, size: 18, color: t.textSecondary),
+      ),
     );
   }
 }

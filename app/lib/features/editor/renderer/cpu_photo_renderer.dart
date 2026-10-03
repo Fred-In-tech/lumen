@@ -11,7 +11,10 @@ import 'package:lumen/import/photo_decoder.dart';
 
 /// Reference-pipeline renderer: correct everywhere, slower than the GPU path.
 class CpuPhotoRenderer implements PhotoRenderer {
-  CpuPhotoRenderer({this.previewLongEdge = 1280, this.interactiveLongEdge = 640});
+  CpuPhotoRenderer({
+    this.previewLongEdge = 1280,
+    this.interactiveLongEdge = 640,
+  });
 
   final int previewLongEdge;
   final int interactiveLongEdge;
@@ -54,7 +57,10 @@ class CpuPhotoRenderer implements PhotoRenderer {
     _pendingInteractive = interactive;
     _settle?.cancel();
     if (interactive) {
-      _settle = Timer(const Duration(milliseconds: 150), () => update(settings));
+      _settle = Timer(
+        const Duration(milliseconds: 150),
+        () => update(settings),
+      );
     }
     unawaited(_pump());
   }
@@ -80,7 +86,10 @@ class CpuPhotoRenderer implements PhotoRenderer {
   }
 
   @override
-  Future<Uint8List> renderThumbnail(DevelopSettings settings, {int longEdge = 384}) async {
+  Future<Uint8List> renderThumbnail(
+    DevelopSettings settings, {
+    int longEdge = 384,
+  }) async {
     final before = _before;
     if (before == null) throw StateError('open() first');
     final small = await resizeImage(before, longEdge);

@@ -22,50 +22,78 @@ class PresetsPanel extends ConsumerWidget {
     final user = ref.watch(userPresetsProvider).value ?? const <Preset>[];
     final ctl = ref.read(editorProvider(assetId).notifier);
     Widget row(Preset p) => _PresetRow(
-          preset: p,
-          onApply: () => ctl.applyPreset(p),
-          onDelete: p.builtIn ? null : () => ref.read(userPresetsProvider.notifier).remove(p.id),
-        );
+      preset: p,
+      onApply: () => ctl.applyPreset(p),
+      onDelete: p.builtIn
+          ? null
+          : () => ref.read(userPresetsProvider.notifier).remove(p.id),
+    );
     final groups = <String, List<Preset>>{};
     for (final p in kBuiltinPresets) {
       groups.putIfAbsent(p.group, () => []).add(p);
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      LumenButton(
-        label: 'Save current as preset',
-        icon: const Icon(LucideIcons.plus),
-        onPressed: () => _savePreset(context, ref),
-        expand: true,
-      ),
-      const SizedBox(height: Sp.s4),
-      if (user.isNotEmpty) ...[
-        Text('Yours', style: LumenType.caption().copyWith(color: t.textTertiary)),
-        const SizedBox(height: Sp.s1),
-        for (final p in user) row(p),
-        const SizedBox(height: Sp.s3),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LumenButton(
+          label: 'Save current as preset',
+          icon: const Icon(LucideIcons.plus),
+          onPressed: () => _savePreset(context, ref),
+          expand: true,
+        ),
+        const SizedBox(height: Sp.s4),
+        if (user.isNotEmpty) ...[
+          Text(
+            'Yours',
+            style: LumenType.caption().copyWith(color: t.textTertiary),
+          ),
+          const SizedBox(height: Sp.s1),
+          for (final p in user) row(p),
+          const SizedBox(height: Sp.s3),
+        ],
+        for (final g in groups.entries) ...[
+          Text(
+            g.key,
+            style: LumenType.caption().copyWith(color: t.textTertiary),
+          ),
+          const SizedBox(height: Sp.s1),
+          for (final p in g.value) row(p),
+          const SizedBox(height: Sp.s3),
+        ],
       ],
-      for (final g in groups.entries) ...[
-        Text(g.key, style: LumenType.caption().copyWith(color: t.textTertiary)),
-        const SizedBox(height: Sp.s1),
-        for (final p in g.value) row(p),
-        const SizedBox(height: Sp.s3),
-      ],
-    ]);
+    );
   }
 
   Future<void> _savePreset(BuildContext context, WidgetRef ref) async {
     final settings = ref.read(editorProvider(assetId)).value?.settings;
     if (settings == null) return;
-    final name = await showDialog<String>(context: context, builder: (_) => const _NameDialog());
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => const _NameDialog(),
+    );
     if (name == null || name.trim().isEmpty) return;
-    final preset = Preset.fromSettings(id: 'user.${const Uuid().v4()}', name: name.trim(), settings: settings);
+    final preset = Preset.fromSettings(
+      id: 'user.${const Uuid().v4()}',
+      name: name.trim(),
+      settings: settings,
+    );
     await ref.read(userPresetsProvider.notifier).save(preset);
-    if (context.mounted) showToast(context, 'Preset “${preset.name}” saved.', kind: ToastKind.success);
+    if (context.mounted) {
+      showToast(
+        context,
+        'Preset “${preset.name}” saved.',
+        kind: ToastKind.success,
+      );
+    }
   }
 }
 
 class _PresetRow extends StatefulWidget {
-  const _PresetRow({required this.preset, required this.onApply, this.onDelete});
+  const _PresetRow({
+    required this.preset,
+    required this.onApply,
+    this.onDelete,
+  });
   final Preset preset;
   final VoidCallback onApply;
   final VoidCallback? onDelete;
@@ -92,14 +120,33 @@ class _PresetRowState extends State<_PresetRow> {
           child: Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: Sp.s2),
-            decoration: BoxDecoration(color: _hover ? t.hoverOverlay : Colors.transparent, borderRadius: BorderRadius.circular(Rad.sm)),
-            child: Row(children: [
-              Icon(LucideIcons.swatchBook, size: 14, color: t.textTertiary),
-              const SizedBox(width: Sp.s2),
-              Expanded(child: Text(widget.preset.name, style: LumenType.bodyStrong().copyWith(color: t.textPrimary))),
-              if (widget.onDelete != null && _hover)
-                GestureDetector(onTap: widget.onDelete, child: Icon(LucideIcons.trash2, size: 14, color: t.textTertiary)),
-            ]),
+            decoration: BoxDecoration(
+              color: _hover ? t.hoverOverlay : Colors.transparent,
+              borderRadius: BorderRadius.circular(Rad.sm),
+            ),
+            child: Row(
+              children: [
+                Icon(LucideIcons.swatchBook, size: 14, color: t.textTertiary),
+                const SizedBox(width: Sp.s2),
+                Expanded(
+                  child: Text(
+                    widget.preset.name,
+                    style: LumenType.bodyStrong().copyWith(
+                      color: t.textPrimary,
+                    ),
+                  ),
+                ),
+                if (widget.onDelete != null && _hover)
+                  GestureDetector(
+                    onTap: widget.onDelete,
+                    child: Icon(
+                      LucideIcons.trash2,
+                      size: 14,
+                      color: t.textTertiary,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -127,7 +174,10 @@ class _NameDialogState extends State<_NameDialog> {
   Widget build(BuildContext context) {
     final t = context.tokens;
     return AlertDialog(
-      title: Text('Save preset', style: LumenType.title().copyWith(color: t.textPrimary)),
+      title: Text(
+        'Save preset',
+        style: LumenType.title().copyWith(color: t.textPrimary),
+      ),
       content: TextField(
         controller: _c,
         autofocus: true,
@@ -136,8 +186,16 @@ class _NameDialogState extends State<_NameDialog> {
         onSubmitted: (v) => Navigator.pop(context, v),
       ),
       actions: [
-        LumenButton(label: 'Cancel', kind: ButtonKind.ghost, onPressed: () => Navigator.pop(context)),
-        LumenButton(label: 'Save', kind: ButtonKind.primary, onPressed: () => Navigator.pop(context, _c.text)),
+        LumenButton(
+          label: 'Cancel',
+          kind: ButtonKind.ghost,
+          onPressed: () => Navigator.pop(context),
+        ),
+        LumenButton(
+          label: 'Save',
+          kind: ButtonKind.primary,
+          onPressed: () => Navigator.pop(context, _c.text),
+        ),
       ],
     );
   }

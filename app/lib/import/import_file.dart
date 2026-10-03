@@ -24,16 +24,44 @@ enum PhotoFormat {
 
 /// Sniffs the format from magic bytes (never trusts the file extension).
 PhotoFormat sniffFormat(Uint8List b) {
-  if (b.length >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return PhotoFormat.jpeg;
-  if (b.length >= 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) return PhotoFormat.png;
+  if (b.length >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) {
+    return PhotoFormat.jpeg;
+  }
+  if (b.length >= 8 &&
+      b[0] == 0x89 &&
+      b[1] == 0x50 &&
+      b[2] == 0x4E &&
+      b[3] == 0x47) {
+    return PhotoFormat.png;
+  }
   if (b.length >= 12 &&
-      b[0] == 0x52 && b[1] == 0x49 && b[2] == 0x46 && b[3] == 0x46 && //
-      b[8] == 0x57 && b[9] == 0x45 && b[10] == 0x42 && b[11] == 0x50) {
+      b[0] == 0x52 &&
+      b[1] == 0x49 &&
+      b[2] == 0x46 &&
+      b[3] == 0x46 && //
+      b[8] == 0x57 &&
+      b[9] == 0x45 &&
+      b[10] == 0x42 &&
+      b[11] == 0x50) {
     return PhotoFormat.webp;
   }
-  if (b.length >= 12 && b[4] == 0x66 && b[5] == 0x74 && b[6] == 0x79 && b[7] == 0x70) {
+  if (b.length >= 12 &&
+      b[4] == 0x66 &&
+      b[5] == 0x74 &&
+      b[6] == 0x79 &&
+      b[7] == 0x70) {
     final brand = String.fromCharCodes(b.sublist(8, 12));
-    const heif = {'heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1', 'heim', 'heis', 'avif'};
+    const heif = {
+      'heic',
+      'heix',
+      'hevc',
+      'hevx',
+      'mif1',
+      'msf1',
+      'heim',
+      'heis',
+      'avif',
+    };
     if (heif.contains(brand)) return PhotoFormat.heic;
   }
   return PhotoFormat.unknown;

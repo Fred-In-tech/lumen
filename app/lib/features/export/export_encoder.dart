@@ -16,41 +16,45 @@ Future<Uint8List> encodeExport(
   int quality = 90,
   Uint8List? sourceJpeg,
   bool keepMetadata = true,
-}) =>
-    Isolate.run(() {
-      final image = img.Image.fromBytes(
-        width: pixels.width,
-        height: pixels.height,
-        bytes: pixels.data.buffer,
-        numChannels: 4,
-        order: img.ChannelOrder.rgba,
-      );
-      final rgb = image.convert(numChannels: 3);
-      if (keepMetadata && sourceJpeg != null) {
-        final exif = img.decodeJpgExif(sourceJpeg);
-        if (exif != null) {
-          exif.gpsIfd.data.clear();
-          exif.gpsIfd.sub.clear();
-          exif.imageIfd.data.remove(0x0112);
-          for (final tag in const [0xA431, 0xA435, 0xC62F, 0x9286]) {
-            exif.exifIfd.data.remove(tag);
-          }
-          exif.thumbnailIfd.data.clear();
-          rgb.exif = exif;
-        }
+}) => Isolate.run(() {
+  final image = img.Image.fromBytes(
+    width: pixels.width,
+    height: pixels.height,
+    bytes: pixels.data.buffer,
+    numChannels: 4,
+    order: img.ChannelOrder.rgba,
+  );
+  final rgb = image.convert(numChannels: 3);
+  if (keepMetadata && sourceJpeg != null) {
+    final exif = img.decodeJpgExif(sourceJpeg);
+    if (exif != null) {
+      exif.gpsIfd.data.clear();
+      exif.gpsIfd.sub.clear();
+      exif.imageIfd.data.remove(0x0112);
+      for (final tag in const [0xA431, 0xA435, 0xC62F, 0x9286]) {
+        exif.exifIfd.data.remove(tag);
       }
-      return switch (format) {
-        ExportFormat.jpeg => Uint8List.fromList(img.encodeJpg(rgb, quality: quality.clamp(1, 100))),
-        ExportFormat.png => Uint8List.fromList(img.encodePng(rgb)),
-      };
-    });
+      exif.thumbnailIfd.data.clear();
+      rgb.exif = exif;
+    }
+  }
+  return switch (format) {
+    ExportFormat.jpeg => Uint8List.fromList(
+      img.encodeJpg(rgb, quality: quality.clamp(1, 100)),
+    ),
+    ExportFormat.png => Uint8List.fromList(img.encodePng(rgb)),
+  };
+});
 
 /// Output size for [srcW]×[srcH] limited to [longEdge] (null = original).
 ({int width, int height}) exportSize(int srcW, int srcH, int? longEdge) {
   final le = srcW > srcH ? srcW : srcH;
   if (longEdge == null || longEdge >= le) return (width: srcW, height: srcH);
   final s = longEdge / le;
-  return (width: (srcW * s).round().clamp(1, longEdge), height: (srcH * s).round().clamp(1, longEdge));
+  return (
+    width: (srcW * s).round().clamp(1, longEdge),
+    height: (srcH * s).round().clamp(1, longEdge),
+  );
 }
 
 /// `IMG_2041.HEIC` → `IMG_2041_edit.jpg`

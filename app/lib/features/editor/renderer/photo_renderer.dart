@@ -24,7 +24,10 @@ abstract interface class PhotoRenderer {
   void update(DevelopSettings settings, {bool interactive = false});
 
   /// Renders [settings] onto a small square-ish thumbnail and returns PNG bytes.
-  Future<Uint8List> renderThumbnail(DevelopSettings settings, {int longEdge = 384});
+  Future<Uint8List> renderThumbnail(
+    DevelopSettings settings, {
+    int longEdge = 384,
+  });
 
   void dispose();
 }

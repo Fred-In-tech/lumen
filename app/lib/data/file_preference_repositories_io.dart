@@ -12,7 +12,8 @@ import 'package:lumen/data/preference_repositories.dart';
 
 final _log = Logger('FilePreferences');
 
-Uint8List _encode(Object? json) => Uint8List.fromList(utf8.encode(jsonEncode(json)));
+Uint8List _encode(Object? json) =>
+    Uint8List.fromList(utf8.encode(jsonEncode(json)));
 
 class FilePresetRepository implements PresetRepository {
   FilePresetRepository(this.root);
@@ -41,7 +42,10 @@ class FilePresetRepository implements PresetRepository {
   String _safeName(String id) => id.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
 
   @override
-  Future<void> save(Preset preset) => atomicWrite(p.join(_dir, '${_safeName(preset.id)}.json'), _encode(preset.toJson()));
+  Future<void> save(Preset preset) => atomicWrite(
+    p.join(_dir, '${_safeName(preset.id)}.json'),
+    _encode(preset.toJson()),
+  );
 
   @override
   Future<void> delete(String id) async {
@@ -69,5 +73,6 @@ class FileSettingsRepository implements SettingsRepository {
   }
 
   @override
-  Future<void> save(AppSettings settings) => atomicWrite(_path, _encode(settings.toJson()));
+  Future<void> save(AppSettings settings) =>
+      atomicWrite(_path, _encode(settings.toJson()));
 }

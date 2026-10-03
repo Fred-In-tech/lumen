@@ -8,9 +8,15 @@ import 'package:lumen/widgets/lumen_slider.dart';
 
 /// Colored track gradients (DESIGN.md §2.3).
 abstract final class TrackGradients {
-  static const temp = LinearGradient(colors: [Color(0xFF3D7BD9), Color(0xFFE8E8E8), Color(0xFFE8C547)]);
-  static const tint = LinearGradient(colors: [Color(0xFF3FAE5A), Color(0xFFE8E8E8), Color(0xFFC24FC0)]);
-  static const lum = LinearGradient(colors: [Color(0xFF000000), Color(0xFFFFFFFF)]);
+  static const temp = LinearGradient(
+    colors: [Color(0xFF3D7BD9), Color(0xFFE8E8E8), Color(0xFFE8C547)],
+  );
+  static const tint = LinearGradient(
+    colors: [Color(0xFF3FAE5A), Color(0xFFE8E8E8), Color(0xFFC24FC0)],
+  );
+  static const lum = LinearGradient(
+    colors: [Color(0xFF000000), Color(0xFFFFFFFF)],
+  );
 
   static Gradient? forParam(ParamId id) {
     if (id == P.temp) return temp;
@@ -22,13 +28,20 @@ abstract final class TrackGradients {
       final c = kHslBandColors[band.index];
       final hsl = HSLColor.fromColor(c);
       return switch (parts[2]) {
-        'hue' => LinearGradient(colors: [
+        'hue' => LinearGradient(
+          colors: [
             hsl.withHue((hsl.hue - 30) % 360).toColor(),
             c,
             hsl.withHue((hsl.hue + 30) % 360).toColor(),
-          ]),
+          ],
+        ),
         'sat' => LinearGradient(colors: [const Color(0xFF808080), c]),
-        _ => LinearGradient(colors: [hsl.withLightness(0.25).toColor(), hsl.withLightness(0.85).toColor()]),
+        _ => LinearGradient(
+          colors: [
+            hsl.withLightness(0.25).toColor(),
+            hsl.withLightness(0.85).toColor(),
+          ],
+        ),
       };
     }
     return null;
@@ -37,7 +50,13 @@ abstract final class TrackGradients {
 
 /// A [LumenSlider] bound to one [ParamId] of the open photo.
 class ParamSlider extends ConsumerWidget {
-  const ParamSlider({super.key, required this.assetId, required this.param, this.label, this.touch = false});
+  const ParamSlider({
+    super.key,
+    required this.assetId,
+    required this.param,
+    this.label,
+    this.touch = false,
+  });
 
   final String assetId;
   final ParamId param;
@@ -47,16 +66,26 @@ class ParamSlider extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final spec = ParamRegistry.byId(param);
-    final value = ref.watch(editorProvider(assetId).select((s) => s.value?.settings.value(param) ?? spec.defaultValue));
-    final aiReason = ref.watch(editorProvider(assetId).select((s) {
-      final st = s.value;
-      final ai = st?.doc.ai;
-      if (st == null || ai == null || st.lockedByUser.contains(param)) return null;
-      for (final c in ai.changes) {
-        if (c.param == param && (c.to - (st.settings.value(param))).abs() < 1e-6) return c.reason;
-      }
-      return null;
-    }));
+    final value = ref.watch(
+      editorProvider(assetId)
+          .select((s) => s.value?.settings.value(param) ?? spec.defaultValue),
+    );
+    final aiReason = ref.watch(
+      editorProvider(assetId).select((s) {
+        final st = s.value;
+        final ai = st?.doc.ai;
+        if (st == null || ai == null || st.lockedByUser.contains(param)) {
+          return null;
+        }
+        for (final c in ai.changes) {
+          if (c.param == param &&
+              (c.to - (st.settings.value(param))).abs() < 1e-6) {
+            return c.reason;
+          }
+        }
+        return null;
+      }),
+    );
     final ctl = ref.read(editorProvider(assetId).notifier);
     final isExposure = spec.unit == 'EV';
     return LumenSlider(

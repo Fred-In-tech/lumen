@@ -30,16 +30,24 @@ ThemeData buildLumenTheme({LumenTokens tokens = LumenTokens.dark}) {
     extensions: [tokens],
   );
   return base.copyWith(
-    textTheme: base.textTheme.apply(bodyColor: tokens.textPrimary, displayColor: tokens.textPrimary),
+    textTheme: base.textTheme.apply(
+      bodyColor: tokens.textPrimary,
+      displayColor: tokens.textPrimary,
+    ),
     tooltipTheme: TooltipThemeData(
-      decoration: BoxDecoration(color: tokens.surface3, borderRadius: BorderRadius.circular(Rad.sm)),
+      decoration: BoxDecoration(
+        color: tokens.surface3,
+        borderRadius: BorderRadius.circular(Rad.sm),
+      ),
       textStyle: LumenType.caption().copyWith(color: tokens.textPrimary),
       waitDuration: const Duration(milliseconds: 500),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: tokens.surface2,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.lg)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Rad.lg),
+      ),
     ),
     textSelectionTheme: TextSelectionThemeData(
       cursorColor: tokens.accent,
@@ -50,6 +58,9 @@ ThemeData buildLumenTheme({LumenTokens tokens = LumenTokens.dark}) {
       thickness: const WidgetStatePropertyAll(6),
       radius: const Radius.circular(Rad.pill),
     ),
-    progressIndicatorTheme: ProgressIndicatorThemeData(color: tokens.accent, linearTrackColor: tokens.surface3),
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: tokens.accent,
+      linearTrackColor: tokens.surface3,
+    ),
   );
 }

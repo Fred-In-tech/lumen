@@ -58,7 +58,10 @@ class GpuPhotoRenderer implements PhotoRenderer {
       return;
     }
     final size = await probeSize(original);
-    final source = _source = await decodePhoto(original, maxLongEdge: previewLongEdge);
+    final source = _source = await decodePhoto(
+      original,
+      maxLongEdge: previewLongEdge,
+    );
     final aux = _aux = await AuxTextures.build(source);
     final graph = _graph = RenderGraph(
       shaders: shaders,
@@ -83,7 +86,10 @@ class GpuPhotoRenderer implements PhotoRenderer {
   }
 
   @override
-  Future<Uint8List> renderThumbnail(DevelopSettings settings, {int longEdge = 384}) async {
+  Future<Uint8List> renderThumbnail(
+    DevelopSettings settings, {
+    int longEdge = 384,
+  }) async {
     final fb = _fallback;
     if (fb != null) return fb.renderThumbnail(settings, longEdge: longEdge);
     final graph = _graph;
@@ -110,7 +116,11 @@ class GpuPhotoRenderer implements PhotoRenderer {
 }
 
 /// GPU full-resolution export render (tiled). Falls back to the CPU path.
-Future<RgbaBuffer> gpuFullResRender(Uint8List original, DevelopSettings settings, int? longEdge) async {
+Future<RgbaBuffer> gpuFullResRender(
+  Uint8List original,
+  DevelopSettings settings,
+  int? longEdge,
+) async {
   final ShaderLibrary shaders;
   try {
     shaders = await ShaderLibrary.load();
@@ -123,7 +133,9 @@ Future<RgbaBuffer> gpuFullResRender(Uint8List original, DevelopSettings settings
   final source = await ExportRenderer.decodeOriginal(original);
   final aux = await AuxTextures.build(source);
   try {
-    final px = await ExportRenderer(shaders).render(source: source, aux: aux, settings: settings, longEdge: longEdge);
+    final px = await ExportRenderer(
+      shaders,
+    ).render(source: source, aux: aux, settings: settings, longEdge: longEdge);
     return RgbaBuffer(px.width, px.height, px.rgba);
   } finally {
     aux.dispose();

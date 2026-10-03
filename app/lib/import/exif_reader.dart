@@ -22,7 +22,9 @@ Future<ExifSummary> readExifSummary(Uint8List bytes) async {
       final vals = t.values.toList();
       if (vals.isEmpty) return null;
       final v = vals.first;
-      if (v is Ratio) return v.denominator == 0 ? null : v.numerator / v.denominator;
+      if (v is Ratio) {
+        return v.denominator == 0 ? null : v.numerator / v.denominator;
+      }
       if (v is num) return v.toDouble();
       return double.tryParse(t.printable);
     }
@@ -31,9 +33,12 @@ Future<ExifSummary> readExifSummary(Uint8List bytes) async {
     final model = s('Image Model');
     final camera = model == null
         ? make
-        : (make != null && !model.toLowerCase().startsWith(make.toLowerCase().split(' ').first))
-            ? '$make $model'
-            : model;
+        : (make != null &&
+              !model.toLowerCase().startsWith(
+                make.toLowerCase().split(' ').first,
+              ))
+        ? '$make $model'
+        : model;
     final exposure = ratio('EXIF ExposureTime');
     final dt = s('EXIF DateTimeOriginal') ?? s('Image DateTime');
     return ExifSummary(
@@ -45,7 +50,9 @@ Future<ExifSummary> readExifSummary(Uint8List bytes) async {
       aperture: ratio('EXIF FNumber'),
       focalMm: ratio('EXIF FocalLength'),
       capturedAt: _parseExifDate(dt),
-      flash: s('EXIF Flash') == null ? null : !(s('EXIF Flash')!.toLowerCase().contains('no')),
+      flash: s('EXIF Flash') == null
+          ? null
+          : !(s('EXIF Flash')!.toLowerCase().contains('no')),
       orientation: (tags['Image Orientation']?.values.firstAsInt()),
     );
   } on Exception catch (e) {
@@ -56,7 +63,8 @@ Future<ExifSummary> readExifSummary(Uint8List bytes) async {
 
 DateTime? _parseExifDate(String? v) {
   if (v == null) return null;
-  final m = RegExp(r'^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})').firstMatch(v);
+  final m = RegExp(r'^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})')
+      .firstMatch(v);
   if (m == null) return null;
   final p = [for (var i = 1; i <= 6; i++) int.parse(m.group(i)!)];
   if (p[0] < 1900) return null;

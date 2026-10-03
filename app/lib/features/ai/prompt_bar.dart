@@ -10,7 +10,14 @@ import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 import 'package:lumen/widgets/toast.dart';
 
-const kPromptSuggestions = ['Brighter face', 'Make the sky pop', 'Moodier', 'Golden hour', 'Clean & bright', 'Warmer'];
+const kPromptSuggestions = [
+  'Brighter face',
+  'Make the sky pop',
+  'Moodier',
+  'Golden hour',
+  'Clean & bright',
+  'Warmer',
+];
 
 /// "Describe an edit…" bar (DESIGN.md §4.10).
 class PromptBar extends ConsumerStatefulWidget {
@@ -52,7 +59,9 @@ class _PromptBarState extends ConsumerState<PromptBar> {
     if (!mounted || r == null) return;
     final n = r.outcome.changes.length;
     if (n == 0) {
-      final tips = r.outcome.suggestions.isEmpty ? '' : ' Try: ${r.outcome.suggestions.take(3).join(', ')}.';
+      final tips = r.outcome.suggestions.isEmpty
+          ? ''
+          : ' Try: ${r.outcome.suggestions.take(3).join(', ')}.';
       showToast(context, 'I couldn’t turn that into an edit.$tips');
       setState(() => _result = null);
     } else {
@@ -66,96 +75,164 @@ class _PromptBarState extends ConsumerState<PromptBar> {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final busy = ref.watch(editorProvider(widget.session.assetId).select((s) => s.value?.aiBusy ?? false));
-    final status = ref.watch(editorProvider(widget.session.assetId).select((s) => s.value?.aiStatus));
+    final busy = ref.watch(
+      editorProvider(widget.session.assetId)
+          .select((s) => s.value?.aiBusy ?? false),
+    );
+    final status = ref.watch(
+      editorProvider(widget.session.assetId).select((s) => s.value?.aiStatus),
+    );
     final focused = _focus.hasFocus;
     return SizedBox(
       width: widget.width,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (focused && !busy)
-          Padding(
-            padding: const EdgeInsets.only(bottom: Sp.s2),
-            child: Wrap(spacing: Sp.s1_5, runSpacing: Sp.s1_5, alignment: WrapAlignment.center, children: [
-              for (final s in kPromptSuggestions)
-                GestureDetector(
-                  onTap: () => _submit(s),
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: Sp.s3, vertical: Sp.s1_5),
-                      decoration: BoxDecoration(color: t.surface3, borderRadius: BorderRadius.circular(Rad.pill), boxShadow: Elevation.e2),
-                      child: Text(s, style: LumenType.label().copyWith(color: t.textPrimary)),
-                    ),
-                  ),
-                ),
-            ]),
-          ),
-        if (_result != null && !busy)
-          Container(
-            margin: const EdgeInsets.only(bottom: Sp.s2),
-            padding: const EdgeInsets.symmetric(horizontal: Sp.s3, vertical: Sp.s1_5),
-            decoration: BoxDecoration(color: t.surface3, borderRadius: BorderRadius.circular(Rad.pill), boxShadow: Elevation.e2),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const AiGlyph(size: 12),
-              const SizedBox(width: Sp.s1_5),
-              Text(_result!, style: LumenType.caption().copyWith(color: t.textPrimary)),
-              const SizedBox(width: Sp.s3),
-              GestureDetector(
-                onTap: () {
-                  ref.read(editorProvider(widget.session.assetId).notifier).undo();
-                  setState(() => _result = null);
-                },
-                child: Text('Undo', style: LumenType.caption().copyWith(color: t.accent)),
-              ),
-            ]),
-          ),
-        AnimatedOpacity(
-          duration: Motion.fast,
-          opacity: focused || busy ? 1 : 0.88,
-          child: Container(
-            height: Layout.promptBarHeight,
-            padding: const EdgeInsets.only(left: Sp.s3, right: Sp.s1_5),
-            decoration: BoxDecoration(
-              color: t.surface3,
-              borderRadius: BorderRadius.circular(Rad.lg),
-              boxShadow: Elevation.e2,
-              border: Border.all(color: focused ? const Color(0xFFFF894B) : t.line),
-            ),
-            child: Row(children: [
-              const AiGlyph(size: 18),
-              const SizedBox(width: Sp.s2),
-              Expanded(
-                child: busy
-                    ? Text(status ?? 'Working…', style: LumenType.body().copyWith(color: t.textSecondary))
-                    : CallbackShortcuts(
-                        bindings: {
-                          const SingleActivator(LogicalKeyboardKey.arrowUp): () {
-                            if (_text.text.isEmpty && _last != null) _text.text = _last!;
-                          },
-                          const SingleActivator(LogicalKeyboardKey.escape): _focus.unfocus,
-                        },
-                        child: TextField(
-                          controller: _text,
-                          focusNode: _focus,
-                          style: LumenType.body(touch: true).copyWith(fontSize: 14, color: t.textPrimary),
-                          decoration: InputDecoration(
-                            isCollapsed: true,
-                            border: InputBorder.none,
-                            hintText: 'Describe an edit… “warmer, lift the shadows”',
-                            hintStyle: LumenType.body(touch: true).copyWith(fontSize: 14, color: t.textTertiary),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (focused && !busy)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Sp.s2),
+              child: Wrap(
+                spacing: Sp.s1_5,
+                runSpacing: Sp.s1_5,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final s in kPromptSuggestions)
+                    GestureDetector(
+                      onTap: () => _submit(s),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: Sp.s3,
+                            vertical: Sp.s1_5,
                           ),
-                          maxLength: 500,
-                          buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _submit(),
+                          decoration: BoxDecoration(
+                            color: t.surface3,
+                            borderRadius: BorderRadius.circular(Rad.pill),
+                            boxShadow: Elevation.e2,
+                          ),
+                          child: Text(
+                            s,
+                            style: LumenType.label().copyWith(
+                              color: t.textPrimary,
+                            ),
+                          ),
                         ),
                       ),
+                    ),
+                ],
               ),
-              _SendButton(enabled: !busy && _text.text.trim().isNotEmpty, onTap: _submit),
-            ]),
+            ),
+          if (_result != null && !busy)
+            Container(
+              margin: const EdgeInsets.only(bottom: Sp.s2),
+              padding: const EdgeInsets.symmetric(
+                horizontal: Sp.s3,
+                vertical: Sp.s1_5,
+              ),
+              decoration: BoxDecoration(
+                color: t.surface3,
+                borderRadius: BorderRadius.circular(Rad.pill),
+                boxShadow: Elevation.e2,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const AiGlyph(size: 12),
+                  const SizedBox(width: Sp.s1_5),
+                  Text(
+                    _result!,
+                    style: LumenType.caption().copyWith(color: t.textPrimary),
+                  ),
+                  const SizedBox(width: Sp.s3),
+                  GestureDetector(
+                    onTap: () {
+                      ref
+                          .read(editorProvider(widget.session.assetId).notifier)
+                          .undo();
+                      setState(() => _result = null);
+                    },
+                    child: Text(
+                      'Undo',
+                      style: LumenType.caption().copyWith(color: t.accent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          AnimatedOpacity(
+            duration: Motion.fast,
+            opacity: focused || busy ? 1 : 0.88,
+            child: Container(
+              height: Layout.promptBarHeight,
+              padding: const EdgeInsets.only(left: Sp.s3, right: Sp.s1_5),
+              decoration: BoxDecoration(
+                color: t.surface3,
+                borderRadius: BorderRadius.circular(Rad.lg),
+                boxShadow: Elevation.e2,
+                border: Border.all(
+                  color: focused ? const Color(0xFFFF894B) : t.line,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const AiGlyph(size: 18),
+                  const SizedBox(width: Sp.s2),
+                  Expanded(
+                    child: busy
+                        ? Text(
+                            status ?? 'Working…',
+                            style: LumenType.body().copyWith(
+                              color: t.textSecondary,
+                            ),
+                          )
+                        : CallbackShortcuts(
+                            bindings: {
+                              const SingleActivator(
+                                LogicalKeyboardKey.arrowUp,
+                              ): () {
+                                if (_text.text.isEmpty && _last != null) {
+                                  _text.text = _last!;
+                                }
+                              },
+                              const SingleActivator(LogicalKeyboardKey.escape):
+                                  _focus.unfocus,
+                            },
+                            child: TextField(
+                              controller: _text,
+                              focusNode: _focus,
+                              style: LumenType.body(touch: true)
+                                  .copyWith(fontSize: 14, color: t.textPrimary),
+                              decoration: InputDecoration(
+                                isCollapsed: true,
+                                border: InputBorder.none,
+                                hintText: 'Describe an edit… “warmer, lift the shadows”',
+                                hintStyle: LumenType.body(
+                                  touch: true,
+                                ).copyWith(fontSize: 14, color: t.textTertiary),
+                              ),
+                              maxLength: 500,
+                              buildCounter: (
+                                _, {
+                                required currentLength,
+                                required isFocused,
+                                maxLength,
+                              }) => null,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: (_) => _submit(),
+                            ),
+                          ),
+                  ),
+                  _SendButton(
+                    enabled: !busy && _text.text.trim().isNotEmpty,
+                    onTap: _submit,
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -182,7 +259,11 @@ class _SendButton extends StatelessWidget {
             color: enabled ? null : t.surface2,
             shape: BoxShape.circle,
           ),
-          child: Icon(LucideIcons.arrowUp, size: 18, color: enabled ? t.textOnAccent : t.textDisabled),
+          child: Icon(
+            LucideIcons.arrowUp,
+            size: 18,
+            color: enabled ? t.textOnAccent : t.textDisabled,
+          ),
         ),
       ),
     );

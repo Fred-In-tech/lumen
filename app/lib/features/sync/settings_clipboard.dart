@@ -23,19 +23,31 @@ class ClipboardNotifier extends Notifier<SettingsClipboard?> {
   void set(SettingsClipboard? v) => state = v;
 }
 
-final settingsClipboardProvider = NotifierProvider<ClipboardNotifier, SettingsClipboard?>(ClipboardNotifier.new);
+final settingsClipboardProvider =
+    NotifierProvider<ClipboardNotifier, SettingsClipboard?>(
+      ClipboardNotifier.new,
+    );
 
 /// Copies the open photo's settings after letting the user pick groups.
-Future<void> copySettings(BuildContext context, WidgetRef ref, String assetId) async {
+Future<void> copySettings(
+  BuildContext context,
+  WidgetRef ref,
+  String assetId,
+) async {
   final s = ref.read(editorProvider(assetId)).value?.settings;
   if (s == null) return;
   final groups = await showDialog<Set<SettingsGroup>>(
     context: context,
-    builder: (_) => const GroupPickerDialog(title: 'Copy settings', action: 'Copy'),
+    builder: (_) =>
+        const GroupPickerDialog(title: 'Copy settings', action: 'Copy'),
   );
   if (groups == null || groups.isEmpty) return;
-  ref.read(settingsClipboardProvider.notifier).set(SettingsClipboard(settings: s, groups: groups));
-  if (context.mounted) showToast(context, 'Settings copied (${groups.length} groups).');
+  ref
+      .read(settingsClipboardProvider.notifier)
+      .set(SettingsClipboard(settings: s, groups: groups));
+  if (context.mounted) {
+    showToast(context, 'Settings copied (${groups.length} groups).');
+  }
 }
 
 void pasteSettingsInto(BuildContext context, WidgetRef ref, String assetId) {
@@ -49,17 +61,41 @@ void pasteSettingsInto(BuildContext context, WidgetRef ref, String assetId) {
 
 /// Applies [source] (filtered to [groups]) to every asset in [assetIds] as one
 /// history entry per photo. Returns the number of photos changed.
-Future<int> syncSettingsToAssets(WidgetRef ref, DevelopSettings source, Set<SettingsGroup> groups, Iterable<String> assetIds) async {
+Future<int> syncSettingsToAssets(
+  WidgetRef ref,
+  DevelopSettings source,
+  Set<SettingsGroup> groups,
+  Iterable<String> assetIds,
+) async {
   final repo = ref.read(catalogRepositoryProvider);
   var n = 0;
   for (final id in assetIds) {
     final doc = await repo.loadEdit(id);
-    final next = pasteSettings(source: source, target: doc.settings, groups: groups);
-    final entry = HistoryEntry.tryDiff(label: 'Paste settings', kind: HistoryKind.paste, before: doc.settings, after: next);
+    final next = pasteSettings(
+      source: source,
+      target: doc.settings,
+      groups: groups,
+    );
+    final entry = HistoryEntry.tryDiff(
+      label: 'Paste settings',
+      kind: HistoryKind.paste,
+      before: doc.settings,
+      after: next,
+    );
     if (entry == null) continue;
-    await repo.saveEdit(doc.copyWith(settings: next, history: doc.history.push(entry), updatedAt: DateTime.now().toUtc()));
+    await repo.saveEdit(
+      doc.copyWith(
+        settings: next,
+        history: doc.history.push(entry),
+        updatedAt: DateTime.now().toUtc(),
+      ),
+    );
     final e = await repo.get(id);
-    if (e != null) await repo.update(e.copyWith(hasEdits: !next.isDefault, editedAt: DateTime.now().toUtc()));
+    if (e != null) {
+      await repo.update(
+        e.copyWith(hasEdits: !next.isDefault, editedAt: DateTime.now().toUtc()),
+      );
+    }
     n++;
   }
   return n;
@@ -67,7 +103,11 @@ Future<int> syncSettingsToAssets(WidgetRef ref, DevelopSettings source, Set<Sett
 
 /// Lets the user choose settings groups (copy dialog).
 class GroupPickerDialog extends StatefulWidget {
-  const GroupPickerDialog({super.key, required this.title, required this.action});
+  const GroupPickerDialog({
+    super.key,
+    required this.title,
+    required this.action,
+  });
   final String title;
   final String action;
 
@@ -82,24 +122,42 @@ class _GroupPickerDialogState extends State<GroupPickerDialog> {
   Widget build(BuildContext context) {
     final t = context.tokens;
     return AlertDialog(
-      title: Text(widget.title, style: LumenType.title().copyWith(color: t.textPrimary)),
+      title: Text(
+        widget.title,
+        style: LumenType.title().copyWith(color: t.textPrimary),
+      ),
       content: SizedBox(
         width: 320,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          for (final g in SettingsGroup.values)
-            CheckboxListTile(
-              dense: true,
-              value: _sel.contains(g),
-              activeColor: t.accent,
-              checkColor: t.textOnAccent,
-              title: Text(g.label, style: LumenType.body().copyWith(color: t.textPrimary)),
-              onChanged: (v) => setState(() => v == true ? _sel.add(g) : _sel.remove(g)),
-            ),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final g in SettingsGroup.values)
+              CheckboxListTile(
+                dense: true,
+                value: _sel.contains(g),
+                activeColor: t.accent,
+                checkColor: t.textOnAccent,
+                title: Text(
+                  g.label,
+                  style: LumenType.body().copyWith(color: t.textPrimary),
+                ),
+                onChanged: (v) =>
+                    setState(() => v == true ? _sel.add(g) : _sel.remove(g)),
+              ),
+          ],
+        ),
       ),
       actions: [
-        LumenButton(label: 'Cancel', kind: ButtonKind.ghost, onPressed: () => Navigator.pop(context)),
-        LumenButton(label: widget.action, kind: ButtonKind.primary, onPressed: () => Navigator.pop(context, _sel)),
+        LumenButton(
+          label: 'Cancel',
+          kind: ButtonKind.ghost,
+          onPressed: () => Navigator.pop(context),
+        ),
+        LumenButton(
+          label: widget.action,
+          kind: ButtonKind.primary,
+          onPressed: () => Navigator.pop(context, _sel),
+        ),
       ],
     );
   }

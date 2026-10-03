@@ -20,7 +20,9 @@ class VisionAutoEditProvider implements AutoEditProvider {
   Future<ProviderStatus> status() async {
     try {
       final h = await _client.health();
-      return h.visionAvailable ? const ProviderStatus.available() : const ProviderStatus.unavailable('No AI key on the gateway');
+      return h.visionAvailable
+          ? const ProviderStatus.available()
+          : const ProviderStatus.unavailable('No AI key on the gateway');
     } on GatewayFailure catch (e) {
       return ProviderStatus.unavailable(e.message);
     }
@@ -29,10 +31,15 @@ class VisionAutoEditProvider implements AutoEditProvider {
   AutoEditRequest _request(AutoEditInput input) {
     final jpeg = input.previewJpeg;
     final proxy = input.proxy;
-    if (jpeg == null) throw const GatewayFailure('invalid_request', 'Missing preview image');
+    if (jpeg == null) {
+      throw const GatewayFailure('invalid_request', 'Missing preview image');
+    }
     return AutoEditRequest(
       client: clientInfo,
-      style: GatewayStyle.values.firstWhere((s) => s.wire == input.style.id, orElse: () => GatewayStyle.natural),
+      style: GatewayStyle.values.firstWhere(
+        (s) => s.wire == input.style.id,
+        orElse: () => GatewayStyle.natural,
+      ),
       image: ImagePayload(
         mime: 'image/jpeg',
         width: proxy?.width ?? 0,
@@ -50,30 +57,54 @@ class VisionAutoEditProvider implements AutoEditProvider {
   @override
   Future<AutoEditOutcome> autoEdit(AutoEditInput input) async {
     final res = await _client.autoEdit(_request(input));
-    final result = res.result.clampedAbsolute().withoutParams(input.locked).damped();
+    final result = res.result
+        .clampedAbsolute()
+        .withoutParams(input.locked)
+        .damped();
     return _outcome(input, result, res, deltas: false);
   }
 
   @override
   Future<AutoEditOutcome> instruct(InstructInput input) async {
-    final res = await _client.instruct(InstructRequest(request: _request(input), instruction: input.instruction));
-    final result = res.result.clampedDeltas(input.current.nonDefaultValues).damped(deltas: true);
+    final res = await _client.instruct(
+      InstructRequest(request: _request(input), instruction: input.instruction),
+    );
+    final result = res.result
+        .clampedDeltas(input.current.nonDefaultValues)
+        .damped(deltas: true);
     return _outcome(input, result, res, deltas: true);
   }
 
-  AutoEditOutcome _outcome(AutoEditInput input, AutoEditResponse result, GatewayEditResponse res, {required bool deltas}) {
+  AutoEditOutcome _outcome(
+    AutoEditInput input,
+    AutoEditResponse result,
+    GatewayEditResponse res, {
+    required bool deltas,
+  }) {
     final start = input.current;
     if (result.variants.isEmpty) {
-      return AutoEditOutcome(settings: start, changes: const [], engineUsed: AutoEditEngine.vision, intent: result.intent);
+      return AutoEditOutcome(
+        settings: start,
+        changes: const [],
+        engineUsed: AutoEditEngine.vision,
+        intent: result.intent,
+      );
     }
     final v = result.variants.first;
     final ops = <EditOp>[
       for (final a in v.presetAtoms)
         if (StyleAtom.fromId(a.atom) case final atom?) ...atom.ops(a.amount),
       for (final adj in v.adjustments)
-        deltas ? DeltaOp(adj.param, adj.value, explicit: true) : SetOp(adj.param, adj.value, explicit: true),
+        deltas
+            ? DeltaOp(adj.param, adj.value, explicit: true)
+            : SetOp(adj.param, adj.value, explicit: true),
     ];
-    final applied = applyOps(start, ops, locked: input.locked, baseline: input.baseline);
+    final applied = applyOps(
+      start,
+      ops,
+      locked: input.locked,
+      baseline: input.baseline,
+    );
     final reasons = {for (final a in v.adjustments) a.param: a.reason};
     final changes = <ParamChange>[
       for (final id in start.changedParams(applied.settings))

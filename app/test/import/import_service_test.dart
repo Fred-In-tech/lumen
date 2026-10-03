@@ -13,9 +13,35 @@ void main() {
   test('sniffs formats from magic bytes', () {
     expect(sniffFormat(Fixtures.jpeg()), PhotoFormat.jpeg);
     expect(sniffFormat(Fixtures.png()), PhotoFormat.png);
-    final webp = Uint8List.fromList([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+    final webp = Uint8List.fromList([
+      0x52,
+      0x49,
+      0x46,
+      0x46,
+      0,
+      0,
+      0,
+      0,
+      0x57,
+      0x45,
+      0x42,
+      0x50,
+    ]);
     expect(sniffFormat(webp), PhotoFormat.webp);
-    final heic = Uint8List.fromList([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63]);
+    final heic = Uint8List.fromList([
+      0,
+      0,
+      0,
+      0x18,
+      0x66,
+      0x74,
+      0x79,
+      0x70,
+      0x68,
+      0x65,
+      0x69,
+      0x63,
+    ]);
     expect(sniffFormat(heic), PhotoFormat.heic);
     expect(sniffFormat(Uint8List.fromList([1, 2, 3])), PhotoFormat.unknown);
   });
@@ -27,7 +53,10 @@ void main() {
       ImportFile(name: 'a.jpg', bytes: Fixtures.jpeg(w: 800, h: 600)),
       ImportFile(name: 'b.png', bytes: Fixtures.png(seed: 9)),
       ImportFile(name: 'a-copy.jpg', bytes: Fixtures.jpeg(w: 800, h: 600)),
-      ImportFile(name: 'notes.txt', bytes: Uint8List.fromList('hello'.codeUnits)),
+      ImportFile(
+        name: 'notes.txt',
+        bytes: Uint8List.fromList('hello'.codeUnits),
+      ),
     ]);
     expect(results[0], isA<Imported>());
     expect(results[1], isA<Imported>());

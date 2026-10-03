@@ -8,7 +8,11 @@ import 'package:lumen/data/file_preference_repositories_io.dart';
 import 'package:lumen/data/preference_repositories.dart';
 
 /// The repositories bundle for the current platform.
-typedef Repositories = ({CatalogRepository catalog, PresetRepository presets, SettingsRepository settings});
+typedef Repositories = ({
+  CatalogRepository catalog,
+  PresetRepository presets,
+  SettingsRepository settings,
+});
 
 /// Opens the on-disk library under the app-support directory.
 Future<Repositories> openRepositories() async {

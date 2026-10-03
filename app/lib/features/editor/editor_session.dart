@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,7 +18,11 @@ final _log = Logger('EditorSession');
 
 /// Live resources for the photo open in the editor: renderer, stats, thumbs.
 class EditorSession {
-  EditorSession({required this.assetId, required this.renderer, required this.repo});
+  EditorSession({
+    required this.assetId,
+    required this.renderer,
+    required this.repo,
+  });
 
   final String assetId;
   final PhotoRenderer renderer;
@@ -63,7 +68,10 @@ class EditorSession {
   /// Re-renders the library thumbnail 1 s after the last committed change.
   void scheduleThumbnail(DevelopSettings settings) {
     _thumbTimer?.cancel();
-    _thumbTimer = Timer(const Duration(seconds: 1), () => unawaited(_writeThumb(settings)));
+    _thumbTimer = Timer(
+      const Duration(seconds: 1),
+      () => unawaited(_writeThumb(settings)),
+    );
   }
 
   Future<void> _writeThumb(DevelopSettings settings) async {
@@ -72,7 +80,14 @@ class EditorSession {
       final png = await renderer.renderThumbnail(settings);
       await repo.writeThumb(assetId, png);
       final e = await repo.get(assetId);
-      if (e != null) await repo.update(e.copyWith(thumbVersion: e.thumbVersion + 1, hasEdits: !settings.isDefault));
+      if (e != null) {
+        await repo.update(
+          e.copyWith(
+            thumbVersion: e.thumbVersion + 1,
+            hasEdits: !settings.isDefault,
+          ),
+        );
+      }
     } on Exception catch (e) {
       _log.warning('thumbnail failed: $e');
     }
@@ -105,6 +120,48 @@ class EditorSession {
     );
   }
 
+  Future<Map<AiStyle, Uint8List>>? _stylePreviews;
+
+  /// Each AI style applied to this photo (local engine), rendered as a small
+  /// PNG. Computed once per session in parallel isolates.
+  Future<Map<AiStyle, Uint8List>> stylePreviews(
+    AutoEditProvider local,
+    DevelopSettings base,
+  ) => _stylePreviews ??= _computeStylePreviews(local, base);
+
+  Future<Map<AiStyle, Uint8List>> _computeStylePreviews(
+    AutoEditProvider local,
+    DevelopSettings base,
+  ) async {
+    final proxy = renderer.analysisProxy;
+    final st = await stats();
+    if (proxy == null || st == null) return const {};
+    final out = <AiStyle, Uint8List>{};
+    await Future.wait([
+      for (final style in AiStyle.values)
+        () async {
+          try {
+            final input = AutoEditInput(
+              stats: st,
+              style: style,
+              current: base,
+              proxy: proxy,
+              exif: entry?.exif,
+            );
+            final outcome = await Isolate.run(() => local.autoEdit(input));
+            if (_disposed) return;
+            out[style] = await renderer.renderThumbnail(
+              outcome.settings,
+              longEdge: 240,
+            );
+          } on Exception catch (e) {
+            _log.fine('style preview ${style.id} failed: $e');
+          }
+        }(),
+    ]);
+    return out;
+  }
+
   void dispose() {
     _disposed = true;
     _thumbTimer?.cancel();
@@ -117,21 +174,32 @@ class EditorSession {
 }
 
 /// Runs auto-edit for the photo in [session] and applies it to the editor.
-Future<AiRunResult?> runAutoEdit(WidgetRef ref, EditorSession session, {AiStyle style = AiStyle.natural}) async {
+Future<AiRunResult?> runAutoEdit(
+  WidgetRef ref,
+  EditorSession session, {
+  AiStyle style = AiStyle.natural,
+}) async {
   final ctl = ref.read(editorProvider(session.assetId).notifier);
   final state = ref.read(editorProvider(session.assetId)).value;
   if (state == null) return null;
   final ctx = await session.aiContext(state);
   if (ctx == null) return null;
   final service = ref.read(autoEditServiceProvider);
-  ctl.setAiBusy(true, status: service.visionAvailable ? 'Reading the light…' : 'Developing…');
+  ctl.setAiBusy(
+    true,
+    status: service.visionAvailable ? 'Reading the light…' : 'Developing…',
+  );
   try {
-    final result = await service.autoEdit(ctx, style: style, onLocal: (local) {
-      if (service.visionAvailable) {
-        ctl.preview(local.settings);
-        ctl.setAiBusy(true, status: 'Developing…');
-      }
-    });
+    final result = await service.autoEdit(
+      ctx,
+      style: style,
+      onLocal: (local) {
+        if (service.visionAvailable) {
+          ctl.preview(local.settings);
+          ctl.setAiBusy(true, status: 'Developing…');
+        }
+      },
+    );
     ctl.preview(state.settings);
     ctl.applyAi(result.outcome.settings, result.record, label: result.label);
     return result;
@@ -141,18 +209,34 @@ Future<AiRunResult?> runAutoEdit(WidgetRef ref, EditorSession session, {AiStyle 
 }
 
 /// Runs a describe-an-edit instruction.
-Future<AiRunResult?> runInstruction(WidgetRef ref, EditorSession session, String instruction) async {
+Future<AiRunResult?> runInstruction(
+  WidgetRef ref,
+  EditorSession session,
+  String instruction,
+) async {
   final ctl = ref.read(editorProvider(session.assetId).notifier);
   final state = ref.read(editorProvider(session.assetId)).value;
   if (state == null) return null;
   final ctx = await session.aiContext(state);
   if (ctx == null) return null;
   final service = ref.read(autoEditServiceProvider);
-  ctl.setAiBusy(true, status: service.visionAvailable ? 'Reading the light…' : 'Applying…');
+  ctl.setAiBusy(
+    true,
+    status: service.visionAvailable ? 'Reading the light…' : 'Applying…',
+  );
   try {
-    final result = await service.instruct(ctx, instruction, baseline: state.doc.ai?.preAi);
+    final result = await service.instruct(
+      ctx,
+      instruction,
+      baseline: state.doc.ai?.preAi,
+    );
     if (result.outcome.changes.isNotEmpty) {
-      ctl.applyAi(result.outcome.settings, result.record, label: result.label, kind: HistoryKind.instruction);
+      ctl.applyAi(
+        result.outcome.settings,
+        result.record,
+        label: result.label,
+        kind: HistoryKind.instruction,
+      );
     }
     return result;
   } finally {

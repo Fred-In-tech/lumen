@@ -84,28 +84,29 @@ class LumenTokens extends ThemeExtension<LumenTokens> {
 
   @override
   LumenTokens copyWith({Color? surface0, Color? accent}) => LumenTokens(
-        surface0: surface0 ?? this.surface0,
-        surface1: surface1,
-        surface2: surface2,
-        surface3: surface3,
-        line: line,
-        lineStrong: lineStrong,
-        textPrimary: textPrimary,
-        textSecondary: textSecondary,
-        textTertiary: textTertiary,
-        textDisabled: textDisabled,
-        textOnAccent: textOnAccent,
-        accent: accent ?? this.accent,
-        accentHover: accentHover,
-        accentPressed: accentPressed,
-        focusRing: focusRing,
-        danger: danger,
-        success: success,
-        warning: warning,
-      );
+    surface0: surface0 ?? this.surface0,
+    surface1: surface1,
+    surface2: surface2,
+    surface3: surface3,
+    line: line,
+    lineStrong: lineStrong,
+    textPrimary: textPrimary,
+    textSecondary: textSecondary,
+    textTertiary: textTertiary,
+    textDisabled: textDisabled,
+    textOnAccent: textOnAccent,
+    accent: accent ?? this.accent,
+    accentHover: accentHover,
+    accentPressed: accentPressed,
+    focusRing: focusRing,
+    danger: danger,
+    success: success,
+    warning: warning,
+  );
 
   @override
-  LumenTokens lerp(LumenTokens? other, double t) => t < 0.5 ? this : (other ?? this);
+  LumenTokens lerp(LumenTokens? other, double t) =>
+      t < 0.5 ? this : (other ?? this);
 }
 
 /// Spacing scale (4-pt base with half steps).
@@ -193,5 +194,6 @@ const List<Color> kHslBandColors = [
 ];
 
 extension LumenTokensX on BuildContext {
-  LumenTokens get tokens => Theme.of(this).extension<LumenTokens>() ?? LumenTokens.dark;
+  LumenTokens get tokens =>
+      Theme.of(this).extension<LumenTokens>() ?? LumenTokens.dark;
 }

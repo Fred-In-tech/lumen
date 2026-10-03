@@ -12,12 +12,12 @@ class PlatformInfo {
   });
 
   factory PlatformInfo.current() => PlatformInfo(
-        isMacOS: Platform.isMacOS,
-        isWindows: Platform.isWindows,
-        isLinux: Platform.isLinux,
-        isIOS: Platform.isIOS,
-        isAndroid: Platform.isAndroid,
-      );
+    isMacOS: Platform.isMacOS,
+    isWindows: Platform.isWindows,
+    isLinux: Platform.isLinux,
+    isIOS: Platform.isIOS,
+    isAndroid: Platform.isAndroid,
+  );
 
   final bool isMacOS;
   final bool isWindows;
@@ -33,15 +33,16 @@ class PlatformInfo {
   String get name => isMacOS
       ? 'macos'
       : isWindows
-          ? 'windows'
-          : isLinux
-              ? 'linux'
-              : isIOS
-                  ? 'ios'
-                  : isAndroid
-                      ? 'android'
-                      : 'web';
+      ? 'windows'
+      : isLinux
+      ? 'linux'
+      : isIOS
+      ? 'ios'
+      : isAndroid
+      ? 'android'
+      : 'web';
 
   /// Default gateway URL: the Android emulator reaches the host via 10.0.2.2.
-  String get defaultGatewayUrl => isAndroid ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
+  String get defaultGatewayUrl =>
+      isAndroid ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
 }

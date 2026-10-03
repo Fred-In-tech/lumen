@@ -106,13 +106,11 @@ class LocalAutoEditProvider implements AutoEditProvider {
     final recognized = parsed.clauses.where((c) => c.recognized).length;
     return AutoEditOutcome(
       settings: settings,
-      changes: Reasons.diff(
-        input.current,
-        settings,
-        (p, from, to) =>
-            guardReasons[p] ??
-            Reasons.instruction(input.instruction, p, from, to),
-      ),
+      changes: Reasons.diff(input.current, settings, (p, from, to) {
+        final r = Reasons.instruction(input.instruction, p, from, to);
+        final note = guardReasons[p];
+        return note == null ? r : '$r, $note';
+      }),
       intent: 'Applied “${input.instruction.trim()}”',
       engineUsed: AutoEditEngine.local,
       confidence: recognized / parsed.clauses.length,
@@ -185,7 +183,8 @@ class LocalAutoEditProvider implements AutoEditProvider {
       ? 'Natural: balanced exposure, neutral color'
       : '${style.label}: balanced base edit with the ${style.label} look';
 
-  /// One reason per change: guard > tone stage (+ style note) > style look.
+  /// One reason per change, always describing the final change from `from`
+  /// to `to`: guard note > tone stage (+ style note) > style look.
   static List<ParamChange> _explain(
     DevelopSettings from,
     DevelopSettings tone,
@@ -200,7 +199,7 @@ class LocalAutoEditProvider implements AutoEditProvider {
       to,
       (p, a, b) {
         final guard = guardReasons[p];
-        if (guard != null) return guard;
+        if (guard != null) return Reasons.guarded(p, a, b, guard);
         if (toneChanged.contains(p)) {
           final r = Reasons.auto(p, a, b);
           return styleTouched.contains(p) ? '$r (${style.label} look)' : r;

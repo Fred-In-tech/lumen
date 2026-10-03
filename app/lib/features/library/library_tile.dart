@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,20 +10,24 @@ import 'package:lumen/design/type.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 
 /// Thumbnail bytes for (assetId, thumbVersion); refetched when the version bumps.
-final thumbProvider = FutureProvider.autoDispose.family<Uint8List?, (String, int)>(
-  (ref, key) => ref.watch(catalogRepositoryProvider).readThumb(key.$1),
-);
+final thumbProvider = FutureProvider.autoDispose
+    .family<Uint8List?, (String, int)>(
+      (ref, key) => ref.watch(catalogRepositoryProvider).readThumb(key.$1),
+    );
 
 /// Asset ids currently being auto-edited (shimmer + "Editing…" pill).
 class BusyAssetsNotifier extends Notifier<Set<String>> {
   @override
   Set<String> build() => const {};
 
-  void add(Iterable<String> ids) => state = Set.unmodifiable({...state, ...ids});
+  void add(Iterable<String> ids) =>
+      state = Set.unmodifiable({...state, ...ids});
   void remove(String id) => state = Set.unmodifiable({...state}..remove(id));
 }
 
-final busyAssetsProvider = NotifierProvider<BusyAssetsNotifier, Set<String>>(BusyAssetsNotifier.new);
+final busyAssetsProvider = NotifierProvider<BusyAssetsNotifier, Set<String>>(
+  BusyAssetsNotifier.new,
+);
 
 class LibraryTile extends ConsumerStatefulWidget {
   const LibraryTile({
@@ -51,10 +54,15 @@ class LibraryTile extends ConsumerStatefulWidget {
 class _LibraryTileState extends ConsumerState<LibraryTile> {
   bool _hover = false;
 
+  /// Last shown thumbnail, kept while a newer version loads (no blank flash).
+  Uint8List? _lastThumb;
+
   void _handleTap() {
     final keys = HardwareKeyboard.instance;
     if (keys.isShiftPressed) return widget.onRange();
-    if (keys.isMetaPressed || keys.isControlPressed || widget.selectionMode) return widget.onToggle();
+    if (keys.isMetaPressed || keys.isControlPressed || widget.selectionMode) {
+      return widget.onToggle();
+    }
     widget.onOpen();
   }
 
@@ -81,28 +89,63 @@ class _LibraryTileState extends ConsumerState<LibraryTile> {
             curve: Motion.standard,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(Rad.tile),
-              child: Stack(fit: StackFit.expand, children: [
-                ColoredBox(color: t.surface2),
-                thumb.when(
-                  data: (bytes) => bytes == null
-                      ? Center(child: Icon(LucideIcons.image, color: t.textDisabled))
-                      : Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true, filterQuality: FilterQuality.medium),
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, _) => Center(child: Icon(LucideIcons.triangleAlert, color: t.danger)),
-                ),
-                if (busy) const _Shimmer(),
-                if (busy) const Positioned(left: 8, top: 8, child: _EditingPill()),
-                if (!busy && (e.hasEdits || e.aiEngine != null)) Positioned(right: 6, bottom: 6, child: _Badge(entry: e)),
-                if (widget.selected)
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: t.accent, width: 2),
-                      borderRadius: BorderRadius.circular(Rad.tile),
-                    ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColoredBox(color: t.surface2),
+                  Builder(
+                    builder: (context) {
+                      final bytes = thumb.value ?? _lastThumb;
+                      if (thumb.value != null) _lastThumb = thumb.value;
+                      if (bytes != null) {
+                        return Image.memory(
+                          bytes,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          filterQuality: FilterQuality.medium,
+                        );
+                      }
+                      if (thumb.hasError) {
+                        return Center(
+                          child: Icon(
+                            LucideIcons.triangleAlert,
+                            color: t.danger,
+                          ),
+                        );
+                      }
+                      return thumb.isLoading
+                          ? const SizedBox.shrink()
+                          : Center(
+                              child: Icon(
+                                LucideIcons.image,
+                                color: t.textDisabled,
+                              ),
+                            );
+                    },
                   ),
-                if (widget.selected || _hover || widget.selectionMode)
-                  Positioned(left: 6, top: 6, child: _Check(selected: widget.selected, onTap: widget.onToggle)),
-              ]),
+                  if (busy) const _Shimmer(),
+                  if (busy)
+                    const Positioned(left: 8, top: 8, child: _EditingPill()),
+                  if (!busy && (e.hasEdits || e.aiEngine != null))
+                    Positioned(right: 6, bottom: 6, child: _Badge(entry: e)),
+                  if (widget.selected)
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: t.accent, width: 2),
+                        borderRadius: BorderRadius.circular(Rad.tile),
+                      ),
+                    ),
+                  if (widget.selected || _hover || widget.selectionMode)
+                    Positioned(
+                      left: 6,
+                      top: 6,
+                      child: _Check(
+                        selected: widget.selected,
+                        onTap: widget.onToggle,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -121,11 +164,18 @@ class _Badge extends StatelessWidget {
     return Container(
       width: 22,
       height: 22,
-      decoration: const BoxDecoration(color: Color(0x8C000000), shape: BoxShape.circle),
+      decoration: const BoxDecoration(
+        color: Color(0x8C000000),
+        shape: BoxShape.circle,
+      ),
       alignment: Alignment.center,
       child: ai
           ? AiGlyph(size: 12, neutral: entry.aiEngine == 'local')
-          : Icon(LucideIcons.slidersHorizontal, size: 12, color: context.tokens.textPrimary),
+          : Icon(
+              LucideIcons.slidersHorizontal,
+              size: 12,
+              color: context.tokens.textPrimary,
+            ),
     );
   }
 }
@@ -147,9 +197,14 @@ class _Check extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? t.accent : const Color(0x8C000000),
           shape: BoxShape.circle,
-          border: Border.all(color: selected ? t.accent : Colors.white70, width: 1.5),
+          border: Border.all(
+            color: selected ? t.accent : Colors.white70,
+            width: 1.5,
+          ),
         ),
-        child: selected ? Icon(LucideIcons.check, size: 12, color: t.textOnAccent) : null,
+        child: selected
+            ? Icon(LucideIcons.check, size: 12, color: t.textOnAccent)
+            : null,
       ),
     );
   }
@@ -163,12 +218,22 @@ class _EditingPill extends StatelessWidget {
     final t = context.tokens;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Sp.s2, vertical: Sp.s0_5),
-      decoration: BoxDecoration(color: t.surface3, borderRadius: BorderRadius.circular(Rad.pill), boxShadow: Elevation.e2),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        const AiGlyph(size: 11),
-        const SizedBox(width: 4),
-        Text('Editing…', style: LumenType.caption().copyWith(color: t.textPrimary)),
-      ]),
+      decoration: BoxDecoration(
+        color: t.surface3,
+        borderRadius: BorderRadius.circular(Rad.pill),
+        boxShadow: Elevation.e2,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const AiGlyph(size: 11),
+          const SizedBox(width: 4),
+          Text(
+            'Editing…',
+            style: LumenType.caption().copyWith(color: t.textPrimary),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -180,9 +245,12 @@ class _Shimmer extends StatefulWidget {
   State<_Shimmer> createState() => _ShimmerState();
 }
 
-class _ShimmerState extends State<_Shimmer> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))
-    ..repeat();
+class _ShimmerState extends State<_Shimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat();
 
   @override
   void dispose() {
@@ -192,7 +260,9 @@ class _ShimmerState extends State<_Shimmer> with SingleTickerProviderStateMixin 
 
   @override
   Widget build(BuildContext context) {
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return const SizedBox.shrink();
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      return const SizedBox.shrink();
+    }
     return AnimatedBuilder(
       animation: _c,
       builder: (context, _) => Opacity(

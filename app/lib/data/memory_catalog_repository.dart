@@ -11,7 +11,8 @@ class MemoryCatalogRepository implements CatalogRepository {
   final Map<String, Uint8List> _originals = {};
   final Map<String, EditDocument> _edits = {};
   final Map<String, Uint8List> _thumbs = {};
-  final StreamController<List<CatalogEntry>> _changes = StreamController.broadcast();
+  final StreamController<List<CatalogEntry>> _changes =
+      StreamController.broadcast();
 
   void _emit() => _changes.add(sortEntries(_entries.values));
 
@@ -39,7 +40,9 @@ class MemoryCatalogRepository implements CatalogRepository {
 
   @override
   Future<void> update(CatalogEntry entry) async {
-    if (!_entries.containsKey(entry.assetId)) throw CatalogException('Unknown asset ${entry.assetId}');
+    if (!_entries.containsKey(entry.assetId)) {
+      throw CatalogException('Unknown asset ${entry.assetId}');
+    }
     _entries[entry.assetId] = entry;
     _emit();
   }
@@ -61,7 +64,8 @@ class MemoryCatalogRepository implements CatalogRepository {
   }
 
   @override
-  Future<EditDocument> loadEdit(String assetId) async => _edits[assetId] ?? EditDocument.create(assetId);
+  Future<EditDocument> loadEdit(String assetId) async =>
+      _edits[assetId] ?? EditDocument.create(assetId);
 
   @override
   Future<void> saveEdit(EditDocument doc) async => _edits[doc.assetId] = doc;
@@ -70,5 +74,6 @@ class MemoryCatalogRepository implements CatalogRepository {
   Future<Uint8List?> readThumb(String assetId) async => _thumbs[assetId];
 
   @override
-  Future<void> writeThumb(String assetId, Uint8List bytes) async => _thumbs[assetId] = bytes;
+  Future<void> writeThumb(String assetId, Uint8List bytes) async =>
+      _thumbs[assetId] = bytes;
 }

@@ -163,10 +163,35 @@ void main() {
           expect(c.reason.length, lessThan(90), reason: c.reason);
         }
       }
+      for (final r in runs.values) {
+        for (final c in r.outcome.changes) {
+          if (!ParamRegistry.contains(c.param)) continue;
+          expect(
+            c.reason,
+            contains(Reasons.formatDelta(c.param, c.delta)),
+            reason: '${c.param} ${c.from} → ${c.to}: ${c.reason}',
+          );
+        }
+      }
       final shadows = runs[SceneId.darkInterior]!.outcome.changes.firstWhere(
         (c) => c.param == P.exposure,
       );
       expect(shadows.reason, startsWith('Raised exposure +'));
+    });
+
+    test('regression: a guard-limited exposure is explained by its final '
+        'direction and size', () async {
+      // Seen on IMG_0002: final +0.68 EV explained as "Lowered exposure".
+      const strict = LocalAutoEditProvider(autoLimits: GuardLimits(maxClip: 0));
+      final s = SyntheticScenes.darkInterior();
+      final out = await strict.autoEdit(
+        AutoEditInput(stats: ImageStats.compute(s.image), proxy: s.image),
+      );
+      final ex = out.changes.firstWhere((c) => c.param == P.exposure);
+      expect(ex.to, greaterThan(0));
+      expect(ex.reason, startsWith('Raised exposure +'));
+      expect(ex.reason, contains(Reasons.formatDelta(P.exposure, ex.delta)));
+      expect(ex.reason, contains('clipping'));
     });
 
     test('locked params are never changed', () async {

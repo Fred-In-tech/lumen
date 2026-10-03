@@ -45,6 +45,31 @@ void main() {
       }
     });
 
+    test('pixel hashes are pinned (generators are deterministic)', () {
+      // FNV-1a of the RGBA bytes. A change here means a scene generator
+      // changed: update deliberately, together with any tuned constants.
+      const pinned = {
+        SceneId.darkInterior: 0x30cd1058,
+        SceneId.overexposedBeach: 0x0e0a5ee4,
+        SceneId.tungstenCast: 0xa1599586,
+        SceneId.daylightCoolCast: 0x5677becf,
+        SceneId.greenCast: 0x57c25fd3,
+        SceneId.hazyLandscape: 0x66689108,
+        SceneId.wellExposedChart: 0x72a0ee7d,
+        SceneId.goldenHourPortrait: 0xb380165d,
+        SceneId.noisyFlat: 0x5d66b98a,
+        SceneId.markerCorners: 0x27e99fc0,
+        SceneId.allFeatures: 0x4e8f3753,
+      };
+      for (final e in pinned.entries) {
+        expect(
+          SceneMetrics.hash(SyntheticScenes.build(e.key).image),
+          e.value,
+          reason: e.key.name,
+        );
+      }
+    });
+
     test('scenes are pairwise different', () {
       final hashes = {
         for (final id in SceneId.values)

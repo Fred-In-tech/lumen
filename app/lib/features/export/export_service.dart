@@ -10,7 +10,12 @@ import 'package:lumen/import/photo_decoder.dart';
 
 /// Options chosen in the export dialog.
 class ExportOptions {
-  const ExportOptions({this.format = ExportFormat.jpeg, this.quality = 90, this.longEdge, this.keepMetadata = true});
+  const ExportOptions({
+    this.format = ExportFormat.jpeg,
+    this.quality = 90,
+    this.longEdge,
+    this.keepMetadata = true,
+  });
 
   final ExportFormat format;
   final int quality;
@@ -20,7 +25,12 @@ class ExportOptions {
 
 /// One finished export.
 class ExportedFile {
-  const ExportedFile({required this.fileName, required this.bytes, required this.width, required this.height});
+  const ExportedFile({
+    required this.fileName,
+    required this.bytes,
+    required this.width,
+    required this.height,
+  });
   final String fileName;
   final Uint8List bytes;
   final int width;
@@ -28,10 +38,18 @@ class ExportedFile {
 }
 
 /// Full-resolution render function: original bytes + settings → pixels.
-typedef FullResRenderer = Future<RgbaBuffer> Function(Uint8List original, DevelopSettings settings, int? longEdge);
+typedef FullResRenderer = Future<RgbaBuffer> Function(
+  Uint8List original,
+  DevelopSettings settings,
+  int? longEdge,
+);
 
 /// Reference-pipeline full-res render (CPU, isolate). Correct on every platform.
-Future<RgbaBuffer> cpuFullResRender(Uint8List original, DevelopSettings settings, int? longEdge) async {
+Future<RgbaBuffer> cpuFullResRender(
+  Uint8List original,
+  DevelopSettings settings,
+  int? longEdge,
+) async {
   final decoded = await decodePhoto(original, maxLongEdge: longEdge);
   final src = await rgbaFromImage(decoded);
   decoded.dispose();
@@ -40,14 +58,15 @@ Future<RgbaBuffer> cpuFullResRender(Uint8List original, DevelopSettings settings
 
 /// Renders and encodes catalog photos for export.
 class ExportService {
-  ExportService(this._catalog, {FullResRenderer? renderer}) : _render = renderer ?? cpuFullResRender;
+  ExportService(this._catalog, {FullResRenderer? renderer})
+    : _render = renderer ?? cpuFullResRender;
 
   final CatalogRepository _catalog;
   final FullResRenderer _render;
 
   Future<ExportedFile> exportOne(String assetId, ExportOptions o) async {
     final entry = await _catalog.get(assetId);
-    if (entry == null) throw CatalogException('Photo not found');
+    if (entry == null) throw const CatalogException('Photo not found');
     final original = await _catalog.readOriginal(assetId);
     final doc = await _catalog.loadEdit(assetId);
     final pixels = await _render(original, doc.settings, o.longEdge);

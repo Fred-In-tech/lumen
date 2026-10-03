@@ -21,7 +21,10 @@ class AppSettings {
       autoEditOnImport: json['autoEditOnImport'] != false,
       defaultStyle: json['defaultStyle'] as String? ?? 'natural',
       exportFormat: json['exportFormat'] == 'png' ? 'png' : 'jpeg',
-      exportQuality: ((json['exportQuality'] as num?) ?? 90).toInt().clamp(1, 100),
+      exportQuality: ((json['exportQuality'] as num?) ?? 90).toInt().clamp(
+        1,
+        100,
+      ),
       exportLongEdge: (json['exportLongEdge'] as num?)?.toInt(),
       exportKeepMetadata: json['exportKeepMetadata'] != false,
       onboardingDone: json['onboardingDone'] == true,
@@ -55,30 +58,31 @@ class AppSettings {
     bool? exportKeepMetadata,
     bool? onboardingDone,
     String? canvasSurround,
-  }) =>
-      AppSettings(
-        gatewayUrl: gatewayUrl ?? this.gatewayUrl,
-        gatewayToken: gatewayToken ?? this.gatewayToken,
-        autoEditOnImport: autoEditOnImport ?? this.autoEditOnImport,
-        defaultStyle: defaultStyle ?? this.defaultStyle,
-        exportFormat: exportFormat ?? this.exportFormat,
-        exportQuality: exportQuality ?? this.exportQuality,
-        exportLongEdge: clearExportLongEdge ? null : (exportLongEdge ?? this.exportLongEdge),
-        exportKeepMetadata: exportKeepMetadata ?? this.exportKeepMetadata,
-        onboardingDone: onboardingDone ?? this.onboardingDone,
-        canvasSurround: canvasSurround ?? this.canvasSurround,
-      );
+  }) => AppSettings(
+    gatewayUrl: gatewayUrl ?? this.gatewayUrl,
+    gatewayToken: gatewayToken ?? this.gatewayToken,
+    autoEditOnImport: autoEditOnImport ?? this.autoEditOnImport,
+    defaultStyle: defaultStyle ?? this.defaultStyle,
+    exportFormat: exportFormat ?? this.exportFormat,
+    exportQuality: exportQuality ?? this.exportQuality,
+    exportLongEdge: clearExportLongEdge
+        ? null
+        : (exportLongEdge ?? this.exportLongEdge),
+    exportKeepMetadata: exportKeepMetadata ?? this.exportKeepMetadata,
+    onboardingDone: onboardingDone ?? this.onboardingDone,
+    canvasSurround: canvasSurround ?? this.canvasSurround,
+  );
 
   Map<String, Object?> toJson() => {
-        'gatewayUrl': gatewayUrl,
-        'gatewayToken': gatewayToken,
-        'autoEditOnImport': autoEditOnImport,
-        'defaultStyle': defaultStyle,
-        'exportFormat': exportFormat,
-        'exportQuality': exportQuality,
-        'exportLongEdge': exportLongEdge,
-        'exportKeepMetadata': exportKeepMetadata,
-        'onboardingDone': onboardingDone,
-        'canvasSurround': canvasSurround,
-      };
+    'gatewayUrl': gatewayUrl,
+    'gatewayToken': gatewayToken,
+    'autoEditOnImport': autoEditOnImport,
+    'defaultStyle': defaultStyle,
+    'exportFormat': exportFormat,
+    'exportQuality': exportQuality,
+    'exportLongEdge': exportLongEdge,
+    'exportKeepMetadata': exportKeepMetadata,
+    'onboardingDone': onboardingDone,
+    'canvasSurround': canvasSurround,
+  };
 }

@@ -23,7 +23,8 @@ class DevelopPanel extends ConsumerWidget {
   String _exifLine(ExifSummary? e) {
     if (e == null || e.isEmpty) return '';
     return [
-      if (e.aperture != null) 'f/${e.aperture!.toStringAsFixed(e.aperture! < 10 ? 1 : 0)}',
+      if (e.aperture != null)
+        'f/${e.aperture!.toStringAsFixed(e.aperture! < 10 ? 1 : 0)}',
       if (e.shutter != null) '${e.shutter} s',
       if (e.iso != null) 'ISO ${e.iso}',
       if (e.focalMm != null) '${e.focalMm!.round()} mm',
@@ -36,47 +37,84 @@ class DevelopPanel extends ConsumerWidget {
     final id = session.assetId;
     return Container(
       width: width,
-      decoration: BoxDecoration(color: t.surface1, border: Border(left: BorderSide(color: t.line))),
-      child: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Sp.s4, Sp.s3, Sp.s4, Sp.s2),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            ValueListenableBuilder<Histogram?>(
-              valueListenable: session.histogram,
-              builder: (_, h, _) => HistogramView(histogram: h),
+      decoration: BoxDecoration(
+        color: t.surface1,
+        border: Border(left: BorderSide(color: t.line)),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Sp.s4, Sp.s3, Sp.s4, Sp.s2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ValueListenableBuilder<Histogram?>(
+                  valueListenable: session.histogram,
+                  builder: (_, h, _) => HistogramView(histogram: h),
+                ),
+                const SizedBox(height: Sp.s1_5),
+                Text(
+                  _exifLine(session.entry?.exif),
+                  style: LumenType.monoStyle().copyWith(color: t.textTertiary),
+                ),
+              ],
             ),
-            const SizedBox(height: Sp.s1_5),
-            Text(_exifLine(session.entry?.exif), style: LumenType.monoStyle().copyWith(color: t.textTertiary)),
-          ]),
-        ),
-        Expanded(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              Padding(padding: const EdgeInsets.fromLTRB(Sp.s4, Sp.s1, Sp.s4, Sp.s4), child: AiPanel(session: session)),
-              DevelopSections(assetId: id),
-              const SizedBox(height: Sp.s6),
-            ],
           ),
-        ),
-        Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: Sp.s3),
-          decoration: BoxDecoration(border: Border(top: BorderSide(color: t.line))),
-          child: Row(children: [
-            LumenButton(label: 'Copy', kind: ButtonKind.ghost, onPressed: () => copySettings(context, ref, id)),
-            LumenButton(label: 'Paste', kind: ButtonKind.ghost, onPressed: () => pasteSettingsInto(context, ref, id)),
-            const Spacer(),
-            LumenButton(
-              label: 'Reset all',
-              onPressed: () {
-                ref.read(editorProvider(id).notifier).resetAll();
-                showToast(context, 'Reset all edits.', actionLabel: 'Undo', onAction: () => ref.read(editorProvider(id).notifier).undo());
-              },
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Sp.s4,
+                    Sp.s1,
+                    Sp.s4,
+                    Sp.s4,
+                  ),
+                  child: AiPanel(session: session),
+                ),
+                DevelopSections(assetId: id),
+                const SizedBox(height: Sp.s6),
+              ],
             ),
-          ]),
-        ),
-      ]),
+          ),
+          Container(
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: Sp.s3),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: t.line)),
+            ),
+            child: Row(
+              children: [
+                LumenButton(
+                  label: 'Copy',
+                  kind: ButtonKind.ghost,
+                  onPressed: () => copySettings(context, ref, id),
+                ),
+                LumenButton(
+                  label: 'Paste',
+                  kind: ButtonKind.ghost,
+                  onPressed: () => pasteSettingsInto(context, ref, id),
+                ),
+                const Spacer(),
+                LumenButton(
+                  label: 'Reset all',
+                  onPressed: () {
+                    ref.read(editorProvider(id).notifier).resetAll();
+                    showToast(
+                      context,
+                      'Reset all edits.',
+                      actionLabel: 'Undo',
+                      onAction: () =>
+                          ref.read(editorProvider(id).notifier).undo(),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

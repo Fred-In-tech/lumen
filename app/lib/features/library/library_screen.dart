@@ -29,11 +29,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   bool _dragging = false;
 
   void _open(List<CatalogEntry> all, CatalogEntry e) {
-    Navigator.of(context).push(PageRouteBuilder<void>(
-      transitionDuration: Motion.of(context, Motion.panel),
-      pageBuilder: (_, _, _) => EditorScreen(assetIds: [for (final x in all) x.assetId], initialAssetId: e.assetId),
-      transitionsBuilder: (_, anim, _, child) => FadeTransition(opacity: anim, child: child),
-    ));
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        transitionDuration: Motion.of(context, Motion.panel),
+        pageBuilder: (_, _, _) => EditorScreen(
+          assetIds: [for (final x in all) x.assetId],
+          initialAssetId: e.assetId,
+        ),
+        transitionsBuilder: (_, anim, _, child) =>
+            FadeTransition(opacity: anim, child: child),
+      ),
+    );
   }
 
   @override
@@ -47,10 +53,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     Widget body = library.when(
       loading: () => const SizedBox.shrink(),
-      error: (e, _) => Center(child: Text('Couldn’t open your library: $e', style: LumenType.body())),
+      error: (e, _) => Center(
+        child: Text('Couldn’t open your library: $e', style: LumenType.body()),
+      ),
       data: (list) => list.isEmpty
-          ? EmptyLibrary(dragging: _dragging, onChoose: () => pickAndImport(context, ref))
-          : _Grid(entries: list, selection: selection, onOpen: (e) => _open(list, e)),
+          ? EmptyLibrary(
+              dragging: _dragging,
+              onChoose: () => pickAndImport(context, ref),
+            )
+          : _Grid(
+              entries: list,
+              selection: selection,
+              onOpen: (e) => _open(list, e),
+            ),
     );
 
     if (platform.supportsDragAndDrop) {
@@ -68,10 +83,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.escape): () => ref.read(selectionProvider.notifier).clear(),
-        SingleActivator(LogicalKeyboardKey.keyA, meta: platform.isApple, control: !platform.isApple): () =>
-            ref.read(selectionProvider.notifier).selectAll(entries.map((e) => e.assetId)),
-        SingleActivator(LogicalKeyboardKey.keyI, meta: platform.isApple, control: !platform.isApple, shift: true): () =>
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            ref.read(selectionProvider.notifier).clear(),
+        SingleActivator(
+          LogicalKeyboardKey.keyA,
+          meta: platform.isApple,
+          control: !platform.isApple,
+        ): () => ref
+            .read(selectionProvider.notifier)
+            .selectAll(entries.map((e) => e.assetId)),
+        SingleActivator(
+          LogicalKeyboardKey.keyI,
+          meta: platform.isApple,
+          control: !platform.isApple,
+          shift: true,
+        ): () =>
             pickAndImport(context, ref),
       },
       child: Focus(
@@ -80,35 +106,54 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           backgroundColor: t.surface0,
           body: SafeArea(
             bottom: false,
-            child: Column(children: [
-              _TopBar(count: entries.length, onImport: () => pickAndImport(context, ref)),
-              if (progress != null)
-                LinearProgressIndicator(value: progress.total == 0 ? null : progress.done / progress.total, minHeight: 2),
-              Expanded(
-                child: Stack(children: [
-                  Positioned.fill(child: body),
-                  if (_dragging && entries.isNotEmpty) Positioned.fill(child: _DropOverlay()),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 24,
-                    child: AnimatedSwitcher(
-                      duration: Motion.of(context, Motion.base),
-                      transitionBuilder: (child, anim) => FadeTransition(
-                        opacity: anim,
-                        child: SlideTransition(
-                          position: Tween(begin: const Offset(0, 0.3), end: Offset.zero).animate(anim),
-                          child: child,
+            child: Column(
+              children: [
+                _TopBar(
+                  count: entries.length,
+                  onImport: () => pickAndImport(context, ref),
+                ),
+                if (progress != null)
+                  LinearProgressIndicator(
+                    value: progress.total == 0
+                        ? null
+                        : progress.done / progress.total,
+                    minHeight: 2,
+                  ),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(child: body),
+                      if (_dragging && entries.isNotEmpty)
+                        Positioned.fill(child: _DropOverlay()),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 24,
+                        child: AnimatedSwitcher(
+                          duration: Motion.of(context, Motion.base),
+                          transitionBuilder: (child, anim) => FadeTransition(
+                            opacity: anim,
+                            child: SlideTransition(
+                              position: Tween(
+                                begin: const Offset(0, 0.3),
+                                end: Offset.zero,
+                              ).animate(anim),
+                              child: child,
+                            ),
+                          ),
+                          child: selection.isEmpty
+                              ? const SizedBox.shrink()
+                              : Center(
+                                  key: const ValueKey('batch'),
+                                  child: BatchBar(entries: entries),
+                                ),
                         ),
                       ),
-                      child: selection.isEmpty
-                          ? const SizedBox.shrink()
-                          : Center(key: const ValueKey('batch'), child: BatchBar(entries: entries)),
-                    ),
+                    ],
                   ),
-                ]),
-              ),
-            ]),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -128,26 +173,44 @@ class _TopBar extends ConsumerWidget {
     final platform = ref.watch(platformInfoProvider);
     return Container(
       height: Layout.topBar,
-      padding: EdgeInsets.only(left: platform.isMacOS ? 78 : Sp.s4, right: Sp.s3),
-      decoration: BoxDecoration(color: t.surface1, border: Border(bottom: BorderSide(color: t.line))),
-      child: Row(children: [
-        Text(kBrand.name, style: LumenType.titleSerif().copyWith(fontSize: 22, color: t.textPrimary)),
-        const SizedBox(width: Sp.s3),
-        if (count > 0) Text('$count ${count == 1 ? 'photo' : 'photos'}', style: LumenType.caption().copyWith(color: t.textTertiary)),
-        const Spacer(),
-        LumenIconButton(
-          icon: LucideIcons.settings,
-          tooltip: 'Settings',
-          onPressed: () => showSettingsDialog(context),
-        ),
-        const SizedBox(width: Sp.s2),
-        LumenButton(
-          label: 'Import',
-          icon: const Icon(LucideIcons.imagePlus),
-          kind: ButtonKind.primary,
-          onPressed: onImport,
-        ),
-      ]),
+      padding: EdgeInsets.only(
+        left: platform.isMacOS ? 78 : Sp.s4,
+        right: Sp.s3,
+      ),
+      decoration: BoxDecoration(
+        color: t.surface1,
+        border: Border(bottom: BorderSide(color: t.line)),
+      ),
+      child: Row(
+        children: [
+          Text(
+            kBrand.name,
+            style: LumenType.titleSerif().copyWith(
+              fontSize: 22,
+              color: t.textPrimary,
+            ),
+          ),
+          const SizedBox(width: Sp.s3),
+          if (count > 0)
+            Text(
+              '$count ${count == 1 ? 'photo' : 'photos'}',
+              style: LumenType.caption().copyWith(color: t.textTertiary),
+            ),
+          const Spacer(),
+          LumenIconButton(
+            icon: LucideIcons.settings,
+            tooltip: 'Settings',
+            onPressed: () => showSettingsDialog(context),
+          ),
+          const SizedBox(width: Sp.s2),
+          LumenButton(
+            label: 'Import',
+            icon: const Icon(LucideIcons.imagePlus),
+            kind: ButtonKind.primary,
+            onPressed: onImport,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -165,14 +228,21 @@ class _DropOverlay extends StatelessWidget {
           borderRadius: BorderRadius.circular(Rad.md),
         ),
         alignment: Alignment.center,
-        child: Text('Drop to import', style: LumenType.display().copyWith(color: t.textPrimary)),
+        child: Text(
+          'Drop to import',
+          style: LumenType.display().copyWith(color: t.textPrimary),
+        ),
       ),
     );
   }
 }
 
 class _Grid extends ConsumerWidget {
-  const _Grid({required this.entries, required this.selection, required this.onOpen});
+  const _Grid({
+    required this.entries,
+    required this.selection,
+    required this.onOpen,
+  });
 
   final List<CatalogEntry> entries;
   final LibrarySelection selection;
@@ -187,27 +257,50 @@ class _Grid extends ConsumerWidget {
     final ordered = [for (final e in entries) e.assetId];
     final sel = ref.read(selectionProvider.notifier);
     final pad = phone ? Sp.s2 : Sp.s6;
-    return CustomScrollView(slivers: [
-      for (final g in groups) ...[
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(pad, phone ? Sp.s6 : Sp.s10, pad, Sp.s3),
-          sliver: SliverToBoxAdapter(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-              Text(g.label, style: LumenType.titleSerif(touch: phone).copyWith(color: t.textPrimary)),
-              const SizedBox(width: Sp.s2),
-              Text('${g.entries.length} ${g.entries.length == 1 ? 'photo' : 'photos'}',
-                  style: LumenType.caption().copyWith(color: t.textTertiary)),
-            ]),
+    return CustomScrollView(
+      slivers: [
+        for (final g in groups) ...[
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              pad,
+              phone ? Sp.s6 : Sp.s10,
+              pad,
+              Sp.s3,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    g.label,
+                    style: LumenType.titleSerif(touch: phone)
+                        .copyWith(color: t.textPrimary),
+                  ),
+                  const SizedBox(width: Sp.s2),
+                  Text(
+                    '${g.entries.length} ${g.entries.length == 1 ? 'photo' : 'photos'}',
+                    style: LumenType.caption().copyWith(color: t.textTertiary),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-        SliverPadding(
-          padding: EdgeInsets.symmetric(horizontal: pad),
-          sliver: SliverGrid(
-            gridDelegate: phone
-                ? const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, mainAxisSpacing: 2, crossAxisSpacing: 2)
-                : const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 240, mainAxisSpacing: 4, crossAxisSpacing: 4),
-            delegate: SliverChildBuilderDelegate(
-              (context, i) {
+          SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: pad),
+            sliver: SliverGrid(
+              gridDelegate: phone
+                  ? const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 2,
+                      crossAxisSpacing: 2,
+                    )
+                  : const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 240,
+                      mainAxisSpacing: 4,
+                      crossAxisSpacing: 4,
+                    ),
+              delegate: SliverChildBuilderDelegate((context, i) {
                 final e = g.entries[i];
                 return LibraryTile(
                   key: ValueKey(e.assetId),
@@ -218,13 +311,12 @@ class _Grid extends ConsumerWidget {
                   onToggle: () => sel.toggle(e.assetId),
                   onRange: () => sel.extendTo(e.assetId, ordered),
                 );
-              },
-              childCount: g.entries.length,
+              }, childCount: g.entries.length),
             ),
           ),
-        ),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 120)),
       ],
-      const SliverToBoxAdapter(child: SizedBox(height: 120)),
-    ]);
+    );
   }
 }

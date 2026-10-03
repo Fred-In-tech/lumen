@@ -18,16 +18,28 @@ import 'package:lumen/widgets/toast.dart';
 final _log = Logger('Export');
 
 /// Full-res renderer used for export (GPU when installed, CPU reference otherwise).
-final fullResRendererProvider = Provider<FullResRenderer>((ref) => gpuFullResRender);
+final fullResRendererProvider = Provider<FullResRenderer>(
+  (ref) => gpuFullResRender,
+);
 
 final exportServiceProvider = Provider<ExportService>(
-  (ref) => ExportService(ref.watch(catalogRepositoryProvider), renderer: ref.watch(fullResRendererProvider)),
+  (ref) => ExportService(
+    ref.watch(catalogRepositoryProvider),
+    renderer: ref.watch(fullResRendererProvider),
+  ),
 );
 
 /// Opens the export dialog for [assetIds] (DESIGN.md §3.7).
-Future<void> showExportDialog(BuildContext context, WidgetRef ref, List<String> assetIds) async {
+Future<void> showExportDialog(
+  BuildContext context,
+  WidgetRef ref,
+  List<String> assetIds,
+) async {
   if (assetIds.isEmpty) return;
-  await showDialog<void>(context: context, builder: (_) => _ExportDialog(assetIds: assetIds));
+  await showDialog<void>(
+    context: context,
+    builder: (_) => _ExportDialog(assetIds: assetIds),
+  );
 }
 
 class _ExportDialog extends ConsumerStatefulWidget {
@@ -67,20 +79,29 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
       folder = await chooseExportFolder();
       if (folder == null) return;
     }
-    await ref.read(settingsProvider.notifier).change((s) => s.copyWith(
-          exportFormat: _format.name,
-          exportQuality: _quality.round(),
-          exportLongEdge: _longEdge,
-          clearExportLongEdge: _longEdge == null,
-          exportKeepMetadata: _keepMetadata,
-        ));
+    await ref
+        .read(settingsProvider.notifier)
+        .change(
+          (s) => s.copyWith(
+            exportFormat: _format.name,
+            exportQuality: _quality.round(),
+            exportLongEdge: _longEdge,
+            clearExportLongEdge: _longEdge == null,
+            exportKeepMetadata: _keepMetadata,
+          ),
+        );
     setState(() {
       _running = true;
       _done = 0;
       _error = null;
     });
     final service = ref.read(exportServiceProvider);
-    final options = ExportOptions(format: _format, quality: _quality.round(), longEdge: _longEdge, keepMetadata: _keepMetadata);
+    final options = ExportOptions(
+      format: _format,
+      quality: _quality.round(),
+      longEdge: _longEdge,
+      keepMetadata: _keepMetadata,
+    );
     final files = <ExportedFile>[];
     var failed = 0;
     for (final id in widget.assetIds) {
@@ -105,7 +126,11 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
     final msg = failed == 0
         ? '$n ${n == 1 ? 'photo' : 'photos'} exported${folder != null ? ' to $folder' : ''}.'
         : '$n of ${widget.assetIds.length} exported. $failed failed.';
-    showToast(context, msg, kind: failed == 0 ? ToastKind.success : ToastKind.error);
+    showToast(
+      context,
+      msg,
+      kind: failed == 0 ? ToastKind.success : ToastKind.error,
+    );
   }
 
   @override
@@ -114,88 +139,142 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
     final n = widget.assetIds.length;
     final title = n == 1 ? 'Export photo' : 'Export $n photos';
     Widget row(String label, Widget child) => Padding(
-          padding: const EdgeInsets.only(bottom: Sp.s3),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-            SizedBox(width: 96, child: Text(label, style: LumenType.label().copyWith(color: t.textSecondary))),
-            Expanded(child: child),
-          ]),
-        );
+      padding: const EdgeInsets.only(bottom: Sp.s3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(
+              label,
+              style: LumenType.label().copyWith(color: t.textSecondary),
+            ),
+          ),
+          Expanded(child: child),
+        ],
+      ),
+    );
     return Dialog(
       backgroundColor: t.surface2,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
         child: Padding(
           padding: const EdgeInsets.all(Sp.s6),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(title, style: LumenType.title().copyWith(color: t.textPrimary)),
-            const SizedBox(height: Sp.s5),
-            if (_running) ...[
-              Text('Exporting $_done of $n', style: LumenType.body().copyWith(color: t.textSecondary)),
-              const SizedBox(height: Sp.s2),
-              LinearProgressIndicator(value: n == 0 ? null : _done / n, minHeight: 4),
-              const SizedBox(height: Sp.s5),
-              Align(
-                alignment: Alignment.centerRight,
-                child: LumenButton(label: 'Cancel', onPressed: () => setState(() => _cancel = true)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                title,
+                style: LumenType.title().copyWith(color: t.textPrimary),
               ),
-            ] else ...[
-              row(
-                'Format',
+              const SizedBox(height: Sp.s5),
+              if (_running) ...[
+                Text(
+                  'Exporting $_done of $n',
+                  style: LumenType.body().copyWith(color: t.textSecondary),
+                ),
+                const SizedBox(height: Sp.s2),
+                LinearProgressIndicator(
+                  value: n == 0 ? null : _done / n,
+                  minHeight: 4,
+                ),
+                const SizedBox(height: Sp.s5),
                 Align(
-                  alignment: Alignment.centerLeft,
-                  child: Segmented<ExportFormat>(
-                    value: _format,
-                    options: const {ExportFormat.jpeg: 'JPEG', ExportFormat.png: 'PNG'},
-                    onChanged: (v) => setState(() => _format = v),
+                  alignment: Alignment.centerRight,
+                  child: LumenButton(
+                    label: 'Cancel',
+                    onPressed: () => setState(() => _cancel = true),
                   ),
                 ),
-              ),
-              if (_format == ExportFormat.jpeg)
+              ] else ...[
                 row(
-                  'Quality',
-                  LumenSlider(
-                    label: '',
-                    value: _quality,
-                    min: 1,
-                    max: 100,
-                    defaultValue: 90,
-                    bipolar: false,
-                    onChanged: (v) => setState(() => _quality = v),
-                    onCommit: (v) => setState(() => _quality = v),
+                  'Format',
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Segmented<ExportFormat>(
+                      value: _format,
+                      options: const {
+                        ExportFormat.jpeg: 'JPEG',
+                        ExportFormat.png: 'PNG',
+                      },
+                      onChanged: (v) => setState(() => _format = v),
+                    ),
                   ),
                 ),
-              row(
-                'Size',
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Segmented<int?>(
-                    value: _longEdge,
-                    options: const {null: 'Original', 4096: '4096', 2048: '2048', 1080: '1080'},
-                    onChanged: (v) => setState(() => _longEdge = v),
+                if (_format == ExportFormat.jpeg)
+                  row(
+                    'Quality',
+                    LumenSlider(
+                      label: '',
+                      value: _quality,
+                      min: 1,
+                      max: 100,
+                      defaultValue: 90,
+                      bipolar: false,
+                      onChanged: (v) => setState(() => _quality = v),
+                      onCommit: (v) => setState(() => _quality = v),
+                    ),
+                  ),
+                row(
+                  'Size',
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Segmented<int?>(
+                      value: _longEdge,
+                      options: const {
+                        null: 'Original',
+                        4096: '4096',
+                        2048: '2048',
+                        1080: '1080',
+                      },
+                      onChanged: (v) => setState(() => _longEdge = v),
+                    ),
                   ),
                 ),
-              ),
-              row(
-                'Metadata',
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Segmented<bool>(
-                    value: _keepMetadata,
-                    options: const {true: 'Keep (no location)', false: 'Remove all'},
-                    onChanged: (v) => setState(() => _keepMetadata = v),
+                row(
+                  'Metadata',
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Segmented<bool>(
+                      value: _keepMetadata,
+                      options: const {
+                        true: 'Keep (no location)',
+                        false: 'Remove all',
+                      },
+                      onChanged: (v) => setState(() => _keepMetadata = v),
+                    ),
                   ),
                 ),
-              ),
-              Text('Location data is always removed.', style: LumenType.caption().copyWith(color: t.textTertiary)),
-              if (_error != null) Text(_error!, style: LumenType.body().copyWith(color: t.danger)),
-              const SizedBox(height: Sp.s5),
-              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                LumenButton(label: 'Cancel', kind: ButtonKind.ghost, onPressed: () => Navigator.pop(context)),
-                const SizedBox(width: Sp.s2),
-                LumenButton(label: n == 1 ? 'Export' : 'Export $n', kind: ButtonKind.primary, onPressed: _run),
-              ]),
+                Text(
+                  'Location data is always removed.',
+                  style: LumenType.caption().copyWith(color: t.textTertiary),
+                ),
+                if (_error != null)
+                  Text(
+                    _error!,
+                    style: LumenType.body().copyWith(color: t.danger),
+                  ),
+                const SizedBox(height: Sp.s5),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    LumenButton(
+                      label: 'Cancel',
+                      kind: ButtonKind.ghost,
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    const SizedBox(width: Sp.s2),
+                    LumenButton(
+                      label: n == 1 ? 'Export' : 'Export $n',
+                      kind: ButtonKind.primary,
+                      onPressed: _run,
+                    ),
+                  ],
+                ),
+              ],
             ],
-          ]),
+          ),
         ),
       ),
     );

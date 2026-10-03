@@ -36,8 +36,11 @@ class GuardReport {
     required this.medianLStar,
   });
 
-  factory GuardReport.of(RgbaBuffer rendered) {
-    final m = ToneMeasure.of(rendered);
+  /// Measures [rendered]; [whites] is the whites value it was rendered with
+  /// (negative whites lower the output white, and so the clip level).
+  factory GuardReport.of(RgbaBuffer rendered, {double whites = 0}) {
+    final ceiling = 1 + 0.25 * math.min(whites, 0) / 100;
+    final m = ToneMeasure.of(rendered, clipLevel: 0.995 * ceiling);
     return GuardReport(
       clipFraction: m.clipFraction,
       crushFraction: m.crushFraction,
@@ -70,7 +73,8 @@ class GuardResult {
   final GuardReport before;
   final GuardReport after;
 
-  /// Why each guard-adjusted param changed.
+  /// Short note per guard-adjusted param ("held back to stop highlight
+  /// clipping"); combine with the final change via `Reasons.guarded`.
   final Map<ParamId, String> reasons;
 
   bool get changed => reasons.isNotEmpty;
@@ -79,7 +83,7 @@ class GuardResult {
 /// Clip / crush / key checks on the CPU reference render at 256 px, with a
 /// fixer that only touches whites, exposure and blacks.
 abstract final class Guards {
-  static const _iterations = 10;
+  static const _iterations = 7;
 
   static GuardResult enforce({
     required RgbaBuffer proxy,
@@ -90,23 +94,24 @@ abstract final class Guards {
   }) {
     final src = makeProxy(proxy, longEdge: kSolverLongEdge);
     final render = renderer ?? referenceRendererFor(src, auxSource: proxy);
-    GuardReport measure(DevelopSettings s) => GuardReport.of(render(src, s));
+    GuardReport measure(DevelopSettings s) =>
+        GuardReport.of(render(src, s), whites: s.value(P.whites));
     final before = measure(settings);
     var s = settings;
     final reasons = <ParamId, String>{};
     bool free(ParamId p) => !locked.contains(p);
 
-    // Clipping: lower whites first, then exposure.
+    // Clipping: undo a whites stretch first, then lower exposure.
     if (before.clipFraction > limits.maxClip) {
-      if (free(P.whites)) {
+      if (free(P.whites) && s.value(P.whites) > 0) {
         s = _bisect(
           s,
           P.whites,
-          math.min(-40, s.value(P.whites)),
+          0,
           measure,
           (r) => r.clipFraction <= limits.maxClip,
         );
-        reasons[P.whites] = 'Lowered whites to stop highlight clipping';
+        reasons[P.whites] = 'held back to stop highlight clipping';
       }
       if (measure(s).clipFraction > limits.maxClip && free(P.exposure)) {
         s = _bisect(
@@ -116,7 +121,7 @@ abstract final class Guards {
           measure,
           (r) => r.clipFraction <= limits.maxClip,
         );
-        reasons[P.exposure] = 'Lowered exposure to stop highlight clipping';
+        reasons[P.exposure] = 'held back to stop highlight clipping';
       }
     }
     // Crushed shadows: lift blacks.
@@ -128,7 +133,7 @@ abstract final class Guards {
         measure,
         (r) => r.crushFraction <= limits.maxCrush,
       );
-      reasons[P.blacks] = 'Lifted blacks to keep shadow detail';
+      reasons[P.blacks] = 'set to keep shadow detail';
     }
     // Key band: bring an extreme median back with exposure.
     final key = measure(s);
@@ -147,8 +152,8 @@ abstract final class Guards {
             r.clipFraction <= math.max(limits.maxClip, before.clipFraction),
       );
       reasons[P.exposure] = dark
-          ? 'Raised exposure to keep the image from going too dark'
-          : 'Lowered exposure to keep the image from going too bright';
+          ? 'set to keep the image from going too dark'
+          : 'set to keep the image from going too bright';
     }
     return GuardResult(
       settings: s,

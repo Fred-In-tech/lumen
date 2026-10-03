@@ -46,16 +46,15 @@ class EditorState {
     String? aiStatus,
     bool clearAiStatus = false,
     Set<ParamId>? lockedByUser,
-  }) =>
-      EditorState(
-        doc: doc ?? this.doc,
-        compare: compare ?? this.compare,
-        showingBefore: showingBefore ?? this.showingBefore,
-        cropMode: cropMode ?? this.cropMode,
-        aiBusy: aiBusy ?? this.aiBusy,
-        aiStatus: clearAiStatus ? null : (aiStatus ?? this.aiStatus),
-        lockedByUser: lockedByUser ?? this.lockedByUser,
-      );
+  }) => EditorState(
+    doc: doc ?? this.doc,
+    compare: compare ?? this.compare,
+    showingBefore: showingBefore ?? this.showingBefore,
+    cropMode: cropMode ?? this.cropMode,
+    aiBusy: aiBusy ?? this.aiBusy,
+    aiStatus: clearAiStatus ? null : (aiStatus ?? this.aiStatus),
+    lockedByUser: lockedByUser ?? this.lockedByUser,
+  );
 }
 
 /// Owns one photo's edit document: settings, history and persistence.
@@ -114,12 +113,14 @@ class EditorController extends AsyncNotifier<EditorState> {
     final ai = doc.ai;
     final hasEdits = doc.hasEdits;
     if (entry.hasEdits != hasEdits || entry.aiEngine != ai?.engine) {
-      await repo.update(entry.copyWith(
-        hasEdits: hasEdits,
-        editedAt: DateTime.now().toUtc(),
-        aiEngine: ai?.engine,
-        aiStyle: ai?.style,
-      ));
+      await repo.update(
+        entry.copyWith(
+          hasEdits: hasEdits,
+          editedAt: DateTime.now().toUtc(),
+          aiEngine: ai?.engine,
+          aiStyle: ai?.style,
+        ),
+      );
     }
   }
 
@@ -131,10 +132,21 @@ class EditorController extends AsyncNotifier<EditorState> {
   }
 
   /// Applies [next] as one undoable step.
-  void commit(DevelopSettings next, {required String label, HistoryKind kind = HistoryKind.slider, AiRecord? ai, bool clearAi = false}) {
+  void commit(
+    DevelopSettings next, {
+    required String label,
+    HistoryKind kind = HistoryKind.slider,
+    AiRecord? ai,
+    bool clearAi = false,
+  }) {
     final s = _s;
     if (s == null || s.doc.readOnly) return;
-    final entry = HistoryEntry.tryDiff(label: label, kind: kind, before: s.settings, after: next);
+    final entry = HistoryEntry.tryDiff(
+      label: label,
+      kind: kind,
+      before: s.settings,
+      after: next,
+    );
     if (entry == null && ai == null) return;
     final doc = s.doc.copyWith(
       settings: next,
@@ -144,10 +156,14 @@ class EditorController extends AsyncNotifier<EditorState> {
       updatedAt: DateTime.now().toUtc(),
     );
     final manual = kind == HistoryKind.slider || kind == HistoryKind.curve;
-    _set(s.copyWith(
-      doc: doc,
-      lockedByUser: manual ? {...s.lockedByUser, ...s.settings.changedParams(next)} : s.lockedByUser,
-    ));
+    _set(
+      s.copyWith(
+        doc: doc,
+        lockedByUser: manual
+            ? {...s.lockedByUser, ...s.settings.changedParams(next)}
+            : s.lockedByUser,
+      ),
+    );
   }
 
   /// Sets one scalar param as its own history entry (keyboard nudges, field input).
@@ -155,7 +171,10 @@ class EditorController extends AsyncNotifier<EditorState> {
     final s = _s;
     if (s == null) return;
     final spec = ParamRegistry.byId(id);
-    commit(s.settings.withValue(id, value), label: '${spec.label} ${_fmt(spec, spec.clamp(value))}');
+    commit(
+      s.settings.withValue(id, value),
+      label: '${spec.label} ${_fmt(spec, spec.clamp(value))}',
+    );
   }
 
   void beginGesture(String label) {
@@ -187,54 +206,97 @@ class EditorController extends AsyncNotifier<EditorState> {
     final s = _s;
     if (s == null || !s.canUndo) return;
     final r = s.history.undo(s.settings);
-    _set(s.copyWith(doc: s.doc.copyWith(settings: r.settings, history: r.stack)));
+    _set(
+      s.copyWith(
+        doc: s.doc.copyWith(settings: r.settings, history: r.stack),
+      ),
+    );
   }
 
   void redo() {
     final s = _s;
     if (s == null || !s.canRedo) return;
     final r = s.history.redo(s.settings);
-    _set(s.copyWith(doc: s.doc.copyWith(settings: r.settings, history: r.stack)));
+    _set(
+      s.copyWith(
+        doc: s.doc.copyWith(settings: r.settings, history: r.stack),
+      ),
+    );
   }
 
   void resetAll() {
     final s = _s;
     if (s == null) return;
-    commit(DevelopSettings.defaults.copyWith(geometry: s.settings.geometry), label: 'Reset all', kind: HistoryKind.reset, clearAi: true);
+    commit(
+      DevelopSettings.defaults.copyWith(geometry: s.settings.geometry),
+      label: 'Reset all',
+      kind: HistoryKind.reset,
+      clearAi: true,
+    );
   }
 
   void resetGroup(ParamGroup group, String label) {
     final s = _s;
     if (s == null) return;
-    var next = s.settings.resetParams(ParamRegistry.inGroup(group).map((p) => p.id));
-    if (group == ParamGroup.curve) next = next.copyWith(curves: CurveSet.identity);
-    if (group == ParamGroup.bw) next = next.copyWith(treatment: Treatment.color);
+    var next = s.settings.resetParams(
+      ParamRegistry.inGroup(group).map((p) => p.id),
+    );
+    if (group == ParamGroup.curve) {
+      next = next.copyWith(curves: CurveSet.identity);
+    }
+    if (group == ParamGroup.bw) {
+      next = next.copyWith(treatment: Treatment.color);
+    }
     commit(next, label: 'Reset $label', kind: HistoryKind.reset);
   }
 
   void applyPreset(Preset preset, {double amount = 1}) {
     final s = _s;
     if (s == null) return;
-    commit(preset.apply(s.settings, amount: amount), label: 'Preset · ${preset.name}', kind: HistoryKind.preset);
+    commit(
+      preset.apply(s.settings, amount: amount),
+      label: 'Preset · ${preset.name}',
+      kind: HistoryKind.preset,
+    );
   }
 
   void paste(DevelopSettings source, Set<SettingsGroup> groups) {
     final s = _s;
     if (s == null) return;
-    commit(pasteSettings(source: source, target: s.settings, groups: groups), label: 'Paste settings', kind: HistoryKind.paste);
+    commit(
+      pasteSettings(source: source, target: s.settings, groups: groups),
+      label: 'Paste settings',
+      kind: HistoryKind.paste,
+    );
   }
 
-  void setCompare(CompareMode mode) => _s == null ? null : _set(_s!.copyWith(compare: mode), save: false);
+  void setCompare(CompareMode mode) =>
+      _s == null ? null : _set(_s!.copyWith(compare: mode), save: false);
 
-  void setShowingBefore(bool v) => _s == null ? null : _set(_s!.copyWith(showingBefore: v), save: false);
+  void setShowingBefore(bool v) =>
+      _s == null ? null : _set(_s!.copyWith(showingBefore: v), save: false);
 
-  void setCropMode(bool v) => _s == null ? null : _set(_s!.copyWith(cropMode: v), save: false);
+  void setCropMode(bool v) =>
+      _s == null ? null : _set(_s!.copyWith(cropMode: v), save: false);
 
-  void setAiBusy(bool busy, {String? status}) =>
-      _s == null ? null : _set(_s!.copyWith(aiBusy: busy, aiStatus: status, clearAiStatus: status == null), save: false);
+  void setAiBusy(bool busy, {String? status}) => _s == null
+      ? null
+      : _set(
+          _s!.copyWith(
+            aiBusy: busy,
+            aiStatus: status,
+            clearAiStatus: status == null,
+          ),
+          save: false,
+        );
 
   /// Applies an AI result as one entry and records it for Explain + Amount.
-  void applyAi(DevelopSettings next, AiRecord record, {required String label, HistoryKind kind = HistoryKind.ai}) {
+  void applyAi(
+    DevelopSettings next,
+    AiRecord record, {
+    required String label,
+    HistoryKind kind = HistoryKind.ai,
+  }) {
     final s = _s;
     if (s == null) return;
     commit(next, label: label, kind: kind, ai: record);
@@ -251,21 +313,31 @@ class EditorController extends AsyncNotifier<EditorState> {
     preview(interpolateSettings(ai.preAi, post, amount, base: s.settings));
   }
 
-  static String _fmt(ParamSpec spec, double v) =>
-      spec.unit == 'EV' ? '${v >= 0 ? '+' : ''}${v.toStringAsFixed(2)}' : '${v >= 0 && spec.bipolar ? '+' : ''}${v.round()}';
+  static String _fmt(ParamSpec spec, double v) => spec.unit == 'EV'
+      ? '${v >= 0 ? '+' : ''}${v.toStringAsFixed(2)}'
+      : '${v >= 0 && spec.bipolar ? '+' : ''}${v.round()}';
 }
 
 /// Interpolates every scalar that differs between [from] and [to] at [amount]
 /// (extrapolating above 1), applied on top of [base]. Curves/treatment follow
 /// [to] when amount ≥ 0.5.
-DevelopSettings interpolateSettings(DevelopSettings from, DevelopSettings to, double amount, {required DevelopSettings base}) {
+DevelopSettings interpolateSettings(
+  DevelopSettings from,
+  DevelopSettings to,
+  double amount, {
+  required DevelopSettings base,
+}) {
   final changed = from.changedParams(to);
   final next = base.withValues({
-    for (final id in changed) id: from.value(id) + (to.value(id) - from.value(id)) * amount,
+    for (final id in changed)
+      id: from.value(id) + (to.value(id) - from.value(id)) * amount,
   });
   return amount >= 0.5
       ? next.copyWith(curves: to.curves, treatment: to.treatment)
       : next.copyWith(curves: from.curves, treatment: from.treatment);
 }
 
-final editorProvider = AsyncNotifierProvider.family<EditorController, EditorState, String>(EditorController.new);
+final editorProvider =
+    AsyncNotifierProvider.family<EditorController, EditorState, String>(
+      EditorController.new,
+    );

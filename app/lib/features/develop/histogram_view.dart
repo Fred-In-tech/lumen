@@ -16,18 +16,32 @@ class HistogramView extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final h = histogram;
-    final lowClip = h != null && h.luma.isNotEmpty && h.luma.first / math.max(1, h.luma.fold<int>(0, (a, b) => a + b)) > 0.001;
-    final highClip = h != null && h.luma.isNotEmpty && h.luma.last / math.max(1, h.luma.fold<int>(0, (a, b) => a + b)) > 0.001;
+    final lowClip =
+        h != null &&
+        h.luma.isNotEmpty &&
+        h.luma.first / math.max(1, h.luma.fold<int>(0, (a, b) => a + b)) >
+            0.001;
+    final highClip =
+        h != null &&
+        h.luma.isNotEmpty &&
+        h.luma.last / math.max(1, h.luma.fold<int>(0, (a, b) => a + b)) > 0.001;
     return Semantics(
-      label: 'Histogram${lowClip ? ', shadows clipped' : ''}${highClip ? ', highlights clipped' : ''}',
+      label:
+          'Histogram${lowClip ? ', shadows clipped' : ''}${highClip ? ', highlights clipped' : ''}',
       child: SizedBox(
         height: height,
         child: CustomPaint(
           painter: _HistPainter(h, grid: t.line, bg: t.surface0),
-          child: Stack(children: [
-            Positioned(left: 4, top: 4, child: _Tri(on: lowClip, left: true)),
-            Positioned(right: 4, top: 4, child: _Tri(on: highClip, left: false)),
-          ]),
+          child: Stack(
+            children: [
+              Positioned(left: 4, top: 4, child: _Tri(on: lowClip, left: true)),
+              Positioned(
+                right: 4,
+                top: 4,
+                child: _Tri(on: highClip, left: false),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -41,9 +55,9 @@ class _Tri extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CustomPaint(
-        size: const Size(10, 8),
-        painter: _TriPainter(on ? Colors.white : context.tokens.textDisabled, left),
-      );
+    size: const Size(10, 8),
+    painter: _TriPainter(on ? Colors.white : context.tokens.textDisabled, left),
+  );
 }
 
 class _TriPainter extends CustomPainter {
@@ -54,8 +68,14 @@ class _TriPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size s) {
     final p = left
-        ? (Path()..moveTo(0, 0)..lineTo(s.width, 0)..lineTo(0, s.height))
-        : (Path()..moveTo(0, 0)..lineTo(s.width, 0)..lineTo(s.width, s.height));
+        ? (Path()
+            ..moveTo(0, 0)
+            ..lineTo(s.width, 0)
+            ..lineTo(0, s.height))
+        : (Path()
+            ..moveTo(0, 0)
+            ..lineTo(s.width, 0)
+            ..lineTo(s.width, s.height));
     canvas.drawPath(p..close(), Paint()..color = color);
   }
 
@@ -74,7 +94,11 @@ class _HistPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, Paint()..color = bg);
     final g = Paint()..color = grid;
     for (var i = 1; i < 4; i++) {
-      canvas.drawLine(Offset(size.width * i / 4, 0), Offset(size.width * i / 4, size.height), g);
+      canvas.drawLine(
+        Offset(size.width * i / 4, 0),
+        Offset(size.width * i / 4, size.height),
+        g,
+      );
     }
     final hist = h;
     if (hist == null) return;
@@ -95,9 +119,12 @@ class _HistPainter extends CustomPainter {
       path
         ..lineTo(size.width, size.height)
         ..close();
-      canvas.drawPath(path, Paint()
-        ..color = c
-        ..blendMode = mode);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = c
+          ..blendMode = mode,
+      );
     }
 
     draw(hist.luma, const Color(0x598A8A8A), mode: BlendMode.srcOver);

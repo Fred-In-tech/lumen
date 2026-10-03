@@ -56,8 +56,8 @@ final _cases = <_Case>[
   _Case('less colorful', {P.vibrance: _near(-25)}),
   // Treatment.
   _Case('black and white', {P.contrast: _near(15)}, treatment: Treatment.bw),
-  _Case('make it b&w', {}, treatment: Treatment.bw),
-  _Case('monochrome', {}, treatment: Treatment.bw),
+  const _Case('make it b&w', {}, treatment: Treatment.bw),
+  const _Case('monochrome', {}, treatment: Treatment.bw),
   // Direct slider phrases.
   _Case('lift the shadows', {P.shadows: _near(20)}),
   _Case('brighten the shadows a bit', {P.shadows: _near(10)}),
@@ -230,7 +230,7 @@ void main() {
     test('changes carry instruction reasons', () {
       final out = Lexicon.parse('a bit warmer').apply(_d);
       final temp = out.changes.firstWhere((c) => c.param == P.temp);
-      expect(temp.reason, 'Temp +7.5 for “a bit warmer”');
+      expect(temp.reason, 'Temp +8 for “a bit warmer”');
     });
 
     test('"less X" at the baseline explains why nothing changed', () {

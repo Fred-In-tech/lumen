@@ -3,10 +3,27 @@ import 'dart:typed_data';
 
 import '../analysis/histogram.dart';
 import '../analysis/image_stats.dart';
-import '../analysis/stats_kernels.dart';
 import '../color/cielab.dart';
 import '../color/srgb.dart';
 import '../render/rgba_buffer.dart';
+
+const int _kBins = 4096;
+
+/// L* of each luma bin (display luma → Y → L*).
+final Float64List _lStarOfBin = Float64List.fromList([
+  for (var b = 0; b <= _kBins; b++) lStarFromY(srgbToLinear(b / _kBins)),
+]);
+
+/// Bin holding the value of rank `q·(n−1)` in histogram [h] of [n] samples.
+int _quantileBin(Int32List h, int n, double q) {
+  final rank = (q.clamp(0, 1) * (n - 1)).round();
+  var cum = 0;
+  for (var b = 0; b < h.length; b++) {
+    cum += h[b];
+    if (rank < cum) return b;
+  }
+  return h.length - 1;
+}
 
 /// Fast luma/tone measurements of a rendered proxy, used inside solver
 /// loops (a subset of [ImageStats] without WB, chroma and dark channel).
@@ -25,66 +42,72 @@ class ToneMeasure {
     required this.medianLStar,
   });
 
-  factory ToneMeasure.of(RgbaBuffer img) {
+  /// [clipLevel] is the encoded value at or above which a pixel counts as
+  /// clipped (0.995 of the output white; lower it when whites < 0 compress
+  /// the output white so the compression cannot hide blown pixels).
+  ///
+  /// Percentiles come from a 4096-bin luma histogram (±1/8192 in luma).
+  factory ToneMeasure.of(RgbaBuffer img, {double clipLevel = 0.995}) {
     final n = img.pixelCount;
     final d = img.data;
-    final luma = Float64List(n);
-    final ys = Float64List(n);
-    final maxEnc = Float64List(n);
-    final validL = <double>[];
+    final luma = Int32List(_kBins + 1);
+    final validLuma = Int32List(_kBins + 1);
+    final maxByte = Int32List(256);
     var clip = 0, crush = 0, hiClip = 0, loCrush = 0;
-    var lSum = 0.0, l2Sum = 0.0;
-    for (var i = 0; i < n; i++) {
-      final r8 = d[i * 4], g8 = d[i * 4 + 1], b8 = d[i * 4 + 2];
+    final clipByte = clipLevel * 255, hiClipByte = 0.99 * 255;
+    for (var i = 0; i < d.length; i += 4) {
+      final r8 = d[i], g8 = d[i + 1], b8 = d[i + 2];
       final y = linearLuminanceOfBytes(r8, g8, b8);
-      ys[i] = y;
       final v = srgbEncodeFast(y);
-      luma[i] = v;
-      final mx = math.max(r8, math.max(g8, b8)) / 255;
-      maxEnc[i] = mx;
-      if (mx >= 0.995) clip++;
-      if (mx >= 0.99) hiClip++;
+      final bin = (v * _kBins).round();
+      luma[bin]++;
+      final mx = math.max(r8, math.max(g8, b8));
+      maxByte[mx]++;
+      if (mx >= clipByte) clip++;
+      if (mx >= hiClipByte) hiClip++;
       if (v < 0.01) crush++;
       if (v <= 0.02) loCrush++;
-      if (mx < 0.995 && y >= 0.002) {
-        final l = lStarFromY(y);
-        validL.add(l);
-        lSum += l;
-        l2Sum += l * l;
-      }
+      if (mx < clipByte && y >= 0.002) validLuma[bin]++;
     }
-    luma.sort();
-    ys.sort();
-    maxEnc.sort();
-    final p10 = quantileSorted(luma, 0.1), p90 = quantileSorted(luma, 0.9);
+    final p10 = _quantileBin(luma, n, 0.1), p90 = _quantileBin(luma, n, 0.9);
     var hiSum = 0.0, hiN = 0, loSum = 0.0, loN = 0;
-    for (final v in luma) {
-      if (v >= p90) {
-        hiSum += v;
-        hiN++;
+    var lSum = 0.0, l2Sum = 0.0, lN = 0;
+    for (var b = 0; b <= _kBins; b++) {
+      final c = luma[b];
+      if (c > 0) {
+        final v = b / _kBins;
+        if (b >= p90) {
+          hiSum += v * c;
+          hiN += c;
+        }
+        if (b <= p10) {
+          loSum += v * c;
+          loN += c;
+        }
       }
-      if (v <= p10) {
-        loSum += v;
-        loN++;
+      final vc = validLuma[b];
+      if (vc > 0) {
+        final l = _lStarOfBin[b];
+        lSum += l * vc;
+        l2Sum += l * l * vc;
+        lN += vc;
       }
     }
-    final nl = validL.length;
-    final meanL = nl == 0 ? 0.0 : lSum / nl;
-    validL.sort();
+    final meanL = lN == 0 ? 0.0 : lSum / lN;
     return ToneMeasure._(
-      medianY: quantileSorted(ys, 0.5),
-      p0_5: quantileSorted(luma, 0.005),
-      highlightP99_5: quantileSorted(maxEnc, 0.995),
+      medianY: srgbToLinear(_quantileBin(luma, n, 0.5) / _kBins),
+      p0_5: _quantileBin(luma, n, 0.005) / _kBins,
+      highlightP99_5: _quantileBin(maxByte, n, 0.995) / 255,
       clipFraction: clip / n,
       crushFraction: crush / n,
       hiMean: hiN == 0 ? 0 : hiSum / hiN,
       loMean: loN == 0 ? 0 : loSum / loN,
       hiClip: hiClip / n,
       loCrush: loCrush / n,
-      sigmaLStar: nl == 0
+      sigmaLStar: lN == 0
           ? 0
-          : math.sqrt(math.max(0, l2Sum / nl - meanL * meanL)),
-      medianLStar: quantileSorted(validL, 0.5),
+          : math.sqrt(math.max(0, l2Sum / lN - meanL * meanL)),
+      medianLStar: lN == 0 ? 0 : _lStarOfBin[_quantileBin(validLuma, lN, 0.5)],
     );
   }
 

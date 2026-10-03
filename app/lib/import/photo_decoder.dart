@@ -29,7 +29,10 @@ Future<ui.Image> decodePhoto(Uint8List bytes, {int? maxLongEdge}) async {
         tw = (w * maxLongEdge / h).round().clamp(1, maxLongEdge);
       }
     }
-    final codec = await descriptor.instantiateCodec(targetWidth: tw, targetHeight: th);
+    final codec = await descriptor.instantiateCodec(
+      targetWidth: tw,
+      targetHeight: th,
+    );
     final frame = await codec.getNextFrame();
     codec.dispose();
     descriptor.dispose();

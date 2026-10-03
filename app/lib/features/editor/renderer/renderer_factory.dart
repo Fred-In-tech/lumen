@@ -6,7 +6,11 @@ import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 
 /// Builds the renderer for an editor session (GPU with CPU fallback).
 /// Tests override this with a CPU or fake renderer.
-final photoRendererFactoryProvider = Provider<PhotoRenderer Function(String assetId)>((ref) {
-  final mobile = ref.watch(platformInfoProvider).isMobile;
-  return (assetId) => GpuPhotoRenderer(assetId: assetId, previewLongEdge: mobile ? 2048 : 2560);
-});
+final photoRendererFactoryProvider =
+    Provider<PhotoRenderer Function(String assetId)>((ref) {
+      final mobile = ref.watch(platformInfoProvider).isMobile;
+      return (assetId) => GpuPhotoRenderer(
+        assetId: assetId,
+        previewLongEdge: mobile ? 2048 : 2560,
+      );
+    });

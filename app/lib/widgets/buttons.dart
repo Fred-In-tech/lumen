@@ -44,14 +44,18 @@ class _PressableState extends State<Pressable> {
     };
     Widget child = FocusableActionDetector(
       enabled: enabled,
-      mouseCursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.forbidden,
+      mouseCursor: enabled
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.forbidden,
       onShowHoverHighlight: (v) => setState(() => _hover = v),
       onShowFocusHighlight: (v) => setState(() => _focused = v),
       actions: {
-        ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) {
-          widget.onTap?.call();
-          return null;
-        }),
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onTap?.call();
+            return null;
+          },
+        ),
       },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -66,17 +70,29 @@ class _PressableState extends State<Pressable> {
             position: DecorationPosition.foreground,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(widget.radius + 2),
-              border: _focused ? Border.all(color: context.tokens.focusRing, width: 2) : null,
+              border: _focused
+                  ? Border.all(color: context.tokens.focusRing, width: 2)
+                  : null,
             ),
-            child: Opacity(opacity: enabled ? 1 : 0.38, child: widget.builder(context, states)),
+            child: Opacity(
+              opacity: enabled ? 1 : 0.38,
+              child: widget.builder(context, states),
+            ),
           ),
         ),
       ),
     );
     if (widget.semanticLabel != null) {
-      child = Semantics(button: true, enabled: enabled, label: widget.semanticLabel, child: child);
+      child = Semantics(
+        button: true,
+        enabled: enabled,
+        label: widget.semanticLabel,
+        child: child,
+      );
     }
-    if (widget.tooltip != null) child = Tooltip(message: widget.tooltip!, child: child);
+    if (widget.tooltip != null) {
+      child = Tooltip(message: widget.tooltip!, child: child);
+    }
     return child;
   }
 }
@@ -112,23 +128,55 @@ class LumenButton extends StatelessWidget {
       builder: (context, states) {
         final hovered = states.contains(WidgetState.hovered);
         final pressed = states.contains(WidgetState.pressed);
-        final (Color? fill, Gradient? gradient, Color fg, Color? border) = switch (kind) {
-          ButtonKind.primary => (pressed ? t.accentPressed : (hovered ? t.accentHover : t.accent), null, t.textOnAccent, null),
+        final (
+          Color? fill,
+          Gradient? gradient,
+          Color fg,
+          Color? border,
+        ) = switch (kind) {
+          ButtonKind.primary => (
+            pressed ? t.accentPressed : (hovered ? t.accentHover : t.accent),
+            null,
+            t.textOnAccent,
+            null,
+          ),
           ButtonKind.ai => (null, LumenTokens.aiGradient, t.textOnAccent, null),
-          ButtonKind.secondary => (hovered ? t.surface3 : t.surface2, null, t.textPrimary, t.lineStrong),
-          ButtonKind.ghost => (hovered ? t.hoverOverlay : Colors.transparent, null, t.textSecondary, null),
-          ButtonKind.danger => (hovered ? t.surface3 : t.surface2, null, t.danger, t.lineStrong),
+          ButtonKind.secondary => (
+            hovered ? t.surface3 : t.surface2,
+            null,
+            t.textPrimary,
+            t.lineStrong,
+          ),
+          ButtonKind.ghost => (
+            hovered ? t.hoverOverlay : Colors.transparent,
+            null,
+            t.textSecondary,
+            null,
+          ),
+          ButtonKind.danger => (
+            hovered ? t.surface3 : t.surface2,
+            null,
+            t.danger,
+            t.lineStrong,
+          ),
         };
         final content = Row(
           mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (icon != null) ...[
-              IconTheme.merge(data: IconThemeData(color: fg, size: 16), child: icon!),
+              IconTheme.merge(
+                data: IconThemeData(color: fg, size: 16),
+                child: icon!,
+              ),
               const SizedBox(width: Sp.s1_5),
             ],
             Flexible(
-              child: Text(label, overflow: TextOverflow.ellipsis, style: LumenType.button().copyWith(color: fg)),
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: LumenType.button().copyWith(color: fg),
+              ),
             ),
           ],
         );
@@ -142,7 +190,10 @@ class LumenButton extends StatelessWidget {
             border: border == null ? null : Border.all(color: border),
           ),
           foregroundDecoration: kind == ButtonKind.ai && hovered
-              ? BoxDecoration(color: t.hoverOverlay, borderRadius: BorderRadius.circular(Rad.sm))
+              ? BoxDecoration(
+                  color: t.hoverOverlay,
+                  borderRadius: BorderRadius.circular(Rad.sm),
+                )
               : null,
           child: content,
         );
@@ -184,11 +235,15 @@ class LumenIconButton extends StatelessWidget {
           color: selected
               ? t.accentTint
               : states.contains(WidgetState.hovered)
-                  ? t.hoverOverlay
-                  : Colors.transparent,
+              ? t.hoverOverlay
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(Rad.sm),
         ),
-        child: Icon(icon, size: iconSize, color: selected ? t.accent : t.textSecondary),
+        child: Icon(
+          icon,
+          size: iconSize,
+          color: selected ? t.accent : t.textSecondary,
+        ),
       ),
     );
   }
@@ -196,7 +251,12 @@ class LumenIconButton extends StatelessWidget {
 
 /// Rounded status pill (AI status, offline badge, counts).
 class StatusPill extends StatelessWidget {
-  const StatusPill({super.key, required this.label, this.leading, this.elevated = false});
+  const StatusPill({
+    super.key,
+    required this.label,
+    this.leading,
+    this.elevated = false,
+  });
 
   final String label;
   final Widget? leading;
@@ -213,10 +273,16 @@ class StatusPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(Rad.pill),
         boxShadow: elevated ? Elevation.e2 : null,
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (leading != null) ...[leading!, const SizedBox(width: Sp.s1_5)],
-        Text(label, style: LumenType.caption().copyWith(color: t.textSecondary)),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (leading != null) ...[leading!, const SizedBox(width: Sp.s1_5)],
+          Text(
+            label,
+            style: LumenType.caption().copyWith(color: t.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -34,16 +34,21 @@ final class ImportFailed extends ImportResult {
 
 /// Hash → dedupe → probe → EXIF → store → thumbnail.
 class ImportService {
-  ImportService(this._catalog, {DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
+  ImportService(this._catalog, {DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now;
 
   final CatalogRepository _catalog;
   final DateTime Function() _clock;
 
   static const int thumbLongEdge = 384;
 
-  static String assetIdFor(List<int> bytes) => sha256.convert(bytes).toString().substring(0, 32);
+  static String assetIdFor(List<int> bytes) =>
+      sha256.convert(bytes).toString().substring(0, 32);
 
-  Future<List<ImportResult>> importAll(List<ImportFile> files, {void Function(int done, int total)? onProgress}) async {
+  Future<List<ImportResult>> importAll(
+    List<ImportFile> files, {
+    void Function(int done, int total)? onProgress,
+  }) async {
     final results = <ImportResult>[];
     for (var i = 0; i < files.length; i++) {
       results.add(await importOne(files[i]));
@@ -55,7 +60,10 @@ class ImportService {
   Future<ImportResult> importOne(ImportFile file) async {
     final format = sniffFormat(file.bytes);
     if (!format.isSupported) {
-      return ImportFailed(file.name, 'Not a supported photo (JPEG, PNG, WebP or HEIC).');
+      return ImportFailed(
+        file.name,
+        'Not a supported photo (JPEG, PNG, WebP or HEIC).',
+      );
     }
     final id = assetIdFor(file.bytes);
     final existing = await _catalog.get(id);

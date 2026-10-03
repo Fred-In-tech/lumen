@@ -18,7 +18,12 @@ final _log = Logger('BatchAutoEdit');
 
 /// Progress of the running batch job (null = idle).
 class BatchProgress {
-  const BatchProgress({required this.label, required this.done, required this.total, this.cancelled = false});
+  const BatchProgress({
+    required this.label,
+    required this.done,
+    required this.total,
+    this.cancelled = false,
+  });
   final String label;
   final int done;
   final int total;
@@ -40,7 +45,14 @@ class BatchNotifier extends Notifier<BatchProgress?> {
 
   void step() {
     final s = state;
-    if (s != null) state = BatchProgress(label: s.label, done: s.done + 1, total: s.total, cancelled: _cancel);
+    if (s != null) {
+      state = BatchProgress(
+        label: s.label,
+        done: s.done + 1,
+        total: s.total,
+        cancelled: _cancel,
+      );
+    }
   }
 
   void cancel() => _cancel = true;
@@ -48,7 +60,9 @@ class BatchNotifier extends Notifier<BatchProgress?> {
   void finish() => state = null;
 }
 
-final batchProvider = NotifierProvider<BatchNotifier, BatchProgress?>(BatchNotifier.new);
+final batchProvider = NotifierProvider<BatchNotifier, BatchProgress?>(
+  BatchNotifier.new,
+);
 
 /// Auto-edits one stored photo without opening the editor. Returns false on failure.
 Future<bool> autoEditStoredAsset({
@@ -80,13 +94,20 @@ Future<bool> autoEditStoredAsset({
       style: style,
     );
     final next = result.outcome.settings;
-    final hist = HistoryEntry.tryDiff(label: result.label, kind: HistoryKind.ai, before: doc.settings, after: next);
-    await repo.saveEdit(doc.copyWith(
-      settings: next,
-      history: hist == null ? doc.history : doc.history.push(hist),
-      ai: result.record,
-      updatedAt: DateTime.now().toUtc(),
-    ));
+    final hist = HistoryEntry.tryDiff(
+      label: result.label,
+      kind: HistoryKind.ai,
+      before: doc.settings,
+      after: next,
+    );
+    await repo.saveEdit(
+      doc.copyWith(
+        settings: next,
+        history: hist == null ? doc.history : doc.history.push(hist),
+        ai: result.record,
+        updatedAt: DateTime.now().toUtc(),
+      ),
+    );
     final thumbImg = await decodePhoto(original, maxLongEdge: 384);
     final thumbSrc = await rgbaFromImage(thumbImg);
     thumbImg.dispose();
@@ -97,13 +118,15 @@ Future<bool> autoEditStoredAsset({
     await repo.writeThumb(assetId, png);
     final fresh = await repo.get(assetId);
     if (fresh != null) {
-      await repo.update(fresh.copyWith(
-        hasEdits: !next.isDefault,
-        editedAt: DateTime.now().toUtc(),
-        aiEngine: result.record.engine,
-        aiStyle: result.record.style,
-        thumbVersion: fresh.thumbVersion + 1,
-      ));
+      await repo.update(
+        fresh.copyWith(
+          hasEdits: !next.isDefault,
+          editedAt: DateTime.now().toUtc(),
+          aiEngine: result.record.engine,
+          aiStyle: result.record.style,
+          thumbVersion: fresh.thumbVersion + 1,
+        ),
+      );
     }
     return true;
   } on Exception catch (e) {
@@ -113,17 +136,28 @@ Future<bool> autoEditStoredAsset({
 }
 
 /// Auto-edits [assetIds] with bounded concurrency; returns (ok, failed).
-Future<(int, int)> batchAutoEdit(WidgetRef ref, List<String> assetIds, {AiStyle style = AiStyle.natural, int concurrency = 2}) async {
+Future<(int, int)> batchAutoEdit(
+  WidgetRef ref,
+  List<String> assetIds, {
+  AiStyle style = AiStyle.natural,
+  int concurrency = 2,
+}) async {
   if (assetIds.isEmpty) return (0, 0);
   final repo = ref.read(catalogRepositoryProvider);
   final service = ref.read(autoEditServiceProvider);
-  final batch = ref.read(batchProvider.notifier)..start('Auto-editing', assetIds.length);
+  final batch = ref.read(batchProvider.notifier)
+    ..start('Auto-editing', assetIds.length);
   final busy = ref.read(busyAssetsProvider.notifier)..add(assetIds);
   var ok = 0, failed = 0, next = 0;
   Future<void> worker() async {
     while (next < assetIds.length && !batch.cancelRequested) {
       final id = assetIds[next++];
-      final success = await autoEditStoredAsset(repo: repo, service: service, assetId: id, style: style);
+      final success = await autoEditStoredAsset(
+        repo: repo,
+        service: service,
+        assetId: id,
+        style: style,
+      );
       success ? ok++ : failed++;
       busy.remove(id);
       batch.step();
@@ -139,15 +173,30 @@ Future<(int, int)> batchAutoEdit(WidgetRef ref, List<String> assetIds, {AiStyle 
 }
 
 /// Applies [preset] to each asset as one history entry.
-Future<int> applyPresetToAssets(WidgetRef ref, Preset preset, List<String> assetIds) async {
+Future<int> applyPresetToAssets(
+  WidgetRef ref,
+  Preset preset,
+  List<String> assetIds,
+) async {
   final repo = ref.read(catalogRepositoryProvider);
   var n = 0;
   for (final id in assetIds) {
     final doc = await repo.loadEdit(id);
     final next = preset.apply(doc.settings);
-    final h = HistoryEntry.tryDiff(label: 'Preset · ${preset.name}', kind: HistoryKind.preset, before: doc.settings, after: next);
+    final h = HistoryEntry.tryDiff(
+      label: 'Preset · ${preset.name}',
+      kind: HistoryKind.preset,
+      before: doc.settings,
+      after: next,
+    );
     if (h == null) continue;
-    await repo.saveEdit(doc.copyWith(settings: next, history: doc.history.push(h), updatedAt: DateTime.now().toUtc()));
+    await repo.saveEdit(
+      doc.copyWith(
+        settings: next,
+        history: doc.history.push(h),
+        updatedAt: DateTime.now().toUtc(),
+      ),
+    );
     await refreshThumbnail(repo, id, next);
     n++;
   }
@@ -155,7 +204,11 @@ Future<int> applyPresetToAssets(WidgetRef ref, Preset preset, List<String> asset
 }
 
 /// Re-renders a stored photo's thumbnail with [settings] (CPU reference pipeline).
-Future<void> refreshThumbnail(CatalogRepository repo, String assetId, DevelopSettings settings) async {
+Future<void> refreshThumbnail(
+  CatalogRepository repo,
+  String assetId,
+  DevelopSettings settings,
+) async {
   try {
     final original = await repo.readOriginal(assetId);
     final img = await decodePhoto(original, maxLongEdge: 384);
@@ -168,7 +221,13 @@ Future<void> refreshThumbnail(CatalogRepository repo, String assetId, DevelopSet
     await repo.writeThumb(assetId, png);
     final e = await repo.get(assetId);
     if (e != null) {
-      await repo.update(e.copyWith(hasEdits: !settings.isDefault, editedAt: DateTime.now().toUtc(), thumbVersion: e.thumbVersion + 1));
+      await repo.update(
+        e.copyWith(
+          hasEdits: !settings.isDefault,
+          editedAt: DateTime.now().toUtc(),
+          thumbVersion: e.thumbVersion + 1,
+        ),
+      );
     }
   } on Exception catch (e) {
     _log.warning('thumbnail $assetId failed: $e');

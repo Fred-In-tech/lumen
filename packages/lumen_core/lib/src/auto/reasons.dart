@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../model/develop_settings.dart';
 import '../model/param_registry.dart';
 import '../model/treatment.dart';
@@ -8,16 +10,27 @@ typedef ReasonFor = String Function(ParamId param, double from, double to);
 
 /// Templated, human "why" strings for local-engine changes.
 abstract final class Reasons {
-  /// Signed delta with the param's unit: "+35", "−0.50 EV", "+7.5".
+  /// Signed delta at the slider's display precision: integers for 1-step
+  /// sliders ("+35"), the step's decimals otherwise ("−0.50 EV", "+0.3").
+  /// A delta that would round to zero gets one more decimal.
   static String formatDelta(ParamId param, double delta) {
     final sign = delta < 0 ? '−' : '+';
     final mag = delta.abs();
-    if (param == P.exposure) return '$sign${mag.toStringAsFixed(2)} EV';
-    final rounded = mag.roundToDouble();
-    final text = (mag - rounded).abs() < 0.05
-        ? rounded.toStringAsFixed(0)
-        : mag.toStringAsFixed(1);
-    return '$sign$text';
+    final step = ParamRegistry.tryById(param)?.step ?? 1;
+    var decimals = step >= 1 ? 0 : (-math.log(step) / math.ln10).ceil();
+    var text = mag.toStringAsFixed(decimals);
+    while (mag > 0 && double.parse(text) == 0 && decimals < 3) {
+      text = mag.toStringAsFixed(++decimals);
+    }
+    return '$sign$text${param == P.exposure ? ' EV' : ''}';
+  }
+
+  /// Reason for a change that a guard limited: the final direction and size
+  /// of the change, then the guard's [note].
+  static String guarded(ParamId param, double from, double to, String note) {
+    final d = to - from;
+    return '${d >= 0 ? 'Raised' : 'Lowered'} ${paramName(param)} '
+        '${formatDelta(param, d)}, $note';
   }
 
   /// Lower-case display name of [param] ("shadows", "orange saturation").

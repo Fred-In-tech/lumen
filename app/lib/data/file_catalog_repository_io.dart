@@ -19,7 +19,8 @@ class FileCatalogRepository implements CatalogRepository {
 
   final String root;
   Map<String, CatalogEntry>? _cache;
-  final StreamController<List<CatalogEntry>> _changes = StreamController.broadcast();
+  final StreamController<List<CatalogEntry>> _changes =
+      StreamController.broadcast();
   Future<void> _writeChain = Future.value();
 
   String get _indexPath => p.join(root, 'catalog.json');
@@ -32,7 +33,8 @@ class FileCatalogRepository implements CatalogRepository {
     final map = <String, CatalogEntry>{};
     if (await file.exists()) {
       try {
-        final json = jsonDecode(await file.readAsString()) as Map<String, Object?>;
+        final json =
+            jsonDecode(await file.readAsString()) as Map<String, Object?>;
         for (final e in (json['entries'] as List? ?? const [])) {
           if (e is Map) {
             final entry = CatalogEntry.fromJson(e.cast());
@@ -41,7 +43,9 @@ class FileCatalogRepository implements CatalogRepository {
         }
       } on FormatException catch (e) {
         _log.warning('catalog.json unreadable, backing up: $e');
-        await file.copy('$_indexPath.corrupt-${DateTime.now().millisecondsSinceEpoch}');
+        await file.copy(
+          '$_indexPath.corrupt-${DateTime.now().millisecondsSinceEpoch}',
+        );
       }
     }
     return _cache = map;
@@ -49,11 +53,15 @@ class FileCatalogRepository implements CatalogRepository {
 
   Future<void> _persist() {
     final entries = sortEntries(_cache!.values);
-    final bytes = utf8.encode(jsonEncode({
-      'schemaVersion': 1,
-      'entries': [for (final e in entries) e.toJson()],
-    }));
-    _writeChain = _writeChain.then((_) => atomicWrite(_indexPath, Uint8List.fromList(bytes)));
+    final bytes = utf8.encode(
+      jsonEncode({
+        'schemaVersion': 1,
+        'entries': [for (final e in entries) e.toJson()],
+      }),
+    );
+    _writeChain = _writeChain.then(
+      (_) => atomicWrite(_indexPath, Uint8List.fromList(bytes)),
+    );
     _changes.add(entries);
     return _writeChain;
   }
@@ -65,7 +73,8 @@ class FileCatalogRepository implements CatalogRepository {
   }
 
   @override
-  Future<List<CatalogEntry>> list() async => sortEntries((await _load()).values);
+  Future<List<CatalogEntry>> list() async =>
+      sortEntries((await _load()).values);
 
   @override
   Future<CatalogEntry?> get(String assetId) async => (await _load())[assetId];
@@ -84,7 +93,9 @@ class FileCatalogRepository implements CatalogRepository {
   @override
   Future<void> update(CatalogEntry entry) async {
     final map = await _load();
-    if (!map.containsKey(entry.assetId)) throw CatalogException('Unknown asset ${entry.assetId}');
+    if (!map.containsKey(entry.assetId)) {
+      throw CatalogException('Unknown asset ${entry.assetId}');
+    }
     map[entry.assetId] = entry;
     await _persist();
   }
@@ -106,7 +117,9 @@ class FileCatalogRepository implements CatalogRepository {
     final entry = (await _load())[assetId];
     if (entry == null) throw CatalogException('Unknown asset $assetId');
     final file = File(p.join(root, entry.originalPath));
-    if (!await file.exists()) throw CatalogException('Original file missing for ${entry.fileName}');
+    if (!await file.exists()) {
+      throw CatalogException('Original file missing for ${entry.fileName}');
+    }
     return file.readAsBytes();
   }
 
@@ -119,7 +132,9 @@ class FileCatalogRepository implements CatalogRepository {
       if (json is Map) return EditDocument.fromJson(json.cast());
     } on FormatException catch (e) {
       _log.warning('edit.json for $assetId unreadable, starting fresh: $e');
-      await file.copy('${file.path}.corrupt-${DateTime.now().millisecondsSinceEpoch}');
+      await file.copy(
+        '${file.path}.corrupt-${DateTime.now().millisecondsSinceEpoch}',
+      );
     }
     return EditDocument.create(assetId);
   }
@@ -128,7 +143,10 @@ class FileCatalogRepository implements CatalogRepository {
   Future<void> saveEdit(EditDocument doc) async {
     if (doc.readOnly) return;
     final bytes = utf8.encode(jsonEncode(doc.toJson()));
-    await atomicWrite(p.join(_assetDir(doc.assetId), 'edit.json'), Uint8List.fromList(bytes));
+    await atomicWrite(
+      p.join(_assetDir(doc.assetId), 'edit.json'),
+      Uint8List.fromList(bytes),
+    );
   }
 
   @override

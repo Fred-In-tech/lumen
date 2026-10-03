@@ -17,7 +17,11 @@ import 'package:lumen/features/sync/settings_clipboard.dart';
 /// Editor route. Owns the [EditorSession] for the current photo and swaps it
 /// when the user moves through the filmstrip.
 class EditorScreen extends ConsumerStatefulWidget {
-  const EditorScreen({super.key, required this.assetIds, required this.initialAssetId});
+  const EditorScreen({
+    super.key,
+    required this.assetIds,
+    required this.initialAssetId,
+  });
 
   final List<String> assetIds;
   final String initialAssetId;
@@ -26,7 +30,8 @@ class EditorScreen extends ConsumerStatefulWidget {
   ConsumerState<EditorScreen> createState() => _EditorScreenState();
 }
 
-class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBindingObserver {
+class _EditorScreenState extends ConsumerState<EditorScreen>
+    with WidgetsBindingObserver {
   late String _assetId = widget.initialAssetId;
   EditorSession? _session;
   Object? _openError;
@@ -40,7 +45,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       ref.read(editorProvider(_assetId).notifier).flush();
     }
   }
@@ -67,8 +73,14 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
   }
 
   DevelopSettings _renderSettings(EditorState s) {
-    if (s.showingBefore) return DevelopSettings.defaults.copyWith(geometry: s.settings.geometry);
-    if (s.cropMode) return s.settings.copyWith(geometry: s.settings.geometry.copyWith(crop: CropRect.full));
+    if (s.showingBefore) {
+      return DevelopSettings.defaults.copyWith(geometry: s.settings.geometry);
+    }
+    if (s.cropMode) {
+      return s.settings.copyWith(
+        geometry: s.settings.geometry.copyWith(crop: CropRect.full),
+      );
+    }
     return s.settings;
   }
 
@@ -105,23 +117,30 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
       cmd(LogicalKeyboardKey.keyZ): ctl.undo,
       cmd(LogicalKeyboardKey.keyZ, shift: true): ctl.redo,
       cmd(LogicalKeyboardKey.keyY): ctl.redo,
-      cmd(LogicalKeyboardKey.keyC, shift: true): () => copySettings(context, ref, _assetId),
-      cmd(LogicalKeyboardKey.keyV, shift: true): () => pasteSettingsInto(context, ref, _assetId),
-      cmd(LogicalKeyboardKey.keyE): () => showExportDialog(context, ref, [_assetId]),
+      cmd(LogicalKeyboardKey.keyC, shift: true): () =>
+          copySettings(context, ref, _assetId),
+      cmd(LogicalKeyboardKey.keyV, shift: true): () =>
+          pasteSettingsInto(context, ref, _assetId),
+      cmd(LogicalKeyboardKey.keyE): () =>
+          showExportDialog(context, ref, [_assetId]),
     };
   }
 
   /// True while a text field has focus: single-key shortcuts must not fire.
   static bool _typing() {
     final ctx = FocusManager.instance.primaryFocus?.context;
-    return ctx != null && (ctx.widget is EditableText || ctx.findAncestorWidgetOfExactType<EditableText>() != null);
+    return ctx != null &&
+        (ctx.widget is EditableText ||
+            ctx.findAncestorWidgetOfExactType<EditableText>() != null);
   }
 
   /// Unmodified single-key shortcuts (DESIGN.md §6.3). Ignored while typing.
   KeyEventResult _onKey(KeyEvent e) {
     if (_typing()) return KeyEventResult.ignored;
     final keys = HardwareKeyboard.instance;
-    if (keys.isMetaPressed || keys.isControlPressed) return KeyEventResult.ignored;
+    if (keys.isMetaPressed || keys.isControlPressed) {
+      return KeyEventResult.ignored;
+    }
     final ctl = ref.read(editorProvider(_assetId).notifier);
     final s = ref.read(editorProvider(_assetId)).value;
     final k = e.logicalKey;
@@ -131,7 +150,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
     }
     if (e is! KeyDownEvent) return KeyEventResult.ignored;
     if (k == LogicalKeyboardKey.keyY) {
-      ctl.setCompare(s?.compare == CompareMode.split ? CompareMode.off : CompareMode.split);
+      ctl.setCompare(
+        s?.compare == CompareMode.split ? CompareMode.off : CompareMode.split,
+      );
     } else if (k == LogicalKeyboardKey.keyR) {
       ctl.setCropMode(true);
     } else if (k == LogicalKeyboardKey.keyA) {
@@ -161,7 +182,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
     ref.listen<AsyncValue<EditorState>>(editorProvider(_assetId), (prev, next) {
       final p = prev?.value, n = next.value;
       if (n == null || session == null) return;
-      final renderChanged = p == null ||
+      final renderChanged =
+          p == null ||
           p.settings != n.settings ||
           p.showingBefore != n.showingBefore ||
           p.cropMode != n.cropMode;
@@ -176,7 +198,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
     Widget body;
     if (_openError != null) {
       body = Center(
-        child: Text('Can’t open this photo.\n$_openError', textAlign: TextAlign.center, style: LumenType.body().copyWith(color: t.textSecondary)),
+        child: Text(
+          'Can’t open this photo.\n$_openError',
+          textAlign: TextAlign.center,
+          style: LumenType.body().copyWith(color: t.textSecondary),
+        ),
       );
     } else if (session == null) {
       body = const SizedBox.shrink();

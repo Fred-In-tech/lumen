@@ -14,7 +14,11 @@ class AiGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final icon = Icon(LucideIcons.sparkles, size: size, color: neutral ? context.tokens.textPrimary : Colors.white);
+    final icon = Icon(
+      LucideIcons.sparkles,
+      size: size,
+      color: neutral ? context.tokens.textPrimary : Colors.white,
+    );
     if (neutral) return icon;
     return ShaderMask(
       blendMode: BlendMode.srcIn,

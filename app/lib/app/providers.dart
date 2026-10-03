@@ -8,15 +8,27 @@ import 'package:lumen/import/import_service.dart';
 import 'package:lumen/platform/platform_info.dart';
 
 /// Overridden at startup (`main.dart`) and in tests.
-final catalogRepositoryProvider = Provider<CatalogRepository>((ref) => throw UnimplementedError('override'));
-final presetRepositoryProvider = Provider<PresetRepository>((ref) => throw UnimplementedError('override'));
-final settingsRepositoryProvider = Provider<SettingsRepository>((ref) => throw UnimplementedError('override'));
-final platformInfoProvider = Provider<PlatformInfo>((ref) => PlatformInfo.current());
+final catalogRepositoryProvider = Provider<CatalogRepository>(
+  (ref) => throw UnimplementedError('override'),
+);
+final presetRepositoryProvider = Provider<PresetRepository>(
+  (ref) => throw UnimplementedError('override'),
+);
+final settingsRepositoryProvider = Provider<SettingsRepository>(
+  (ref) => throw UnimplementedError('override'),
+);
+final platformInfoProvider = Provider<PlatformInfo>(
+  (ref) => PlatformInfo.current(),
+);
 
 /// All catalog entries, newest first.
-final libraryProvider = StreamProvider<List<CatalogEntry>>((ref) => ref.watch(catalogRepositoryProvider).watch());
+final libraryProvider = StreamProvider<List<CatalogEntry>>(
+  (ref) => ref.watch(catalogRepositoryProvider).watch(),
+);
 
-final importServiceProvider = Provider<ImportService>((ref) => ImportService(ref.watch(catalogRepositoryProvider)));
+final importServiceProvider = Provider<ImportService>(
+  (ref) => ImportService(ref.watch(catalogRepositoryProvider)),
+);
 
 /// App preferences, persisted on change.
 class SettingsNotifier extends AsyncNotifier<AppSettings> {
@@ -31,7 +43,9 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
   }
 }
 
-final settingsProvider = AsyncNotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);
+final settingsProvider = AsyncNotifierProvider<SettingsNotifier, AppSettings>(
+  SettingsNotifier.new,
+);
 
 /// User presets + built-ins.
 class PresetsNotifier extends AsyncNotifier<List<Preset>> {
@@ -49,7 +63,8 @@ class PresetsNotifier extends AsyncNotifier<List<Preset>> {
   }
 }
 
-final userPresetsProvider = AsyncNotifierProvider<PresetsNotifier, List<Preset>>(PresetsNotifier.new);
+final userPresetsProvider =
+    AsyncNotifierProvider<PresetsNotifier, List<Preset>>(PresetsNotifier.new);
 
 /// Library multi-selection (asset ids) plus the anchor for shift-range select.
 class LibrarySelection {
@@ -79,12 +94,18 @@ class SelectionNotifier extends Notifier<LibrarySelection> {
     final b = ordered.indexOf(id);
     if (a < 0 || b < 0) return toggle(id);
     final (lo, hi) = a <= b ? (a, b) : (b, a);
-    state = LibrarySelection(ids: Set.unmodifiable({...state.ids, ...ordered.sublist(lo, hi + 1)}), anchor: anchor);
+    state = LibrarySelection(
+      ids: Set.unmodifiable({...state.ids, ...ordered.sublist(lo, hi + 1)}),
+      anchor: anchor,
+    );
   }
 
-  void selectAll(Iterable<String> ids) => state = LibrarySelection(ids: Set.unmodifiable(ids.toSet()));
+  void selectAll(Iterable<String> ids) =>
+      state = LibrarySelection(ids: Set.unmodifiable(ids.toSet()));
 
   void clear() => state = const LibrarySelection();
 }
 
-final selectionProvider = NotifierProvider<SelectionNotifier, LibrarySelection>(SelectionNotifier.new);
+final selectionProvider = NotifierProvider<SelectionNotifier, LibrarySelection>(
+  SelectionNotifier.new,
+);

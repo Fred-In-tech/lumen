@@ -9,7 +9,9 @@ import 'package:lumen/data/repositories.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   Logger.root.level = Level.INFO;
-  Logger.root.onRecord.listen((r) => debugPrint('${r.level.name} ${r.loggerName}: ${r.message}'));
+  Logger.root.onRecord.listen(
+    (r) => debugPrint('${r.level.name} ${r.loggerName}: ${r.message}'),
+  );
   final repos = await openRepositories();
   runApp(
     ProviderScope(
