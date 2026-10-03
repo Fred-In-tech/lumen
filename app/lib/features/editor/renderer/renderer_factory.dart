@@ -1,8 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:lumen/features/editor/renderer/cpu_photo_renderer.dart';
+import 'package:lumen/app/providers.dart';
+import 'package:lumen/features/editor/renderer/gpu_photo_renderer.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 
-/// Builds the renderer for an editor session. The GPU renderer is installed
-/// here once available; tests override with a CPU or fake renderer.
-final photoRendererFactoryProvider = Provider<PhotoRenderer Function()>((ref) => CpuPhotoRenderer.new);
+/// Builds the renderer for an editor session (GPU with CPU fallback).
+/// Tests override this with a CPU or fake renderer.
+final photoRendererFactoryProvider = Provider<PhotoRenderer Function(String assetId)>((ref) {
+  final mobile = ref.watch(platformInfoProvider).isMobile;
+  return (assetId) => GpuPhotoRenderer(assetId: assetId, previewLongEdge: mobile ? 2048 : 2560);
+});

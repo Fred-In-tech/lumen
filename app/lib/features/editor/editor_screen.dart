@@ -49,7 +49,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> with WidgetsBinding
     final old = _session;
     final session = EditorSession(
       assetId: _assetId,
-      renderer: ref.read(photoRendererFactoryProvider)(),
+      renderer: ref.read(photoRendererFactoryProvider)(_assetId),
       repo: ref.read(catalogRepositoryProvider),
     );
     setState(() {

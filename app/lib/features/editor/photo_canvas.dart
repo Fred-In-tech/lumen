@@ -47,7 +47,8 @@ class _PhotoCanvasState extends State<PhotoCanvas> {
     super.dispose();
   }
 
-  Widget _image(ui.Image img) => RawImage(image: img, fit: BoxFit.contain, filterQuality: FilterQuality.medium);
+  // RawImage disposes the image it is given, so it always gets its own clone.
+  Widget _image(ui.Image img) => RawImage(image: img.clone(), fit: BoxFit.contain, filterQuality: FilterQuality.medium);
 
   Widget _chip(String text) => Container(
         padding: const EdgeInsets.symmetric(horizontal: Sp.s2, vertical: 3),

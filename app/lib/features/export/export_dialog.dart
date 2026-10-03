@@ -6,6 +6,7 @@ import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/editor/renderer/gpu_photo_renderer.dart';
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/export/export_service.dart';
 import 'package:lumen/features/export/export_targets.dart';
@@ -17,7 +18,7 @@ import 'package:lumen/widgets/toast.dart';
 final _log = Logger('Export');
 
 /// Full-res renderer used for export (GPU when installed, CPU reference otherwise).
-final fullResRendererProvider = Provider<FullResRenderer>((ref) => cpuFullResRender);
+final fullResRendererProvider = Provider<FullResRenderer>((ref) => gpuFullResRender);
 
 final exportServiceProvider = Provider<ExportService>(
   (ref) => ExportService(ref.watch(catalogRepositoryProvider), renderer: ref.watch(fullResRendererProvider)),
