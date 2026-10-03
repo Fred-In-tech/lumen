@@ -171,7 +171,10 @@ void main() {
     expect(container.read(libraryProvider).value!.length, 5);
 
     // Open the editor.
-    await tester.tap(find.bySemanticsLabel(RegExp('dark_interior.jpg')).first);
+    final tile = find.bySemanticsLabel(RegExp('dark_interior.jpg')).first;
+    await tester.ensureVisible(tile);
+    await tester.pump();
+    await tester.tap(tile);
     await _pumpUntil(
       tester,
       () => container.read(editorProvider(dark.assetId)).value != null,
@@ -190,6 +193,8 @@ void main() {
           w is TextField &&
           (w.decoration?.hintText ?? '').startsWith('Describe an edit'),
     );
+    await tester.ensureVisible(field);
+    await tester.pump();
     await tester.tap(field);
     await tester.enterText(field, 'warmer and brighten the shadows a bit');
     await tester.testTextInput.receiveAction(TextInputAction.send);
