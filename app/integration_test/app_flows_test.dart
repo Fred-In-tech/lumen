@@ -22,6 +22,10 @@ import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/import_sources.dart';
 import 'package:lumen_core/lumen_core.dart';
 
+import 'dart:convert' show base64Decode;
+
+import 'format_fixtures.dart';
+
 /// Picker replacement that returns synthetic JPEG/PNG photos.
 class FakeImportSource implements ImportSource {
   FakeImportSource(this.files);
@@ -102,6 +106,8 @@ void main() {
       ImportFile(name: 'dark_interior.jpg', bytes: _jpeg(SceneId.darkInterior)),
       ImportFile(name: 'tungsten.jpg', bytes: _jpeg(SceneId.tungstenCast)),
       ImportFile(name: 'hazy.png', bytes: _png(SceneId.hazyLandscape)),
+      ImportFile(name: 'gradient.heic', bytes: base64Decode(kHeicFixtureB64)),
+      ImportFile(name: 'gradient.webp', bytes: base64Decode(kWebpFixtureB64)),
     ];
     await tester.pumpWidget(
       ProviderScope(
@@ -129,7 +135,7 @@ void main() {
     );
     await _pumpUntil(
       tester,
-      () => (container.read(libraryProvider).value?.length ?? 0) == 3,
+      () => (container.read(libraryProvider).value?.length ?? 0) == 5,
     );
     await _pumpUntil(
       tester,
@@ -143,6 +149,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await _screenshot(tester, '02_library_edited');
     final entries = container.read(libraryProvider).value!;
+    expect(
+      entries.map((e) => e.format).toSet(),
+      containsAll(['jpeg', 'png', 'heic', 'webp']),
+    );
     final dark = entries.firstWhere((e) => e.fileName == 'dark_interior.jpg');
     final darkDoc = await tester.runAsync(() => catalog.loadEdit(dark.assetId));
     expect(
@@ -158,7 +168,7 @@ void main() {
       () => Future<void>.delayed(const Duration(seconds: 1)),
     );
     await tester.pump();
-    expect(container.read(libraryProvider).value!.length, 3);
+    expect(container.read(libraryProvider).value!.length, 5);
 
     // Open the editor.
     await tester.tap(find.bySemanticsLabel(RegExp('dark_interior.jpg')).first);

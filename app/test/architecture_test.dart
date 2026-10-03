@@ -80,8 +80,9 @@ void main() {
       for (final f in Directory(
         r,
       ).listSync(recursive: true).whereType<File>()) {
-        if (RegExp(r'sk-ant-[A-Za-z0-9]').hasMatch(f.readAsStringSync()))
+        if (RegExp(r'sk-ant-[A-Za-z0-9]').hasMatch(f.readAsStringSync())) {
           offenders.add(f.path);
+        }
       }
     }
     expect(offenders, isEmpty);

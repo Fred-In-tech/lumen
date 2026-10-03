@@ -5,7 +5,10 @@ import 'package:lumen/data/memory_catalog_repository.dart';
 import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/import_service.dart';
 
+import 'dart:convert';
+
 import '../support/fixtures.dart';
+import '../support/format_fixtures.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -69,5 +72,17 @@ void main() {
     expect(a.height, 600);
     expect(a.originalPath, endsWith('.jpg'));
     expect(await repo.readThumb(a.assetId), isNotNull);
+  });
+
+  test('imports WebP (engine codec)', () async {
+    final repo = MemoryCatalogRepository();
+    final r = await ImportService(repo).importOne(
+      ImportFile(name: 'g.webp', bytes: base64Decode(kWebpFixtureB64)),
+    );
+    expect(r, isA<Imported>());
+    final e = (r as Imported).entry;
+    expect(e.format, 'webp');
+    expect(e.width, 320);
+    expect(e.height, 214);
   });
 }
