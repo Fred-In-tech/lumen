@@ -1,4 +1,5 @@
-import 'dart:isolate';
+import 'package:lumen/platform/background.dart';
+
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -16,7 +17,7 @@ Future<Uint8List> encodeExport(
   int quality = 90,
   Uint8List? sourceJpeg,
   bool keepMetadata = true,
-}) => Isolate.run(() {
+}) => runInBackground(() {
   final image = img.Image.fromBytes(
     width: pixels.width,
     height: pixels.height,

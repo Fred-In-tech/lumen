@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:isolate';
+
+import 'package:lumen/platform/background.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -111,7 +112,9 @@ Future<bool> autoEditStoredAsset({
     final thumbImg = await decodePhoto(original, maxLongEdge: 384);
     final thumbSrc = await rgbaFromImage(thumbImg);
     thumbImg.dispose();
-    final rendered = await Isolate.run(() => renderReference(thumbSrc, next));
+    final rendered = await runInBackground(
+      () => renderReference(thumbSrc, next),
+    );
     final out = await imageFromRgba(rendered);
     final png = await encodePng(out);
     out.dispose();
@@ -214,7 +217,9 @@ Future<void> refreshThumbnail(
     final img = await decodePhoto(original, maxLongEdge: 384);
     final src = await rgbaFromImage(img);
     img.dispose();
-    final rendered = await Isolate.run(() => renderReference(src, settings));
+    final rendered = await runInBackground(
+      () => renderReference(src, settings),
+    );
     final out = await imageFromRgba(rendered);
     final png = await encodePng(out);
     out.dispose();

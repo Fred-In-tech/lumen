@@ -1,5 +1,7 @@
 import 'dart:async';
-import 'dart:isolate';
+
+import 'package:lumen/platform/background.dart';
+
 import 'dart:typed_data';
 
 import 'package:logging/logging.dart';
@@ -68,7 +70,7 @@ class AutoEditService {
   bool get visionAvailable => vision != null;
 
   static Future<ImageStats> computeStats(RgbaBuffer proxy) =>
-      Isolate.run(() => ImageStats.compute(proxy));
+      runInBackground(() => ImageStats.compute(proxy));
 
   Future<AiRunResult> autoEdit(
     AiPhotoContext ctx, {
@@ -206,9 +208,9 @@ class AutoEditService {
 Future<AutoEditOutcome> _autoEditInIsolate(
   AutoEditProvider engine,
   AutoEditInput input,
-) => Isolate.run(() => engine.autoEdit(input));
+) => runInBackground(() => engine.autoEdit(input));
 
 Future<AutoEditOutcome> _instructInIsolate(
   AutoEditProvider engine,
   InstructInput input,
-) => Isolate.run(() => engine.instruct(input));
+) => runInBackground(() => engine.instruct(input));

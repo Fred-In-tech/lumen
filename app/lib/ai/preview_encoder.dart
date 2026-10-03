@@ -1,4 +1,5 @@
-import 'dart:isolate';
+import 'package:lumen/platform/background.dart';
+
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -6,7 +7,7 @@ import 'package:lumen_core/lumen_core.dart';
 
 /// Re-encodes pixels as a JPEG with no metadata (so no EXIF/GPS leaves the device).
 Future<Uint8List> encodeJpegNoMetadata(RgbaBuffer buf, {int quality = 88}) =>
-    Isolate.run(() {
+    runInBackground(() {
       final image = img.Image.fromBytes(
         width: buf.width,
         height: buf.height,

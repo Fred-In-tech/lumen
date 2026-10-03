@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:isolate';
+
+import 'package:lumen/platform/background.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -247,4 +248,4 @@ Future<AiRunResult?> runInstruction(
 Future<AutoEditOutcome> _autoEditIsolated(
   AutoEditProvider engine,
   AutoEditInput input,
-) => Isolate.run(() => engine.autoEdit(input));
+) => runInBackground(() => engine.autoEdit(input));

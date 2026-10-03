@@ -1,4 +1,5 @@
-import 'dart:isolate';
+import 'package:lumen/platform/background.dart';
+
 import 'dart:typed_data';
 
 import 'package:lumen_core/lumen_core.dart';
@@ -53,7 +54,7 @@ Future<RgbaBuffer> cpuFullResRender(
   final decoded = await decodePhoto(original, maxLongEdge: longEdge);
   final src = await rgbaFromImage(decoded);
   decoded.dispose();
-  return Isolate.run(() => renderReference(src, settings));
+  return runInBackground(() => renderReference(src, settings));
 }
 
 /// Renders and encodes catalog photos for export.

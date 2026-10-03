@@ -1,5 +1,7 @@
 import 'dart:async';
-import 'dart:isolate';
+
+import 'package:lumen/platform/background.dart';
+
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -73,7 +75,7 @@ class CpuPhotoRenderer implements PhotoRenderer {
     _pending = null;
     _busy = true;
     try {
-      final out = await Isolate.run(() => renderReference(src, settings));
+      final out = await runInBackground(() => renderReference(src, settings));
       if (_disposed) return;
       final img = await imageFromRgba(out);
       final old = _output.value;
@@ -95,7 +97,7 @@ class CpuPhotoRenderer implements PhotoRenderer {
     final small = await resizeImage(before, longEdge);
     final buf = await rgbaFromImage(small);
     small.dispose();
-    final out = await Isolate.run(() => renderReference(buf, settings));
+    final out = await runInBackground(() => renderReference(buf, settings));
     final img = await imageFromRgba(out);
     try {
       return await encodePng(img);
