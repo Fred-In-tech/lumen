@@ -66,6 +66,8 @@ dev_dependencies:
   fake_async: ^1.3.3
   integration_test:
     sdk: flutter
+  lumen_server:
+    path: ../server
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
