@@ -1,34 +1,50 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:shelf/shelf.dart';
+import 'package:http/http.dart' as http;
+import 'package:logging/logging.dart';
+import 'package:lumen_server/lumen_server.dart';
 import 'package:shelf/shelf_io.dart';
-import 'package:shelf_router/shelf_router.dart';
 
-// Configure routes.
-final _router = Router()
-  ..get('/', _rootHandler)
-  ..get('/echo/<message>', _echoHandler);
+/// GatewayConfig.fromEnv → buildHandler → serve(PORT).
+Future<void> main(List<String> args) async {
+  Logger.root.level = Level.INFO;
+  Logger.root.onRecord.listen((r) {
+    final error = r.error == null ? '' : ' ${r.error}';
+    stdout.writeln(
+      '${r.time.toIso8601String()} ${r.level.name} '
+      '${r.loggerName}: ${r.message}$error',
+    );
+  });
+  final log = Logger('lumen.server');
 
-Response _rootHandler(Request req) {
-  return Response.ok('Hello, World!\n');
-}
+  final GatewayConfig config;
+  try {
+    config = GatewayConfig.fromEnv(Platform.environment);
+  } on ConfigException catch (e) {
+    log.severe(e.message);
+    exitCode = 64;
+    return;
+  }
 
-Response _echoHandler(Request request) {
-  final message = request.params['message'];
-  return Response.ok('$message\n');
-}
+  final httpClient = http.Client();
+  final handler = buildHandler(
+    config: config,
+    claude: createClaudeClient(config, httpClient),
+  );
+  final server = await serve(handler, InternetAddress.anyIPv4, config.port);
+  log.info('Listening on port ${server.port} with $config');
+  if (!config.visionAvailable) {
+    log.warning('ANTHROPIC_API_KEY not set: vision routes answer 503');
+  }
 
-void main(List<String> args) async {
-  // Use any available host or container IP (usually `0.0.0.0`).
-  final ip = InternetAddress.anyIPv4;
+  Future<void> shutdown(ProcessSignal signal) async {
+    log.info('Received $signal, shutting down');
+    await server.close();
+    httpClient.close();
+    exit(0);
+  }
 
-  // Configure a pipeline that logs requests.
-  final handler = Pipeline()
-      .addMiddleware(logRequests())
-      .addHandler(_router.call);
-
-  // For running in containers, we respect the PORT environment variable.
-  final port = int.parse(Platform.environment['PORT'] ?? '8080');
-  final server = await serve(handler, ip, port);
-  print('Server listening on port ${server.port}');
+  ProcessSignal.sigint.watch().listen(shutdown);
+  if (!Platform.isWindows) ProcessSignal.sigterm.watch().listen(shutdown);
 }

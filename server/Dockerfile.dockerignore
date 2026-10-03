@@ -1,0 +1,13 @@
+# Used by BuildKit for `docker build -f server/Dockerfile .` (root context).
+**/.dart_tool/
+**/build/
+**/.packages
+.git/
+.github/
+.idea/
+.claude/
+app/
+docs/
+**/coverage/
+**/*.env
+**/.env*
