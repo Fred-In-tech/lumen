@@ -7,14 +7,18 @@ import 'engine_harness.dart';
 
 /// Params that only act when another control is active: param prefix → enabling values.
 Map<ParamId, double> _enablers(ParamId id) {
-  if (id.startsWith('curve.split.'))
+  if (id.startsWith('curve.split.')) {
     return {P.curveDarks: 60, P.curveLights: -60};
-  if (id.startsWith('grain.') && id != P.grainAmount)
+  }
+  if (id.startsWith('grain.') && id != P.grainAmount) {
     return {P.grainAmount: 60};
-  if (id.startsWith('sharpen.') && id != P.sharpenAmount)
+  }
+  if (id.startsWith('sharpen.') && id != P.sharpenAmount) {
     return {P.sharpenAmount: 120};
-  if (id.startsWith('vignette.') && id != P.vignetteAmount)
+  }
+  if (id.startsWith('vignette.') && id != P.vignetteAmount) {
     return {P.vignetteAmount: -70};
+  }
   if (id == P.noiseColor || id == P.noiseLuminance) return const {};
   final grade = RegExp(r'^grade\.(shadows|midtones|highlights|global)\.hue$')
       .firstMatch(id);
@@ -60,8 +64,9 @@ void main() {
     final unchanged = <String>[];
     for (final spec in ParamRegistry.all) {
       var base = DevelopSettings.defaults.withValues(_enablers(spec.id));
-      if (spec.group == ParamGroup.bw)
+      if (spec.group == ParamGroup.bw) {
         base = base.copyWith(treatment: Treatment.bw);
+      }
       final changed = base.withValue(spec.id, _testValue(spec));
       final a = await gpuRender(scene, base);
       final b = await gpuRender(scene, changed);

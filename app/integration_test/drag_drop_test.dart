@@ -2,7 +2,6 @@
 // (entered → updated → performOperation_macos) the way AppKit delivers them,
 // for a single file and for a folder, and checks they land in the library.
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
@@ -79,8 +78,9 @@ void main() {
         );
         await tester.pump(const Duration(milliseconds: 50));
         if ((container.read(libraryProvider).value?.length ?? 0) >=
-            expectedCount)
+            expectedCount) {
           break;
+        }
       }
     }
 
