@@ -34,8 +34,18 @@ double mapTextureGain(double v) {
 
 double mapEvenTone(double v) => kEvenToneMax * (v / 100).clamp(0.0, 1.0);
 
-/// Linear 0–100 → 0..1 (under-eye, shine, eyes, teeth, blemish classes).
+/// Linear 0–100 → 0..1 (under-eye, shine, eyes, teeth, blemish classes,
+/// wrinkle zones, lips, blush).
 double mapLinear(double v) => (v / 100).clamp(0.0, 1.0);
+
+/// Clipped shine cores are filled from Shine [kShineFillStart] on, fully
+/// by [kShineFillStart] + [kShineFillRamp] (§3.8: "above 50 %").
+const double kShineFillStart = 0.5;
+const double kShineFillRamp = 0.4;
+
+/// Shine (0..1, already mapped) → core fill weight.
+double mapShineFill(double shine) =>
+    ((shine - kShineFillStart) / kShineFillRamp).clamp(0.0, 1.0);
 
 /// Starting values of an Auto Retouch preset (research 06: eye whites and
 /// iris 80/80, lower-lid protection 100). Step 10 scales these by the

@@ -90,9 +90,12 @@ void main() {
       expect(at(RetouchChannel.lips, 0.0, 0.9), lessThan(0.05));
     });
 
-    test('blush and wrinkle maps are zero until step 8', () {
-      expect(at(RetouchChannel.blush, -0.62, 0.52), 0);
-      expect(at(RetouchChannel.wrinkle, 0.0, -0.7), 0);
+    test('blush sits on the cheek apples only', () {
+      expect(at(RetouchChannel.blush, -0.62, 0.52), greaterThan(0.8));
+      expect(at(RetouchChannel.blush, 0.62, 0.52), greaterThan(0.8));
+      expect(at(RetouchChannel.blush, 0.0, -0.7), 0);
+      expect(at(RetouchChannel.blush, 0.0, 1.6), 0);
+      expect(at(RetouchChannel.blush, -0.5, 0.0), 0, reason: 'eye');
     });
 
     test('the teeth cap is the sclera brightness', () {

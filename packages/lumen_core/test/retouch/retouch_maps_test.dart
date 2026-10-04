@@ -48,16 +48,27 @@ void main() {
       }
     });
 
-    test('face ids are slot + 1 and the spare channel stays 0', () {
-      final ids = <int>{};
+    test('face ids are slot + 1; zone codes only where a wrinkle is', () {
+      final ids = <int>{}, zones = <int>{};
       final w = maps.width;
       for (var y = 0; y < maps.height; y++) {
         for (var x = 0; x < w; x++) {
           final o = (y * 2 * w + w + x) * 4;
           ids.add(maps.regionB[o]);
-          expect(maps.regionB[o + 2], 0);
+          final zone = maps.regionB[o + 2];
+          zones.add(zone);
+          if (zone != 0) {
+            expect(maps.regionB[(y * 2 * w + x) * 4 + 2], greaterThan(0));
+          }
+          expect(zone, lessThanOrEqualTo(kZoneCodeCrowsFeet));
         }
       }
+      expect(zones.any((z) => z >= 1 && z < kZoneCodeSmile), isTrue);
+      expect(
+        zones.any((z) => z >= kZoneCodeSmile && z < kZoneCodeCrowsFeet),
+        isTrue,
+      );
+      expect(zones, contains(kZoneCodeCrowsFeet));
       expect(ids, {0, 1, 2});
       expect(maps.faces.map((f) => f.slot), [0, 1]);
       expect(maps.faces.map((f) => f.faceId), ['a', 'b']);
@@ -72,13 +83,23 @@ void main() {
       }
     });
 
-    test('packInfo carries the size and the teeth caps', () {
+    test('packInfo carries the size, teeth caps and makeup targets', () {
       final info = maps.packInfo();
-      expect(info, hasLength(4 + 4 * kMaxRetouchFaces));
+      expect(info, hasLength(kRetouchInfoFloats));
+      expect(kRetouchInfoFloats, 68);
       expect(info.sublist(0, 3), [576, 420, 2]);
+      final a = maps.faceInSlot(0)!;
       expect(info[4], closeTo(_a.scleraL, 0.02));
       expect(info[5], 1);
-      expect(info[4 + 4 * 2 + 1], 0, reason: 'slot 2 has no maps');
+      expect(info[6], closeTo(a.iod, 1e-3));
+      expect(info[7], closeTo(a.lipGlossL, 1e-6));
+      expect(info[8], closeTo(a.lipChromaGain, 1e-6));
+      expect(info[9], closeTo(a.lipShiftL, 1e-6));
+      expect(info[10], closeTo(a.blushA, 1e-6));
+      expect(info[11], closeTo(a.blushB, 1e-6));
+      expect(info[12 + 1], 1, reason: 'slot 1 has maps');
+      expect(info[4 + 8 * 2 + 1], 0, reason: 'slot 2 has no maps');
+      expect(info[4 + 8 * 2 + 4], 1, reason: 'neutral lip gain');
     });
 
     test('no faces gives 1×1 neutral maps and a no-op apply', () {

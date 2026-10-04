@@ -15,13 +15,17 @@
 /// | `uBh` right tile | | ΔL high | Δa high | Δb high |
 /// | `uRegionA` left tile | 2W×H | skin | under-eye | lash |
 /// | `uRegionA` right tile | | mouth | sclera | iris |
-/// | `uRegionB` left tile | 2W×H | lips | blush | wrinkle |
-/// | `uRegionB` right tile | | face id* | spot code* | 0 (spare) |
+/// | `uRegionB` left tile | 2W×H | lips | blush | wrinkle ΔL |
+/// | `uRegionB` right tile | | face id* | spot code* | wrinkle zone* |
 ///
 /// `*` = sample the nearest texel (no interpolation): face id is
-/// `slot + 1` (0 = none), spot code see [encodeSpotCode]. Heal deltas
-/// are signed (see [encodeSigned]); low heals the `B1` band, high the fine
-/// band (research 07 §3.3).
+/// `slot + 1` (0 = none), spot code see [encodeSpotCode] (kind 3 = clipped
+/// shine core), wrinkle zone see `wrinkle_zones.dart`. Heal deltas are
+/// signed (see [encodeSigned]); low heals the `B1` band, high the fine
+/// band (research 07 §3.3). Wrinkle ΔL is unsigned (`decodeWrinkle`):
+/// the L lift that fills every detected wrinkle; `B1`–`B3` are built from
+/// the wrinkle-filled image (§3.4). `B1`–`B3` are dithered on write
+/// (seeded, deterministic).
 library;
 
 import 'dart:typed_data';
@@ -31,6 +35,9 @@ import 'map_rect.dart';
 
 /// Faces with their own uniform row (more faces are not retouched).
 const int kMaxRetouchFaces = 8;
+
+/// Floats of [RetouchMaps.packInfo]: `uMapInfo` + 2 vec4 per face.
+const int kRetouchInfoFloats = 4 + 8 * kMaxRetouchFaces;
 
 /// Signed encoding ranges of the heal deltas (OkLab L, a, b).
 const double kHealRangeL = 0.25;
@@ -62,7 +69,8 @@ enum RetouchChannel {
   blush(1, 0, 1),
   wrinkle(1, 0, 2),
   faceId(1, 1, 0),
-  spotCode(1, 1, 1);
+  spotCode(1, 1, 1),
+  wrinkleZone(1, 1, 2);
 
   const RetouchChannel(this.texture, this.tile, this.channel);
 
@@ -85,6 +93,11 @@ class RetouchFaceInfo {
     required this.iod,
     required this.teethCapL,
     required this.skinMeanL,
+    this.lipGlossL = 1,
+    this.lipChromaGain = 1,
+    this.lipShiftL = 0,
+    this.blushA = 0,
+    this.blushB = 0,
   });
 
   final int slot;
@@ -99,6 +112,17 @@ class RetouchFaceInfo {
   /// Sclera P90 OkLab L (teeth cap, §3.6).
   final double teethCapL;
   final double skinMeanL;
+
+  /// Lip P95 L: brighter lip pixels are gloss and keep their colour.
+  final double lipGlossL;
+
+  /// Lip chroma scale and L offset at Lip colour 100 (§3.9).
+  final double lipChromaGain;
+  final double lipShiftL;
+
+  /// Blush target OkLab a, b.
+  final double blushA;
+  final double blushB;
 }
 
 /// Output of `computeRetouchMaps`: plain data, safe to send between
@@ -223,19 +247,29 @@ class RetouchMaps {
   /// Clamp-to-edge texel index (no `num.clamp`: hot path).
   static int _ci(int i, int size) => i < 0 ? 0 : (i >= size ? size - 1 : i);
 
-  /// Analysis uniforms for `retouch.frag` (changes only when the maps are
-  /// rebuilt): `uMapInfo` = (W, H, face count, 0), then per slot
-  /// `uFaceInfo[k]` = (teethCapL, has maps 0/1, IOD in map px, 0).
+  /// Analysis uniforms for `retouch.frag` (change only when the maps are
+  /// rebuilt), [kRetouchInfoFloats] floats:
+  ///
+  /// | floats | vec4 | contents |
+  /// |---|---|---|
+  /// | 0–3 | `uMapInfo` | W, H, face count, 0 |
+  /// | 4 + 8k + 0–3 | `uFaceInfo[2k]` | teethCapL, has maps (0/1), IOD (map px), lipGlossL |
+  /// | 4 + 8k + 4–7 | `uFaceInfo[2k+1]` | lipChromaGain, lipShiftL, blushA, blushB |
   Float32List packInfo() {
-    final out = Float32List(4 + 4 * kMaxRetouchFaces);
+    final out = Float32List(kRetouchInfoFloats);
     out[0] = width.toDouble();
     out[1] = height.toDouble();
     out[2] = faces.length.toDouble();
     for (var k = 0; k < kMaxRetouchFaces; k++) {
-      final f = faceInSlot(k);
-      out[4 + 4 * k] = f?.teethCapL ?? 1;
-      out[5 + 4 * k] = f == null ? 0 : 1;
-      out[6 + 4 * k] = f?.iod ?? 0;
+      final f = faceInSlot(k), o = 4 + 8 * k;
+      out[o] = f?.teethCapL ?? 1;
+      out[o + 1] = f == null ? 0 : 1;
+      out[o + 2] = f?.iod ?? 0;
+      out[o + 3] = f?.lipGlossL ?? 1;
+      out[o + 4] = f?.lipChromaGain ?? 1;
+      out[o + 5] = f?.lipShiftL ?? 0;
+      out[o + 6] = f?.blushA ?? 0;
+      out[o + 7] = f?.blushB ?? 0;
     }
     return out;
   }

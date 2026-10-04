@@ -14,6 +14,9 @@ import 'face_parsing_input.dart';
 import 'face_regions.dart';
 import 'filters.dart';
 import 'lab_planes.dart';
+import 'shine_core.dart';
+import 'spot_anchors.dart';
+import 'wrinkle_map.dart';
 
 /// `B2` guided filter: r = 0.06 IOD, ε = 4e-4, applied to the healed B1
 /// band with its own OkLab L as the guide.
@@ -32,6 +35,7 @@ class FaceMapPlanes {
     required this.b2,
     required this.b3,
     required this.blemishes,
+    required this.wrinkles,
   });
 
   final FaceFrame frame;
@@ -41,6 +45,7 @@ class FaceMapPlanes {
   final LabPlanes b2;
   final LabPlanes b3;
   final List<BlemishCandidate> blemishes;
+  final WrinklePlanes wrinkles;
 }
 
 /// Computes the per-face planes on the map grid [grid] (the `Rres` image).
@@ -58,24 +63,54 @@ FaceMapPlanes computeFaceMaps(
     gridW: grid.width,
     gridH: grid.height,
     parsing: parsing,
+    clip: clipPlane(grid, rect),
   );
-  final spots = detectBlemishes(
+  final detected = detectBlemishes(
     f,
     lab,
     regions,
     gridW: grid.width,
     gridH: grid.height,
   );
+  final resolved = resolveSpotAnchors(
+    f,
+    detected,
+    overrides,
+    gridW: grid.width,
+    gridH: grid.height,
+  );
+  final spots = [...detected, ...resolved.manual];
   final heal = healBlemishes(
     f,
     lab,
     spots,
     gridW: grid.width,
     gridH: grid.height,
-    overrides: overrides,
+    overrides: resolved.overrides,
+    core: regions.shineCore,
   );
-  final healed = heal.healed;
-  final b1 = lab.mapChannels((c) => gaussianBlur(c, w, h, kB1SigmaIod * f.iod));
+  // Wrinkles are found on the spot-healed image and folded into every
+  // band: B1 = G(σ1) ∗ (L + ΔW), so the pass removes `wEff·ΔW` without
+  // smoothing ever counting a wrinkle twice (§3.4, retouch_kernel.dart).
+  final wrinkles = computeWrinkles(
+    f,
+    heal.healed.l,
+    regions.skin,
+    exclude: regions.shineCore,
+  );
+  final healed = LabPlanes(
+    rect,
+    addPlanes(heal.healed.l, wrinkles.delta),
+    heal.healed.a,
+    heal.healed.b,
+  );
+  final sigma1 = kB1SigmaIod * f.iod;
+  final b1 = LabPlanes(
+    rect,
+    gaussianBlur(addPlanes(lab.l, wrinkles.delta), w, h, sigma1),
+    gaussianBlur(lab.a, w, h, sigma1),
+    gaussianBlur(lab.b, w, h, sigma1),
+  );
   // B2 filters the healed *B1 band* (guide = its L), not the source: a
   // guided filter returns a·I + b, so filtering the source would leak a
   // fraction of the pores into the base and let smoothing amplify them.
@@ -102,6 +137,7 @@ FaceMapPlanes computeFaceMaps(
     b2: LabPlanes(rect, g[0], g[1], g[2]),
     b3: _skinReference(healed, regions.skin, f.iod),
     blemishes: spots,
+    wrinkles: wrinkles,
   );
 }
 

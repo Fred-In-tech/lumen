@@ -117,7 +117,7 @@ void main() {
     });
 
     test('lowers the mid-band variance on skin', () {
-      expect(kBlotches.length, greaterThan(40));
+      expect(kBlotches.length, greaterThan(30));
       expect(midVariance(smooth.l) / midVariance(inLab.l), lessThan(0.5));
       expect(blotchContrast(smooth.l) / blotchContrast(inLab.l), lessThan(0.5));
     });

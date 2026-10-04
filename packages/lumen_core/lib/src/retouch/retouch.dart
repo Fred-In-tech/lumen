@@ -12,3 +12,11 @@ export 'retouch_maps.dart';
 export 'retouch_maps_builder.dart';
 export 'retouch_uniforms.dart';
 export 'slider_mapping.dart';
+export 'wrinkle_map.dart' show kWrinkleRangeL, encodeWrinkle, decodeWrinkle;
+export 'wrinkle_zones.dart'
+    show
+        kZoneCodeForehead,
+        kZoneCodeSmile,
+        kZoneCodeCrowsFeet,
+        kZoneBlendSteps,
+        wrinkleZoneWeight;

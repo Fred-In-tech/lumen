@@ -49,10 +49,12 @@ Future<RgbaBuffer> gpuRetouch(
   }
 }
 
-/// A portrait with one face (veins on, for Red veins) plus its maps.
+/// A portrait with one face (veins on, for Red veins; [clippedShine] adds
+/// a clipped specular core for Shine > 50) plus its maps.
 ({SynthPortrait p, RetouchMaps maps}) onePortrait({
   int size = 384,
   int? mapLongEdge,
+  bool clippedShine = false,
 }) {
   final p = renderSynthPortrait(size, size, [
     SynthFace(
@@ -61,6 +63,7 @@ Future<RgbaBuffer> gpuRetouch(
       cy: size * 0.39,
       iod: size * 0.27,
       veins: true,
+      clippedShine: clippedShine,
     ),
   ]);
   return (

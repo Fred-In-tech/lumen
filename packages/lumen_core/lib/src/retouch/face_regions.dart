@@ -9,9 +9,11 @@ import 'face_mesh.dart';
 import 'face_parsing_input.dart';
 import 'filters.dart';
 import 'lab_planes.dart';
+import 'makeup.dart';
 import 'map_rect.dart';
 import 'polygon_raster.dart';
 import 'region_parts.dart';
+import 'shine_core.dart';
 import 'skin_model.dart';
 
 // Region constants, in IOD units (research 07 §1.4, §2.2, §2.3).
@@ -43,10 +45,11 @@ class FaceRegionPlanes {
     required this.iris,
     required this.lips,
     required this.blush,
-    required this.wrinkle,
     required this.blemishExclusion,
     required this.skinModel,
     required this.teethCapL,
+    required this.makeup,
+    this.shineCore,
   });
 
   final MapRect rect;
@@ -60,8 +63,9 @@ class FaceRegionPlanes {
   final Float32List sclera;
   final Float32List iris;
   final Float32List lips;
+
+  /// Oriented cheek-apple Gaussians × skin (§3.9).
   final Float32List blush;
-  final Float32List wrinkle;
 
   /// 1 within 0.08 IOD of the eyes, brows, lips and nostrils (§3.3 step 3).
   final Float32List blemishExclusion;
@@ -69,16 +73,25 @@ class FaceRegionPlanes {
 
   /// Sclera P90 OkLab L: teeth never get brighter (§3.6).
   final double teethCapL;
+
+  /// Lip and blush targets of this face (§3.9).
+  final MakeupTargets makeup;
+
+  /// Soft hole over clipped specular cores on skin (§3.8), or null. The
+  /// core is part of [skin] even where the colour model rejected it.
+  final Float32List? shineCore;
 }
 
 /// Builds every region plane for [f] from the OkLab pixels [lab] (which
-/// must cover `f.rect`). [parsing] are optional multiclass planes.
+/// must cover `f.rect`). [parsing] are optional multiclass planes; [clip]
+/// is the soft clipped-highlight mask over `f.rect` (see `shine_core.dart`).
 FaceRegionPlanes buildFaceRegions(
   FaceFrame f,
   LabPlanes lab, {
   required int gridW,
   required int gridH,
   FaceParsingPlanes? parsing,
+  Float32List? clip,
 }) {
   final rect = f.rect, w = rect.w, h = rect.h, iod = f.iod;
   int px(double units) => math.max(1, (units * iod).round());
@@ -118,10 +131,17 @@ FaceRegionPlanes buildFaceRegions(
   final raw = parsing == null
       ? productOf([rasterizePolygon(_extendedOval(f), rect), pColor])
       : _parsingSkin(f, lab, parsing, pColor, gridW, gridH);
-  final skin = subtractMask(feather(raw, kRegionFeatherIod), protect);
+  var skin = subtractMask(feather(raw, kRegionFeatherIod), protect);
+  final core = clip == null ? null : shineCoreHole(f, clip, skin);
+  var exclusion = dilate(features, w, h, px(kBlemishExclusionIod));
+  if (core != null) {
+    skin = maxOf([skin, subtractMask(core, protect)]);
+    exclusion = maxOf([exclusion, dilate(core, w, h, px(kCoreGrowIod))]);
+  }
 
   final eye = eyeMaps(f, lab);
   final mouth = mouthMaps(f, lab, model.meanA);
+  final lips = pasted(rect, mouth.lips, mouth.sub);
   return FaceRegionPlanes(
     rect: rect,
     skin: skin,
@@ -130,14 +150,13 @@ FaceRegionPlanes buildFaceRegions(
     mouth: pasted(rect, mouth.mouth, mouth.sub),
     sclera: pasted(rect, eye.sclera, eye.sub),
     iris: pasted(rect, eye.iris, eye.sub),
-    lips: pasted(rect, mouth.lips, mouth.sub),
-    // TODO(retouch step 8): blush ellipse at 50/280 along 205→123 × skin.
-    blush: Float32List(rect.area),
-    // TODO(retouch step 8): Frangi ridge map × wrinkle zones (§3.4).
-    wrinkle: Float32List(rect.area),
-    blemishExclusion: dilate(features, w, h, px(kBlemishExclusionIod)),
+    lips: lips,
+    blush: blushMap(f, skin),
+    blemishExclusion: exclusion,
     skinModel: model,
     teethCapL: eye.capL ?? kDefaultTeethCapL,
+    makeup: makeupTargets(lab, lips, model),
+    shineCore: core,
   );
 }
 

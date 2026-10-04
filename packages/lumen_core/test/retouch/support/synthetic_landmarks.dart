@@ -129,13 +129,16 @@ Map<int, LocalPt> synthLandmarksLocal({double mouthOpen = 1}) {
   put(9, 0, -0.42);
   put(8, 0, -0.22);
   mirrored([71], [301], [(x: -0.92, y: -0.50)]);
-  mirrored([113, 124, 156, 139, 34, 143], [342, 353, 383, 368, 264, 372], [
-    (x: -0.82, y: -0.05),
-    (x: -0.86, y: -0.12),
-    (x: -0.80, y: -0.15),
-    (x: -0.92, y: -0.05),
-    (x: -0.92, y: 0.08),
-    (x: -0.86, y: 0.12),
+  mirrored(FaceMesh.rightCrowsFeet, FaceMesh.leftCrowsFeet, [
+    (x: -0.78, y: 0.0), // 130
+    (x: -0.82, y: -0.05), // 113
+    (x: -0.86, y: -0.12), // 124
+    (x: -0.80, y: -0.15), // 156
+    (x: -0.92, y: -0.05), // 139
+    (x: -0.92, y: 0.08), // 34
+    (x: -0.86, y: 0.12), // 143
+    (x: -0.84, y: 0.17), // 111
+    (x: -0.76, y: 0.12), // 31
   ]);
   mirrored(FaceMesh.rightNasolabial, FaceMesh.leftNasolabial, [
     (x: -0.22, y: 0.70),

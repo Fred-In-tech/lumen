@@ -1,18 +1,19 @@
 /// Uniforms of the GPU retouch pass `R` (`app/shaders/retouch.frag`), the
 /// shader twin of `applyRetouch` (`retouch/retouch_kernel.dart`).
 ///
-/// Layout (206 floats = `vec2` + 51 `vec4`, set in declaration order):
+/// Layout (270 floats = `vec2` + 67 `vec4`, set in declaration order):
 ///
 /// | floats | uniform | contents |
 /// |---|---|---|
 /// | 0–1 | `uSize` | pass size (px) |
 /// | 2–5 | `uTile` | pass offset x, y in the source; full source w, h |
 /// | 6–9 | `uMapInfo` | map grid W, H, face count, 0 (`RetouchMaps.packInfo`) |
-/// | 10 + 4k | `uFaceInfo{k}` | teeth cap L, has maps, IOD (map px), **active** |
-/// | 42–45 | `uRetouch` | face count, any active, spot ramp, 0 |
-/// | 46 + 20k | `uFace{5k..5k+4}` | the face row (`RetouchUniforms.pack`) |
+/// | 10 + 8k | `uFaceInfo{2k}` | teeth cap L, **active**, IOD (map px), lip gloss L |
+/// | 14 + 8k | `uFaceInfo{2k+1}` | lip chroma gain, lip L shift, blush a, blush b |
+/// | 74–77 | `uRetouch` | face count, any active, spot ramp, 0 |
+/// | 78 + 24k | `uFace{6k..6k+5}` | the face row (`RetouchUniforms.pack`) |
 ///
-/// "active" (slot has maps and a non-identity row) replaces the spare 4th
+/// "active" (slot has maps and a non-identity row) replaces the "has maps"
 /// float of `packInfo`, so the shader can keep untouched pixels bit-exact
 /// exactly where the CPU kernel returns early.
 library;
@@ -23,15 +24,17 @@ import '../retouch/blemish_types.dart';
 import '../retouch/retouch_maps.dart';
 import '../retouch/retouch_uniforms.dart';
 
-const int kRetouchPassFloatCount = 206;
+const int kRetouchPassFloatCount =
+    6 + kRetouchInfoFloats + kRetouchUniformFloats;
 
 abstract final class RetouchPassIndex {
   static const size = 0;
   static const tile = 2;
   static const mapInfo = 6;
-  static int faceInfo(int slot) => 10 + 4 * slot;
-  static const header = 42;
-  static const rows = 46;
+  static int faceInfo(int slot) => 10 + 8 * slot;
+  static int makeupInfo(int slot) => 14 + 8 * slot;
+  static const header = 6 + kRetouchInfoFloats;
+  static const rows = header + kRetouchHeaderFloats;
 }
 
 abstract final class RetouchPassUniforms {
@@ -73,7 +76,7 @@ abstract final class RetouchPassUniforms {
     for (var k = 0; k < kMaxRetouchFaces; k++) {
       final active = slotActive(maps, u, k);
       any = any || active;
-      f[RetouchPassIndex.faceInfo(k) + 3] = active ? 1 : 0;
+      f[RetouchPassIndex.faceInfo(k) + 1] = active ? 1 : 0;
     }
     final rows = u.pack();
     f

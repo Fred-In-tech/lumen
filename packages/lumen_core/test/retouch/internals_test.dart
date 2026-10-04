@@ -147,4 +147,44 @@ void main() {
     expect(encodeSigned(9, 0.1), 255);
     expect(encodeSigned(-9, 0.1), 1);
   });
+
+  group('band dither', () {
+    test('is deterministic and roughly uniform', () {
+      var sum = 0.0;
+      for (var i = 0; i < 4096; i++) {
+        final d = ditherAt(i % 64, i ~/ 64, kDitherSeedB2, 1);
+        expect(d, inInclusiveRange(0, 0.9999999));
+        expect(ditherAt(i % 64, i ~/ 64, kDitherSeedB2, 1), d);
+        sum += d;
+      }
+      expect(sum / 4096, closeTo(0.5, 0.02));
+      expect(ditherAt(3, 4, 1, 0), isNot(ditherAt(3, 4, 2, 0)));
+    });
+
+    test('is unbiased where plain rounding is off by up to half a code', () {
+      for (final frac in [0.1, 0.3, 0.5, 0.8]) {
+        final k = 100;
+        final v = srgbToLinear((k + frac) / 255);
+        var mean = 0.0;
+        for (var i = 0; i < 4096; i++) {
+          final byte = linearToSrgbByteDithered(
+            v,
+            ditherAt(i % 64, i ~/ 64, 7, 0),
+          );
+          expect(byte, inInclusiveRange(k, k + 1));
+          mean += kSrgbByteToLinear[byte];
+        }
+        mean /= 4096;
+        final plain = kSrgbByteToLinear[linearToSrgbByte(v)];
+        final step = kSrgbByteToLinear[k + 1] - kSrgbByteToLinear[k];
+        expect((mean - v).abs() / step, lessThan(0.03), reason: 'frac $frac');
+        if (frac != 0.5) {
+          expect((plain - v).abs() / step, greaterThan(0.09));
+        }
+      }
+      expect(linearToSrgbByteDithered(-1, 0.5), 0);
+      expect(linearToSrgbByteDithered(2, 0.5), 255);
+      expect(linearToSrgbByteDithered(kSrgbByteToLinear[37], 0.999), 37);
+    });
+  });
 }

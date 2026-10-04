@@ -25,13 +25,18 @@ RetouchMaps _maps({List<int> slots = const [0, 2]}) {
           iod: 30.0 + s,
           teethCapL: 0.8 + s / 100,
           skinMeanL: 0.6,
+          lipGlossL: 0.7 + s / 100,
+          lipChromaGain: 1.3,
+          lipShiftL: -0.04,
+          blushA: 0.08,
+          blushB: 0.03,
         ),
     ],
   );
 }
 
 void main() {
-  test('packs size, tile, map info, face info and rows (206 floats)', () {
+  test('packs size, tile, map info, face info and rows (270 floats)', () {
     const smooth = FaceRetouchParams(smooth: 0.5);
     const u = RetouchUniforms([smooth, FaceRetouchParams.identity, smooth]);
     final f = RetouchPassUniforms.pack(
@@ -44,18 +49,28 @@ void main() {
       fullWidth: 1000,
       fullHeight: 500,
     );
-    expect(kRetouchPassFloatCount, 206);
+    expect(kRetouchPassFloatCount, 270);
+    expect(RetouchPassIndex.header, 74);
+    expect(RetouchPassIndex.rows, 78);
     expect(f.length, kRetouchPassFloatCount);
     expect(f.sublist(0, 6), [64, 32, 128, 96, 1000, 500]);
     expect(f.sublist(6, 9), [4, 2, 2]); // map W, H, face count
-    // uFaceInfo[k] = teethCapL, has maps, IOD, active.
+    // uFaceInfo[2k] = teethCapL, active, IOD, lip gloss L;
+    // uFaceInfo[2k+1] = lip chroma gain, lip L shift, blush a, blush b.
     final i0 = RetouchPassIndex.faceInfo(0);
     expect(f[i0], closeTo(0.8, 1e-6));
-    expect(f.sublist(i0 + 1, i0 + 4), [1, 30, 1]);
+    expect(f.sublist(i0 + 1, i0 + 3), [1, 30]);
+    expect(f[i0 + 3], closeTo(0.7, 1e-6));
+    final m0 = RetouchPassIndex.makeupInfo(0);
+    expect(f[m0], closeTo(1.3, 1e-6));
+    expect(f[m0 + 1], closeTo(-0.04, 1e-6));
+    expect(f[m0 + 2], closeTo(0.08, 1e-6));
+    expect(f[m0 + 3], closeTo(0.03, 1e-6));
     final i1 = RetouchPassIndex.faceInfo(1);
-    expect(f.sublist(i1 + 1, i1 + 4), [0, 0, 0]); // no maps, identity row
+    expect(f.sublist(i1 + 1, i1 + 3), [0, 0]); // no maps, identity row
     final i2 = RetouchPassIndex.faceInfo(2);
-    expect(f[i2 + 3], 1);
+    expect(f[i2 + 1], 1);
+    expect(f[i2 + 2], 32);
     // uRetouch: face count, any active, spot ramp.
     expect(f.sublist(RetouchPassIndex.header, RetouchPassIndex.header + 3), [
       3,
@@ -82,7 +97,7 @@ void main() {
       width: 8,
       height: 8,
     );
-    expect(f[RetouchPassIndex.faceInfo(1) + 3], 0);
+    expect(f[RetouchPassIndex.faceInfo(1) + 1], 0);
     expect(f[RetouchPassIndex.header + 1], 0);
     expect(RetouchPassUniforms.isActive(_maps(slots: [0]), u), isFalse);
     expect(RetouchPassUniforms.isActive(_maps(slots: [1]), u), isTrue);

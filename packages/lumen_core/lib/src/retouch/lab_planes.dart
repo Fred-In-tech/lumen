@@ -115,16 +115,79 @@ class LabPlanes {
 
   /// Writes these planes as sRGB-encoded RGBA (A = 255) into the
   /// `gridW`-wide texture [tex] at this rect, where `owner[y·gridW + x]`
-  /// equals [slot].
-  void writeSrgb(Uint8List tex, int gridW, Int8List owner, int slot) {
+  /// equals [slot]. With a [seed], each channel is dithered between its
+  /// two nearest codes (deterministic per texel, unbiased in linear light)
+  /// so smooth bands do not contour at 8 bits.
+  void writeSrgb(
+    Uint8List tex,
+    int gridW,
+    Int8List owner,
+    int slot, {
+    int? seed,
+  }) {
     final tmp = Float64List(3);
     for (var y = rect.y0; y < rect.y1; y++) {
       var i = (y - rect.y0) * rect.w;
       var g = y * gridW + rect.x0;
       for (var x = rect.x0; x < rect.x1; x++, i++, g++) {
         if (owner[g] != slot) continue;
-        oklabToSrgbBytes(l[i], a[i], b[i], tex, g * 4, tmp);
+        if (seed == null) {
+          oklabToSrgbBytes(l[i], a[i], b[i], tex, g * 4, tmp);
+          continue;
+        }
+        oklabToLinear(l[i], a[i], b[i], tmp, 0);
+        final o = g * 4;
+        tex[o] = linearToSrgbByteDithered(tmp[0], ditherAt(x, y, seed, 0));
+        tex[o + 1] = linearToSrgbByteDithered(tmp[1], ditherAt(x, y, seed, 1));
+        tex[o + 2] = linearToSrgbByteDithered(tmp[2], ditherAt(x, y, seed, 2));
       }
     }
   }
+}
+
+/// Dither seeds of the band textures.
+const int kDitherSeedB1 = 1;
+const int kDitherSeedB2 = 2;
+const int kDitherSeedB3 = 3;
+
+/// Linear value of each 8-bit sRGB code.
+final Float64List _codeLinear = Float64List.fromList([
+  for (var k = 0; k < 256; k++) srgbToLinear(k / 255),
+]);
+
+/// Deterministic uniform value in [0, 1) for texel `(x, y)`, [seed] and
+/// [channel] (integer hash, no state).
+double ditherAt(int x, int y, int seed, int channel) {
+  var h =
+      (x * 0x27d4eb2d) ^
+      (y * 0x165667b1) ^
+      (seed * 0x9e3779b9) ^
+      (channel * 0x85ebca6b);
+  h &= 0xffffffff;
+  h ^= h >> 15;
+  h = (h * 0x2c1b3c6d) & 0xffffffff;
+  h ^= h >> 12;
+  h = (h * 0x297a2d39) & 0xffffffff;
+  h ^= h >> 15;
+  return (h & 0xffffff) / 16777216.0;
+}
+
+/// Linear → 8-bit sRGB code, rounding up with probability equal to the
+/// position of [v] between its two neighbouring codes (in linear light),
+/// decided by [d] ∈ [0, 1). The expected decoded value equals [v].
+int linearToSrgbByteDithered(double v, double d) {
+  final t = _codeLinear;
+  if (!(v > 0)) return 0;
+  if (v >= 1) return 255;
+  var lo = 0, hi = 255; // t[lo] <= v < t[hi]
+  while (hi - lo > 1) {
+    final mid = (lo + hi) >> 1;
+    if (v >= t[mid]) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  final frac = (v - t[lo]) / (t[hi] - t[lo]);
+  return frac > d ? hi : lo;
 }

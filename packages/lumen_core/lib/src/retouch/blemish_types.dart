@@ -24,8 +24,12 @@ const double kSpotRamp = 0.08;
 
 /// Spot codes: `0` = no spot, else `1 + kind·64 + q`, where `q` ∈ 0..62 is
 /// the threshold quantized to [kSpotLevels] steps and 63 = forced removal.
+/// Kind 3 is a clipped shine core ([kShineCoreCode]); it is selected by
+/// the Shine slider above 50 % (`shineFill`), not by a threshold.
 const int kSpotLevels = 62;
 const int kSpotForced = 63;
+const int kShineCoreKind = 3;
+const int kShineCoreCode = 1 + kShineCoreKind * 64;
 
 /// Slider value (0..1) at which a spot with z-score [z] and radius
 /// [radiusIod] starts to heal: the smallest `v` with `z ≥ k(v)` and
@@ -45,11 +49,19 @@ int encodeSpotCode(BlemishKind kind, double threshold, {bool forced = false}) {
 }
 
 /// Heal weight (0..1) of a pixel with spot code [code] given the face's
-/// slider values (0..1). Mirrors `spotSelect()` in `retouch.frag`.
-double spotSelection(int code, double acne, double freckle, double mole) {
+/// slider values (0..1) and its shine fill weight. Mirrors `spotSelect()`
+/// in `retouch.frag`.
+double spotSelection(
+  int code,
+  double acne,
+  double freckle,
+  double mole, [
+  double shineFill = 0,
+]) {
   if (code <= 0) return 0;
   final c = code - 1;
   final kind = c >> 6, q = c & 63;
+  if (kind == kShineCoreKind) return shineFill;
   if (q == kSpotForced) return 1;
   final slider = kind == 0 ? acne : (kind == 1 ? freckle : mole);
   if (slider <= 0) return 0;
@@ -112,15 +124,72 @@ class BlemishCandidate {
       'z=${score.toStringAsFixed(1)})';
 }
 
+/// A persisted spot decision: where the spot was (normalized source uv)
+/// and how big (IOD units). Candidate ids are *not* stable across
+/// re-analysis at another `Rres` (their centres snap to a different crop
+/// grid), so documents store anchors and [BlemishOverrides] matches them
+/// to the current candidates by position.
+class SpotAnchor {
+  const SpotAnchor(this.u, this.v, this.radiusIod);
+
+  factory SpotAnchor.of(BlemishCandidate c) =>
+      SpotAnchor(c.u, c.v, c.radiusIod);
+
+  factory SpotAnchor.fromJson(Map<String, Object?> json) => SpotAnchor(
+    (json['u']! as num).toDouble(),
+    (json['v']! as num).toDouble(),
+    (json['r']! as num).toDouble(),
+  );
+
+  final double u;
+  final double v;
+  final double radiusIod;
+
+  /// Rounded to 1e-5 of the image side and 1e-3 IOD.
+  Map<String, Object?> toJson() => {
+    'u': _round(u, 1e5),
+    'v': _round(v, 1e5),
+    'r': _round(radiusIod, 1e3),
+  };
+
+  static double _round(double x, double scale) => (x * scale).round() / scale;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SpotAnchor &&
+      other.u == u &&
+      other.v == v &&
+      other.radiusIod == radiusIod;
+
+  @override
+  int get hashCode => Object.hash(u, v, radiusIod);
+}
+
+/// An anchor matches a candidate within this distance (IOD units) plus
+/// half the larger radius.
+const double kAnchorMatchIod = 0.02;
+
 /// Per-spot user decisions: [keep] spots are never healed, [remove] spots
 /// heal whatever the slider says. Changing these rebuilds the spot codes.
+///
+/// [keep] / [remove] hold candidate ids of the current maps (session
+/// state); [keepAt] / [removeAt] hold persisted [SpotAnchor]s. A remove
+/// anchor that matches no candidate still heals its disc (manual spot).
 class BlemishOverrides {
-  const BlemishOverrides({this.keep = const {}, this.remove = const {}});
+  const BlemishOverrides({
+    this.keep = const {},
+    this.remove = const {},
+    this.keepAt = const [],
+    this.removeAt = const [],
+  });
 
   static const none = BlemishOverrides();
 
   final Set<String> keep;
   final Set<String> remove;
+  final List<SpotAnchor> keepAt;
+  final List<SpotAnchor> removeAt;
 
-  bool get isEmpty => keep.isEmpty && remove.isEmpty;
+  bool get isEmpty =>
+      keep.isEmpty && remove.isEmpty && keepAt.isEmpty && removeAt.isEmpty;
 }

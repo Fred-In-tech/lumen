@@ -82,6 +82,13 @@ void main() {
     'acne 100': {PortraitIds.acne: 100.0},
     'freckle 100': {PortraitIds.freckle: 100.0},
     'mole 100': {PortraitIds.mole: 100.0},
+    'wrinkle forehead 100': {PortraitIds.wrinkleForehead: 100.0},
+    'wrinkle frown 100': {PortraitIds.wrinkleFrown: 100.0},
+    'wrinkle crow’s feet 100': {PortraitIds.wrinkleCrowsFeet: 100.0},
+    'wrinkle smile 100': {PortraitIds.wrinkleSmile: 100.0},
+    'wrinkle marionette 70': {PortraitIds.wrinkleMarionette: 70.0},
+    'lips 100': {PortraitIds.lips: 100.0},
+    'blush 100': {PortraitIds.blush: 100.0},
   };
 
   group('each effect alone', () {
@@ -111,6 +118,40 @@ void main() {
     await check('all (maps 256)', portraitOf(all), using: lowMaps);
   });
 
+  test('wrinkle zones blend with different sliders', () async {
+    await check(
+      'forehead 100 + frown 20 + smile 40 + marionette 90',
+      portraitOf({
+        PortraitIds.wrinkleForehead: 100,
+        PortraitIds.wrinkleFrown: 20,
+        PortraitIds.wrinkleSmile: 40,
+        PortraitIds.wrinkleMarionette: 90,
+        PortraitIds.skinSoftening: 50,
+      }),
+    );
+  });
+
+  test('clipped shine core: no fill at 40, fill at 70 and 100', () async {
+    final core = onePortrait(clippedShine: true);
+    for (final v in [40.0, 70.0, 100.0]) {
+      final u = RetouchUniforms.fromSettings(
+        portraitOf({PortraitIds.skinShine: v}),
+        core.p.analysis,
+      );
+      final cpu = applyRetouch(core.p.image, core.maps, u);
+      final gpu = await gpuRetouch(core.p.image, core.maps, u);
+      final d = diffStats(gpu, cpu);
+      expect(d.max, lessThanOrEqualTo(3), reason: 'shine $v');
+      expect(d.mean, lessThanOrEqualTo(1), reason: 'shine $v');
+      if (_report) {
+        debugPrint(
+          'retouch parity clipped shine $v: max ${d.max}/255, '
+          'mean ${d.mean.toStringAsFixed(3)}/255',
+        );
+      }
+    }
+  });
+
   test('group and individual rows pick per-face values', () async {
     final two = renderSynthPortrait(512, 320, const [
       SynthFace(id: 'f', cx: 140, cy: 120, iod: 80, group: FaceGroup.female),
@@ -119,7 +160,10 @@ void main() {
     final m = computeRetouchMaps(two.image, two.analysis);
     final s = portraitOf({PortraitIds.skinSoftening: 30})
         .withGroupValue(FaceGroup.female, PortraitIds.skinSoftening, 90)
-        .withIndividualValue('bob', PortraitIds.skinShine, 100);
+        .withGroupValue(FaceGroup.female, PortraitIds.lips, 80)
+        .withIndividualValue('bob', PortraitIds.skinShine, 100)
+        .withIndividualValue('bob', PortraitIds.blush, 60)
+        .withIndividualValue('bob', PortraitIds.wrinkleSmile, 100);
     final u = RetouchUniforms.fromSettings(s, two.analysis);
     expect(u.row(0), isNot(u.row(1)));
     final cpu = applyRetouch(two.image, m, u);

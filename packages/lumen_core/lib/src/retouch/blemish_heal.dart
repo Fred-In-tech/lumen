@@ -71,6 +71,7 @@ HealPlanes healBlemishes(
   required int gridW,
   required int gridH,
   BlemishOverrides overrides = BlemishOverrides.none,
+  Float32List? core,
 }) {
   final rect = lab.rect, n = rect.area;
   final active = [
@@ -113,6 +114,34 @@ HealPlanes healBlemishes(
           codes[i] = code;
         }
       }
+    }
+  }
+  if (core != null) {
+    final box = _coreBox(core, rect, (kSpotCodeSpillSigmas * sigma1).ceil());
+    if (box != null) {
+      final spill = cropPlane(core, rect, box);
+      final reach = rankFilter(
+        spill,
+        box.w,
+        box.h,
+        (kSpotCodeSpillSigmas * sigma1).ceil(),
+        true,
+      );
+      for (var y = box.y0; y < box.y1; y++) {
+        var i = rect.index(box.x0, y);
+        var j = (y - box.y0) * box.w;
+        for (var x = box.x0; x < box.x1; x++, i++, j++) {
+          final a = core[i];
+          if (reach[j] <= 0.01) continue;
+          if (codes[i] == 0 || a > alpha[i]) codes[i] = kShineCoreCode;
+          if (a > alpha[i]) alpha[i] = a;
+        }
+      }
+      x0 = math.min(x0, box.x0);
+      y0 = math.min(y0, box.y0);
+      x1 = math.max(x1, box.x1);
+      y1 = math.max(y1, box.y1);
+      margin = math.max(margin, 0.1 * f.iod + 3 * sigma1);
     }
   }
   final zero = Float32List(n);
@@ -184,4 +213,27 @@ Float32List _pasteAdd(
     }
   }
   return out;
+}
+
+/// Bounding rect of `core > 0` grown by [pad], clipped to [rect], or null.
+MapRect? _coreBox(Float32List core, MapRect rect, int pad) {
+  var x0 = rect.x1, y0 = rect.y1, x1 = rect.x0, y1 = rect.y0;
+  for (var y = rect.y0; y < rect.y1; y++) {
+    var i = (y - rect.y0) * rect.w;
+    for (var x = rect.x0; x < rect.x1; x++, i++) {
+      if (core[i] <= 0) continue;
+      x0 = math.min(x0, x);
+      y0 = math.min(y0, y);
+      x1 = math.max(x1, x + 1);
+      y1 = math.max(y1, y + 1);
+    }
+  }
+  if (x1 <= x0) return null;
+  final a = math.max(rect.x0, x0 - pad), b = math.max(rect.y0, y0 - pad);
+  return MapRect(
+    a,
+    b,
+    math.min(rect.x1, x1 + pad) - a,
+    math.min(rect.y1, y1 + pad) - b,
+  );
 }

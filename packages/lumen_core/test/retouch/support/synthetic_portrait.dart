@@ -1,8 +1,9 @@
 /// Deterministic synthetic portraits for the retouch tests: a skin oval
-/// with pores (fine noise), blotches (mid band), dark circles, shine,
-/// forehead sine-ridge wrinkles, blemishes of known size and contrast, a
-/// flat cheek patch with a high-contrast stripe and a low-contrast blotch,
-/// plus eyes, brows, lips, teeth and hair.
+/// with pores (fine noise), blotches (mid band), dark circles, shine, an
+/// optional clipped specular core, wrinkle lines in every §3.4 zone,
+/// blemishes of known size and contrast, a flat cheek patch with a
+/// high-contrast stripe and a low-contrast blotch, plus eyes, brows,
+/// textured lips with a gloss highlight, teeth and hair.
 library;
 
 import 'dart:math' as math;
@@ -45,6 +46,77 @@ const kFreckleSpots = [
 const kMoleSpots = [SynthSpot(-0.30, 1.45, 0.045, SynthSpotKind.mole)];
 const kDefaultSpots = [...kAcneSpots, ...kFreckleSpots, ...kMoleSpots];
 
+enum SynthZone { forehead, frown, crowsFeet, smile, marionette }
+
+/// A wrinkle: a Gaussian valley of [depth] (OkLab L) and width [sigma]
+/// (IOD) along the segment `(x0, y0)–(x1, y1)` (local units).
+class SynthLine {
+  const SynthLine(
+    this.x0,
+    this.y0,
+    this.x1,
+    this.y1,
+    this.depth,
+    this.sigma,
+    this.zone,
+  );
+  final double x0;
+  final double y0;
+  final double x1;
+  final double y1;
+  final double depth;
+  final double sigma;
+  final SynthZone zone;
+
+  SynthLine get mirrored => SynthLine(-x0, y0, -x1, y1, depth, sigma, zone);
+
+  /// Distance of `(x, y)` from the segment (local units).
+  double distance(double x, double y) {
+    final dx = x1 - x0, dy = y1 - y0;
+    final t = (((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy)).clamp(
+      0.0,
+      1.0,
+    );
+    final px = x0 + t * dx - x, py = y0 + t * dy - y;
+    return math.sqrt(px * px + py * py);
+  }
+}
+
+const _rightSideLines = [
+  // Crow's feet: three lines fanning out from the outer canthus.
+  SynthLine(-0.82, -0.02, -0.95, -0.07, 0.035, 0.006, SynthZone.crowsFeet),
+  SynthLine(-0.82, 0.01, -0.95, 0.01, 0.035, 0.006, SynthZone.crowsFeet),
+  SynthLine(-0.82, 0.04, -0.95, 0.09, 0.035, 0.006, SynthZone.crowsFeet),
+  // Nasolabial fold crease, on the landmark polyline 129 → 212.
+  SynthLine(-0.244, 0.76, -0.36, 1.05, 0.05, 0.010, SynthZone.smile),
+  // Marionette line, on the landmark polyline 57 → 169.
+  SynthLine(-0.46, 1.25, -0.41, 1.57, 0.045, 0.009, SynthZone.marionette),
+];
+
+/// Every wrinkle of the default face.
+final List<SynthLine> kWrinkles = [
+  // Forehead lines (the lowest one crosses the frown zone).
+  const SynthLine(-0.45, -0.62, 0.45, -0.62, 0.035, 0.007, SynthZone.forehead),
+  const SynthLine(-0.40, -0.80, 0.40, -0.80, 0.035, 0.007, SynthZone.forehead),
+  const SynthLine(-0.35, -0.95, 0.35, -0.95, 0.03, 0.007, SynthZone.forehead),
+  // Frown lines ("11s") between the brows.
+  const SynthLine(-0.06, -0.42, -0.06, -0.26, 0.045, 0.006, SynthZone.frown),
+  const SynthLine(0.06, -0.42, 0.06, -0.26, 0.045, 0.006, SynthZone.frown),
+  ..._rightSideLines,
+  for (final l in _rightSideLines) l.mirrored,
+];
+
+/// Distance (local units) to the nearest wrinkle line.
+double wrinkleDistance(double x, double y) =>
+    kWrinkles.map((l) => l.distance(x, y)).reduce(math.min);
+
+/// Lip lines (vertical L ripple) and the lower-lip gloss highlight.
+const kLipLinePeriod = 0.03, kLipLineAmp = 0.02;
+const kGlossX = 0.10, kGlossY = 1.21, kGlossSigma = 0.015;
+
+/// Clipped specular core (when [SynthFace.clippedShine]).
+const kCoreX = 0.62, kCoreY = 1.12, kCoreSigma = 0.045, kCoreLift = 0.45;
+
 /// Mid-band blotches (σ = [kBlotchSigma] IOD, between B1 and B2 of §3.0):
 /// a jittered grid over the skin, away from features, spots and the patch.
 const kBlotchSigma = 0.025;
@@ -66,7 +138,8 @@ List<({double x, double y, double s})> _blotchGrid() {
           x * x / (1.05 * 1.05) + math.pow((y - 0.6) / 1.3, 2) > 1 ||
           kDefaultSpots.any(
             (p) => math.pow(p.x - x, 2) + math.pow(p.y - y, 2) < 0.012,
-          );
+          ) ||
+          wrinkleDistance(x, y) < 0.09;
       if (nearFeature) continue;
       out.add((x: x, y: y, s: _hash(gx, gy) > 0 ? 1.0 : -1.0));
     }
@@ -111,6 +184,7 @@ class SynthFace {
     this.scleraL = 0.84,
     this.poreAmp = 0.012,
     this.veins = false,
+    this.clippedShine = false,
   });
 
   final String id;
@@ -128,6 +202,9 @@ class SynthFace {
 
   /// Thin red veins in the sclera (for Red veins).
   final bool veins;
+
+  /// A clipped specular core on the lower left cheek (for Shine > 50).
+  final bool clippedShine;
 
   ({double x, double y}) toPx(double x, double y) =>
       (x: cx + x * iod, y: cy + y * iod);
@@ -298,9 +375,17 @@ void _shadeFace(
   l += 0.10 * shine;
   a *= 1 - 0.6 * shine;
   b *= 1 - 0.6 * shine;
-  // Forehead wrinkles: horizontal sine ridges.
-  if (y > -0.85 && y < -0.55 && x.abs() < 0.5) {
-    l -= 0.015 * math.max(0.0, math.sin(y * 2 * math.pi / 0.08));
+  for (final w in kWrinkles) {
+    final d = w.distance(x, y);
+    if (d < 4 * w.sigma) {
+      l -= w.depth * math.exp(-d * d / (2 * w.sigma * w.sigma));
+    }
+  }
+  if (f.clippedShine) {
+    final g = _g(x - kCoreX, y - kCoreY, kCoreSigma);
+    l += kCoreLift * g;
+    a *= 1 - g;
+    b *= 1 - g;
   }
   for (final s in f.spots) {
     final g = _g(x - s.x, y - s.y, s.radius / 2);
@@ -349,7 +434,13 @@ void _features(SynthFace f, _Polys p, double x, double y, Float64List lab) {
         set(0.38, 0.09, 0.03);
       }
     } else {
-      set(0.58, 0.11, 0.04);
+      final g = _g(x - kGlossX, y - kGlossY, kGlossSigma);
+      final ripple = kLipLineAmp * math.sin(x * 2 * math.pi / kLipLinePeriod);
+      set(
+        0.58 + ripple + (0.92 - 0.58 - ripple) * g,
+        0.11 * (1 - 0.8 * g),
+        0.04 * (1 - 0.8 * g),
+      );
     }
   }
   // Nostrils on the ellipse implied by landmarks 98/64/48/115 (and mirror).

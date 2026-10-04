@@ -165,27 +165,58 @@ void main() {
     final settings = PortraitSettings.empty
         .withGroupValue(FaceGroup.male, PortraitIds.skinSoftening, 100)
         .withGroupValue(FaceGroup.all, PortraitIds.teethDesaturate, 50)
-        .withGroupValue(FaceGroup.all, PortraitIds.mole, 25);
+        .withGroupValue(FaceGroup.all, PortraitIds.mole, 25)
+        .withGroupValue(FaceGroup.male, PortraitIds.skinShine, 70)
+        .withGroupValue(FaceGroup.male, PortraitIds.lips, 30)
+        .withGroupValue(FaceGroup.male, PortraitIds.blush, 40)
+        .withGroupValue(FaceGroup.male, PortraitIds.wrinkleCrowsFeet, 50)
+        .withGroupValue(FaceGroup.male, PortraitIds.wrinkleForehead, 60)
+        .withGroupValue(FaceGroup.male, PortraitIds.wrinkleFrown, 70)
+        .withGroupValue(FaceGroup.male, PortraitIds.wrinkleSmile, 80)
+        .withGroupValue(FaceGroup.male, PortraitIds.wrinkleMarionette, 90);
     final u = RetouchUniforms.fromSettings(settings, analysis);
     final f = u.pack();
 
     test('has the documented size and header', () {
       expect(f, hasLength(kRetouchUniformFloats));
-      expect(kRetouchUniformFloats, 164);
+      expect(kRetouchUniformFloats, 196);
+      expect(kFaceRowFloats, 24);
       expect(f[0], 2);
       expect(f[1], 1);
       expect(f[2], closeTo(kSpotRamp, 1e-7));
     });
 
-    test('rows sit at 4 + 20·slot in the documented order', () {
+    test('rows sit at 4 + 24·slot in the documented order', () {
       const b = kRetouchHeaderFloats + kFaceRowFloats;
-      expect(f[b + 0], 1, reason: 'slot 1 smooth');
-      expect(f[b + 1], 1, reason: 'texture gain');
-      expect(f[b + 3], closeTo(kAmpThresholdStrong, 1e-7));
-      expect(f[b + 6], 1, reason: 'lid protect default');
-      expect(f[b + 13], closeTo(0.5, 1e-7), reason: 'teeth desaturate');
-      expect(f[b + 16], closeTo(0.25, 1e-7), reason: 'mole');
+      final expected = <int, (double, String)>{
+        0: (1, 'smooth'),
+        1: (1, 'texture gain'),
+        3: (kAmpThresholdStrong, 'amp threshold'),
+        6: (1, 'lid protect default'),
+        7: (0.7, 'shine'),
+        11: (0.5, 'shine fill = (0.7 − 0.5) / 0.4'),
+        13: (0.5, 'teeth desaturate'),
+        16: (0.25, 'mole'),
+        17: (0.3, 'lips'),
+        18: (0.4, 'blush'),
+        19: (0.5, 'crow’s feet'),
+        20: (0.6, 'forehead'),
+        21: (0.7, 'frown'),
+        22: (0.8, 'smile'),
+        23: (0.9, 'marionette'),
+      };
+      for (final e in expected.entries) {
+        expect(f[b + e.key], closeTo(e.value.$1, 1e-6), reason: e.value.$2);
+      }
       expect(f[kRetouchHeaderFloats + 0], 0, reason: 'slot 0 smooth');
+      expect(f[kRetouchHeaderFloats + 20], 0, reason: 'slot 0 forehead');
+    });
+
+    test('shine fill starts above 50 % Shine', () {
+      expect(mapShineFill(0.5), 0);
+      expect(mapShineFill(0.7), closeTo(0.5, 1e-12));
+      expect(mapShineFill(0.9), 1);
+      expect(mapShineFill(1), 1);
     });
 
     test('unused slots hold identity rows', () {

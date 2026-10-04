@@ -5,18 +5,21 @@
 /// slot. Dragging any face-scope slider (All / Female / Male / Child /
 /// Senior / one person) re-resolves the rows and changes uniforms only.
 ///
-/// Packed layout ([RetouchUniforms.pack], 164 floats = 41 vec4):
+/// Packed layout ([RetouchUniforms.pack], 196 floats = 49 vec4):
 ///
 /// | floats | vec4 | contents |
 /// |---|---|---|
 /// | 0–3 | `uRetouch` | face count, any active (0/1), spot ramp, 0 |
-/// | 4 + 20k + 0–3 | `uFace[5k]` | smooth, texture gain, even, amp threshold |
-/// | 4 + 20k + 4–7 | `uFace[5k+1]` | dark circles, bags, lid protect, shine |
-/// | 4 + 20k + 8–11 | `uFace[5k+2]` | eye whites, iris, red vein, 0 |
-/// | 4 + 20k + 12–15 | `uFace[5k+3]` | teeth bright, teeth desat, acne, freckle |
-/// | 4 + 20k + 16–19 | `uFace[5k+4]` | mole, wrinkle, lips, blush |
+/// | 4 + 24k + 0–3 | `uFace[6k]` | smooth, texture gain, even, amp threshold |
+/// | 4 + 24k + 4–7 | `uFace[6k+1]` | dark circles, bags, lid protect, shine |
+/// | 4 + 24k + 8–11 | `uFace[6k+2]` | eye whites, iris, red vein, shine fill |
+/// | 4 + 24k + 12–15 | `uFace[6k+3]` | teeth bright, teeth desat, acne, freckle |
+/// | 4 + 24k + 16–19 | `uFace[6k+4]` | mole, lips, blush, wrinkle crow's feet |
+/// | 4 + 24k + 20–23 | `uFace[6k+5]` | wrinkle forehead, frown, smile, marionette |
 ///
-/// for slots k = 0..7 (unused slots hold identity rows).
+/// for slots k = 0..7 (unused slots hold identity rows). `uFace[6k+5]`
+/// holds the two blend pairs of the wrinkle zone code (forehead ↔ frown,
+/// smile ↔ marionette), see `wrinkle_zones.dart`.
 library;
 
 import 'dart:typed_data';
@@ -26,9 +29,10 @@ import '../model/portrait.dart';
 import 'blemish_types.dart';
 import 'retouch_maps.dart';
 import 'slider_mapping.dart';
+import 'wrinkle_zones.dart';
 
 /// Floats per face row.
-const int kFaceRowFloats = 20;
+const int kFaceRowFloats = 24;
 
 /// Header floats before the face rows.
 const int kRetouchHeaderFloats = 4;
@@ -56,14 +60,19 @@ class FaceRetouchParams {
     this.acne = 0,
     this.freckle = 0,
     this.mole = 0,
-    this.wrinkle = 0,
     this.lips = 0,
     this.blush = 0,
+    this.wrinkleForehead = 0,
+    this.wrinkleFrown = 0,
+    this.wrinkleCrowsFeet = 0,
+    this.wrinkleSmile = 0,
+    this.wrinkleMarionette = 0,
   });
 
   /// Maps the UI values returned by [value] (registry id → 0–100).
   factory FaceRetouchParams.fromValues(double Function(String id) value) {
     final smooth = mapSmoothing(value(PortraitIds.skinSoftening));
+    final shine = mapLinear(value(PortraitIds.skinShine));
     return FaceRetouchParams(
       smooth: smooth,
       textureGain: mapTextureGain(value(PortraitIds.skinTexture)),
@@ -72,7 +81,7 @@ class FaceRetouchParams {
       darkCircles: mapLinear(value(PortraitIds.darkCircles)),
       bags: mapLinear(value(PortraitIds.eyeBags)),
       lidProtect: mapLinear(value(PortraitIds.lidProtect)),
-      shine: mapLinear(value(PortraitIds.skinShine)),
+      shine: shine,
       whites: mapLinear(value(PortraitIds.eyeWhites)),
       iris: mapLinear(value(PortraitIds.iris)),
       redVein: mapLinear(value(PortraitIds.redVein)),
@@ -81,6 +90,13 @@ class FaceRetouchParams {
       acne: mapLinear(value(PortraitIds.acne)),
       freckle: mapLinear(value(PortraitIds.freckle)),
       mole: mapLinear(value(PortraitIds.mole)),
+      lips: mapLinear(value(PortraitIds.lips)),
+      blush: mapLinear(value(PortraitIds.blush)),
+      wrinkleForehead: mapLinear(value(PortraitIds.wrinkleForehead)),
+      wrinkleFrown: mapLinear(value(PortraitIds.wrinkleFrown)),
+      wrinkleCrowsFeet: mapLinear(value(PortraitIds.wrinkleCrowsFeet)),
+      wrinkleSmile: mapLinear(value(PortraitIds.wrinkleSmile)),
+      wrinkleMarionette: mapLinear(value(PortraitIds.wrinkleMarionette)),
     );
   }
 
@@ -102,11 +118,26 @@ class FaceRetouchParams {
   final double acne;
   final double freckle;
   final double mole;
-
-  /// Step 8 effects; no registry params yet, always 0.
-  final double wrinkle;
   final double lips;
   final double blush;
+  final double wrinkleForehead;
+  final double wrinkleFrown;
+  final double wrinkleCrowsFeet;
+  final double wrinkleSmile;
+  final double wrinkleMarionette;
+
+  /// Clipped-core fill weight, derived from [shine] (§3.8).
+  double get shineFill => mapShineFill(shine);
+
+  /// Slider weight of wrinkle zone code [code].
+  double wrinkleWeight(int code) => wrinkleZoneWeight(
+    code,
+    forehead: wrinkleForehead,
+    frown: wrinkleFrown,
+    crowsFeet: wrinkleCrowsFeet,
+    smile: wrinkleSmile,
+    marionette: wrinkleMarionette,
+  );
 
   /// True when this row changes no pixel (lid protection alone is inert).
   bool get isIdentity =>
@@ -124,17 +155,22 @@ class FaceRetouchParams {
       acne == 0 &&
       freckle == 0 &&
       mole == 0 &&
-      wrinkle == 0 &&
       lips == 0 &&
-      blush == 0;
+      blush == 0 &&
+      wrinkleForehead == 0 &&
+      wrinkleFrown == 0 &&
+      wrinkleCrowsFeet == 0 &&
+      wrinkleSmile == 0 &&
+      wrinkleMarionette == 0;
 
-  /// The row's 20 floats in [RetouchUniforms] order.
+  /// The row's [kFaceRowFloats] floats in [RetouchUniforms] order.
   List<double> toList() => [
     smooth, textureGain, even, ampThreshold, //
     darkCircles, bags, lidProtect, shine,
-    whites, iris, redVein, 0,
+    whites, iris, redVein, shineFill,
     teethBrightness, teethDesaturate, acne, freckle,
-    mole, wrinkle, lips, blush,
+    mole, lips, blush, wrinkleCrowsFeet,
+    wrinkleForehead, wrinkleFrown, wrinkleSmile, wrinkleMarionette,
   ];
 
   @override
@@ -208,7 +244,7 @@ class RetouchUniforms {
       for (final f in faces)
         f.toList().map((v) => v.toStringAsFixed(4)).join(','),
     ];
-    return 'retouch:v1:${rows.join('|')}';
+    return 'retouch:v2:${rows.join('|')}';
   }
 
   @override

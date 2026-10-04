@@ -14,7 +14,9 @@ import 'blemish_types.dart';
 import 'face_frame.dart';
 import 'face_maps.dart';
 import 'face_parsing_input.dart';
+import 'lab_planes.dart';
 import 'retouch_maps.dart';
+import 'wrinkle_map.dart';
 
 /// `Rres` long-edge bounds (§3.0) and the IOD the smallest face should get.
 const int kRetouchMinLongEdge = 1024;
@@ -98,9 +100,9 @@ RetouchMaps _assemble(
   final owner = _owners(frames, w, h);
   for (final p in planes) {
     final slot = p.frame.slot;
-    p.b1.writeSrgb(b1, w, owner, slot);
-    p.b2.writeSrgb(b2, w, owner, slot);
-    p.b3.writeSrgb(b3, w, owner, slot);
+    p.b1.writeSrgb(b1, w, owner, slot, seed: kDitherSeedB1);
+    p.b2.writeSrgb(b2, w, owner, slot, seed: kDitherSeedB2);
+    p.b3.writeSrgb(b3, w, owner, slot, seed: kDitherSeedB3);
     _writeFace(p, w, owner, bh, ra, rb);
   }
   return RetouchMaps(
@@ -121,6 +123,11 @@ RetouchMaps _assemble(
           iod: p.frame.iod,
           teethCapL: p.regions.teethCapL,
           skinMeanL: p.regions.skinModel.meanL,
+          lipGlossL: p.regions.makeup.glossL,
+          lipChromaGain: p.regions.makeup.lipChromaGain,
+          lipShiftL: p.regions.makeup.lipShiftL,
+          blushA: p.regions.makeup.blushA,
+          blushB: p.regions.makeup.blushB,
         ),
     ],
     blemishes: List.unmodifiable([for (final p in planes) ...p.blemishes]),
@@ -169,7 +176,7 @@ void _writeFace(
   Uint8List rb,
 ) {
   final rect = p.frame.rect, r = p.regions, heal = p.heal;
-  final slot = p.frame.slot;
+  final wr = p.wrinkles, slot = p.frame.slot;
   // Texels where an effect can apply get the face id (dilated by one
   // texel so bilinear fringes of the region maps keep their face).
   final active = Uint8List(rect.area);
@@ -187,7 +194,7 @@ void _writeFace(
       final skin = _byte(r.skin[i]), under = _byte(r.underEye[i]);
       final mouth = _byte(r.mouth[i]), sclera = _byte(r.sclera[i]);
       final iris = _byte(r.iris[i]), lips = _byte(r.lips[i]);
-      final blush = _byte(r.blush[i]), wrinkle = _byte(r.wrinkle[i]);
+      final blush = _byte(r.blush[i]), wrinkle = encodeWrinkle(wr.delta[i]);
       ra[left] = skin;
       ra[left + 1] = under;
       ra[left + 2] = _byte(r.lash[i]);
@@ -199,6 +206,7 @@ void _writeFace(
       rb[left + 2] = wrinkle;
       final code = heal.spotCode[i];
       rb[right + 1] = code;
+      rb[right + 2] = wrinkle == 0 ? 0 : wr.zone[i];
       final any =
           skin | under | mouth | sclera | iris | lips | blush | wrinkle | code;
       if (any != 0 || _healed(bh, left) || _healed(bh, right)) active[i] = 1;

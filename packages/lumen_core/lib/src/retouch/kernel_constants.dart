@@ -6,9 +6,12 @@ library;
 /// `keep = smoothstep(thr, kKeepRamp·thr, |mid.L|)` (§3.1).
 const double kKeepRamp = 2.5;
 
-/// Wrinkle map: extra mid suppression and fine-band suppression (§3.4).
-const double kWrinkleMid = 0.85;
-const double kWrinkleFine = 0.3;
+/// Wrinkles (§3.4): the pass removes `wEff·ΔW`, where
+/// `wEff = kWrinkleMax · clamp(zoneSlider + kWrinkleSmooth · s)` and `s`
+/// is Smooth × skin. Deep folds have real shading, so removal stops at
+/// 85 %; smoothing alone softens detected lines by up to 42 %.
+const double kWrinkleMax = 0.85;
+const double kWrinkleSmooth = 0.5;
 
 /// Dark circles: lift toward the skin reference, pull chroma to it (§3.5).
 const double kDarkCircleLift = 0.8;
@@ -57,3 +60,14 @@ const double kIrisCatchHi = 0.95;
 const double kIrisContrast = 0.6;
 const double kIrisChroma = 0.35;
 const double kIrisLift = 0.03;
+
+/// Lips (§3.9): gloss guard ramp clearly above the face's lip P95 L
+/// (`1 − smoothstep(gloss + start, gloss + end, L)`), so lip-line texture
+/// is recoloured evenly and only real highlights are skipped.
+const double kLipGlossStart = 0.02;
+const double kLipGlossEnd = 0.08;
+
+/// Blush (§3.9): chroma moves this far toward the target, relative to the
+/// local skin reference B3; L darkens slightly.
+const double kBlushChroma = 0.35;
+const double kBlushDarken = 0.03;
