@@ -4,7 +4,6 @@ library;
 
 import 'dart:math' as math;
 
-import '../model/portrait.dart';
 
 /// Amplitude-selective threshold on |mid.L| (OkLab): structure above
 /// 2.5× this survives smoothing (§3.1). Lowered when smoothing > 0.6.
@@ -47,29 +46,4 @@ const double kShineFillRamp = 0.4;
 double mapShineFill(double shine) =>
     ((shine - kShineFillStart) / kShineFillRamp).clamp(0.0, 1.0);
 
-/// Starting values of an Auto Retouch preset (research 06: eye whites and
-/// iris 80/80, lower-lid protection 100). Step 10 scales these by the
-/// detected need; the identity defaults of the registry stay 0.
-const Map<String, double> kAutoRetouchValues = {
-  PortraitIds.skinSoftening: 35,
-  PortraitIds.skinEven: 30,
-  PortraitIds.skinShine: 30,
-  PortraitIds.acne: 70,
-  PortraitIds.darkCircles: 45,
-  PortraitIds.eyeBags: 30,
-  PortraitIds.lidProtect: 100,
-  PortraitIds.eyeWhites: 80,
-  PortraitIds.iris: 80,
-  PortraitIds.redVein: 50,
-  PortraitIds.teethBrightness: 25,
-  PortraitIds.teethDesaturate: 40,
-};
-
-/// [kAutoRetouchValues] as settings on the All group.
-PortraitSettings autoRetouchSettings() {
-  var s = PortraitSettings.empty;
-  for (final e in kAutoRetouchValues.entries) {
-    s = s.withGroupValue(FaceGroup.all, e.key, e.value);
-  }
-  return s;
-}
+// Auto Retouch values live in `PortraitPresets` (model/portrait_presets.dart).

@@ -177,9 +177,7 @@ void main() {
       final small = await imageFromBuffer(p.image);
       final textures = await RetouchTextures.upload(maps);
       final u = RetouchUniforms.fromSettings(
-        portraitOf({
-          for (final id in kAutoRetouchValues.keys) id: kAutoRetouchValues[id]!,
-        }),
+        PortraitPresets.autoRetouch(PortraitSettings.empty),
         p.analysis,
       );
 

@@ -41,11 +41,11 @@ void main() {
       expect(mapLinear(150), 1);
     });
 
-    test('Auto Retouch starts eyes at 80/80 with full lid protection', () {
-      final s = autoRetouchSettings();
-      final v = s.valueFor(PortraitIds.eyeWhites, group: FaceGroup.all);
-      expect(v, 80);
-      expect(s.valueFor(PortraitIds.iris, group: FaceGroup.male), 80);
+    test('Auto Retouch (PortraitPresets) produces active uniforms', () {
+      final s = PortraitPresets.autoRetouch(PortraitSettings.empty);
+      for (final e in PortraitPresets.natural.entries) {
+        expect(s.valueFor(e.key, group: FaceGroup.all), e.value);
+      }
       expect(s.valueFor(PortraitIds.lidProtect, group: FaceGroup.all), 100);
       final u = RetouchUniforms.fromSettings(
         s,
