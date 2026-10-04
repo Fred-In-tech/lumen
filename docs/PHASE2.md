@@ -65,3 +65,12 @@ original ──► RETOUCH STAGE (pixel layer, cached) ──► DEVELOP (GPU ub
   - Style training and gallery delivery.
 | X1 | Export, batch and thumbnails honour heal ops, retouch maps and AI mask rasters; live heal preview | ✅ done (`4abc91f`) |
 | P1 | Privacy hardening: face caches + models excluded from OS backups (iOS/macOS `isExcludedFromBackup` via `lumen/backup` channel + startup sweep; Android `dataExtractionRules`/`fullBackupContent` exclude `assets/` and `models/`) | ✅ done; BIPA legal review still open (user) |
+| F1 | Real-GPU fixes (2026-10-04): retouch rendered white on Metal; `\` typed into the prompt bar instead of comparing | ✅ fixed, see below |
+
+### Real-device verification (2026-10-04)
+- **White frames on Metal.** An Impeller/Metal fragment shader with about 32 or more separate `uniform` declarations renders solid white. There is no error, and the headless `flutter_tester` renderer does not show it. The masks commit (`b20cbcb`) pushed `develop.frag` and `retouch.frag` over that limit. All shaders now pack runs of `vec4` uniforms into arrays (`uVec0[n]`, with `#define` aliases), which keeps the float layout. `test/architecture_test.dart` keeps every shader at 24 or fewer declarations.
+- **Focus.** On desktop, a Flutter `TextField` keeps focus when you click elsewhere. The prompt bar now drops focus on `onTapOutside`, and the editor takes keyboard focus back whenever nothing else holds it, so `\`, `Z` and the other shortcuts always reach it.
+- **On-device suites** (`flutter test integration_test/<file> -d macos`, one file per run on desktop):
+  - `phase2_on_device_test.dart`: retouch, mask, warp and backdrop GPU-vs-CPU parity on the real GPU.
+  - `portrait_flow_test.dart`: imports `docs/samples/sample_portrait.jpg` (a drawn portrait with acne spots), opens it, detects the face, runs Auto Retouch, checks the frame is a real photo, checks a strong retouch changes only face pixels, then clicks the prompt bar and the photo and holds `\`.
+  - Screenshots are in `docs/verification/phase2/`.

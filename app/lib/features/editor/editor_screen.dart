@@ -59,6 +59,23 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
   /// patch refs, or the store was opened): cleaned up when they close.
   final Set<String> _healed = {};
 
+  /// Holds keyboard focus for the editor shortcuts (\, A, M, Q, /, …).
+  final FocusNode _keys = FocusNode(debugLabel: 'editor keys');
+
+  /// When a text field (prompt bar, rename, slider value) lets go of focus,
+  /// nothing would hold it and the shortcuts would go dead: take it back.
+  void _reclaimKeys() {
+    final focus = FocusManager.instance.primaryFocus;
+    if (!mounted || _keys.hasFocus) return;
+    final idle = focus == null || focus is FocusScopeNode;
+    if (!idle) return;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return; // a dialog is on top
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_keys.hasFocus) _keys.requestFocus();
+    });
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -69,6 +86,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    FocusManager.instance.addListener(_reclaimKeys);
     _openSession();
   }
 
@@ -187,6 +205,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    FocusManager.instance.removeListener(_reclaimKeys);
+    _keys.dispose();
     _session?.dispose();
     _closeHeals(_assetId);
     super.dispose();
@@ -338,6 +358,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
     return CallbackShortcuts(
       bindings: _shortcuts(platform.isApple),
       child: Focus(
+        focusNode: _keys,
         autofocus: true,
         onKeyEvent: (node, e) => _onKey(e),
         child: Scaffold(backgroundColor: t.surface0, body: body),

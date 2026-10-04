@@ -9,17 +9,18 @@
 precision highp float;
 
 uniform vec2 uSize;     // 0-1   pass size (px)
-uniform vec4 uTile;     // 2-5   pass offset in the source, full wh
-uniform vec4 uMatte;    // 6-9   matte wh, mode (1 blur 2 colour 3 gradient 4 image), letterbox
-uniform vec4 uFill;     // 10-13 fill wh, plate A wh
-uniform vec4 uPlateB;   // 14-17 plate B wh, 0, 0
-uniform vec4 uColorA;   // 18-21 colour (sRGB 0..1)
-uniform vec4 uColorB;   // 22-25 colour 2
-uniform vec4 uGrad;     // 26-29 direction xy, frame aspect, extent
-uniform vec4 uFit;      // 30-33 plate uv scale xy
-uniform vec4 uSpill;    // 34-37 amount, old-backdrop chroma direction
-uniform vec4 uSpill2;   // 38-41 new-background chroma direction
-uniform vec4 uMatch;    // 42-45 amount, gain
+uniform vec4 uVec0[11];
+#define uTile uVec0[0]  // 2-5   pass offset in the source, full wh
+#define uMatte uVec0[1]  // 6-9   matte wh, mode (1 blur 2 colour 3 gradient 4 image), letterbox
+#define uFill uVec0[2]  // 10-13 fill wh, plate A wh
+#define uPlateB uVec0[3]  // 14-17 plate B wh, 0, 0
+#define uColorA uVec0[4]  // 18-21 colour (sRGB 0..1)
+#define uColorB uVec0[5]  // 22-25 colour 2
+#define uGrad uVec0[6]  // 26-29 direction xy, frame aspect, extent
+#define uFit uVec0[7]  // 30-33 plate uv scale xy
+#define uSpill uVec0[8]  // 34-37 amount, old-backdrop chroma direction
+#define uSpill2 uVec0[9]  // 38-41 new-background chroma direction
+#define uMatch uVec0[10]  // 42-45 amount, gain
 
 uniform sampler2D uSrcTex;     // 0: source (FilterQuality.none)
 uniform sampler2D uMatteTex;   // 1: R coverage, G edge band, B depth

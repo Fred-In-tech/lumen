@@ -9,55 +9,56 @@
 precision highp float;
 
 uniform vec2 uOutSize;          // 0-1   pass size (px)
-uniform vec4 uTile;             // 2-5   tile offset xy, full output wh
-uniform vec4 uCrop;             // 6-9   l, t, r, b (normalized, oriented)
-uniform vec4 uGeom;             // 10-13 angle rad, rotate90, flipH, flipV
-uniform vec4 uSrc;              // 14-17 source wh, aux wh
-uniform vec4 uWbExp;            // 18-21 gains rgb, 2^exposure
-uniform vec4 uLocal;            // 22-25 highlights, shadows, clarity, texture
-uniform vec4 uHaze;             // 26-29 dehaze, airlight rgb (linear)
-uniform vec4 uColor;            // 30-33 vibrance, saturation, bw, curvesActive
-uniform vec4 uHslHue0;          // 34-37
-uniform vec4 uHslHue1;          // 38-41
-uniform vec4 uHslSat0;          // 42-45
-uniform vec4 uHslSat1;          // 46-49
-uniform vec4 uHslLum0;          // 50-53
-uniform vec4 uHslLum1;          // 54-57
-uniform vec4 uGradeShadows;     // 58-61 OkLab a, b, lum, 0
-uniform vec4 uGradeMidtones;    // 62-65
-uniform vec4 uGradeHighlights;  // 66-69
-uniform vec4 uGradeGlobal;      // 70-73
-uniform vec4 uGradeParams;      // 74-77 blending, balance, 0, 0
-uniform vec4 uBwMix0;           // 78-81
-uniform vec4 uBwMix1;           // 82-85
-uniform vec4 uVignette;         // 86-89 amount, midpoint, roundness, feather
-uniform vec4 uVignette2;        // 90-93 highlights, aspect, showClipping, 0
-uniform vec4 uMaskGrid;         // 94-97 mask grid wh, active count, 0
-uniform vec4 uMask0A;           // 98-109: exposure EV, temp, tint, sat
-uniform vec4 uMask0B;           //   highlights, shadows, clarity, texture
-uniform vec4 uMask0C;           //   dehaze, contrast, whites, blacks
-uniform vec4 uMask1A;           // 110-121: exposure EV, temp, tint, sat
-uniform vec4 uMask1B;           //   highlights, shadows, clarity, texture
-uniform vec4 uMask1C;           //   dehaze, contrast, whites, blacks
-uniform vec4 uMask2A;           // 122-133: exposure EV, temp, tint, sat
-uniform vec4 uMask2B;           //   highlights, shadows, clarity, texture
-uniform vec4 uMask2C;           //   dehaze, contrast, whites, blacks
-uniform vec4 uMask3A;           // 134-145: exposure EV, temp, tint, sat
-uniform vec4 uMask3B;           //   highlights, shadows, clarity, texture
-uniform vec4 uMask3C;           //   dehaze, contrast, whites, blacks
-uniform vec4 uMask4A;           // 146-157: exposure EV, temp, tint, sat
-uniform vec4 uMask4B;           //   highlights, shadows, clarity, texture
-uniform vec4 uMask4C;           //   dehaze, contrast, whites, blacks
-uniform vec4 uMask5A;           // 158-169: exposure EV, temp, tint, sat
-uniform vec4 uMask5B;           //   highlights, shadows, clarity, texture
-uniform vec4 uMask5C;           //   dehaze, contrast, whites, blacks
-uniform vec4 uMask6A;           // 170-181: exposure EV, temp, tint, sat
-uniform vec4 uMask6B;           //   highlights, shadows, clarity, texture
-uniform vec4 uMask6C;           //   dehaze, contrast, whites, blacks
-uniform vec4 uMask7A;           // 182-193: exposure EV, temp, tint, sat
-uniform vec4 uMask7B;           //   highlights, shadows, clarity, texture
-uniform vec4 uMask7C;           //   dehaze, contrast, whites, blacks
-uniform vec4 uWarpInfo;         // 194-197 warp grid wh, range (uv), enabled
+uniform vec4 uVec0[49];
+#define uTile uVec0[0]  // 2-5   tile offset xy, full output wh
+#define uCrop uVec0[1]  // 6-9   l, t, r, b (normalized, oriented)
+#define uGeom uVec0[2]  // 10-13 angle rad, rotate90, flipH, flipV
+#define uSrc uVec0[3]  // 14-17 source wh, aux wh
+#define uWbExp uVec0[4]  // 18-21 gains rgb, 2^exposure
+#define uLocal uVec0[5]  // 22-25 highlights, shadows, clarity, texture
+#define uHaze uVec0[6]  // 26-29 dehaze, airlight rgb (linear)
+#define uColor uVec0[7]  // 30-33 vibrance, saturation, bw, curvesActive
+#define uHslHue0 uVec0[8]  // 34-37
+#define uHslHue1 uVec0[9]  // 38-41
+#define uHslSat0 uVec0[10]  // 42-45
+#define uHslSat1 uVec0[11]  // 46-49
+#define uHslLum0 uVec0[12]  // 50-53
+#define uHslLum1 uVec0[13]  // 54-57
+#define uGradeShadows uVec0[14]  // 58-61 OkLab a, b, lum, 0
+#define uGradeMidtones uVec0[15]  // 62-65
+#define uGradeHighlights uVec0[16]  // 66-69
+#define uGradeGlobal uVec0[17]  // 70-73
+#define uGradeParams uVec0[18]  // 74-77 blending, balance, 0, 0
+#define uBwMix0 uVec0[19]  // 78-81
+#define uBwMix1 uVec0[20]  // 82-85
+#define uVignette uVec0[21]  // 86-89 amount, midpoint, roundness, feather
+#define uVignette2 uVec0[22]  // 90-93 highlights, aspect, showClipping, 0
+#define uMaskGrid uVec0[23]  // 94-97 mask grid wh, active count, 0
+#define uMask0A uVec0[24]  // 98-109: exposure EV, temp, tint, sat
+#define uMask0B uVec0[25]  //   highlights, shadows, clarity, texture
+#define uMask0C uVec0[26]  //   dehaze, contrast, whites, blacks
+#define uMask1A uVec0[27]  // 110-121: exposure EV, temp, tint, sat
+#define uMask1B uVec0[28]  //   highlights, shadows, clarity, texture
+#define uMask1C uVec0[29]  //   dehaze, contrast, whites, blacks
+#define uMask2A uVec0[30]  // 122-133: exposure EV, temp, tint, sat
+#define uMask2B uVec0[31]  //   highlights, shadows, clarity, texture
+#define uMask2C uVec0[32]  //   dehaze, contrast, whites, blacks
+#define uMask3A uVec0[33]  // 134-145: exposure EV, temp, tint, sat
+#define uMask3B uVec0[34]  //   highlights, shadows, clarity, texture
+#define uMask3C uVec0[35]  //   dehaze, contrast, whites, blacks
+#define uMask4A uVec0[36]  // 146-157: exposure EV, temp, tint, sat
+#define uMask4B uVec0[37]  //   highlights, shadows, clarity, texture
+#define uMask4C uVec0[38]  //   dehaze, contrast, whites, blacks
+#define uMask5A uVec0[39]  // 158-169: exposure EV, temp, tint, sat
+#define uMask5B uVec0[40]  //   highlights, shadows, clarity, texture
+#define uMask5C uVec0[41]  //   dehaze, contrast, whites, blacks
+#define uMask6A uVec0[42]  // 170-181: exposure EV, temp, tint, sat
+#define uMask6B uVec0[43]  //   highlights, shadows, clarity, texture
+#define uMask6C uVec0[44]  //   dehaze, contrast, whites, blacks
+#define uMask7A uVec0[45]  // 182-193: exposure EV, temp, tint, sat
+#define uMask7B uVec0[46]  //   highlights, shadows, clarity, texture
+#define uMask7C uVec0[47]  //   dehaze, contrast, whites, blacks
+#define uWarpInfo uVec0[48]  // 194-197 warp grid wh, range (uv), enabled
 
 uniform sampler2D uSource;      // 0: sRGB source (FilterQuality.low)
 uniform sampler2D uAuxA;        // 1: RG baseMid, B dark (FilterQuality.none)

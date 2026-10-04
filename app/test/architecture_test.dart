@@ -125,4 +125,22 @@ void main() {
       reason: 'Review Windows support for new plugins',
     );
   });
+
+  test('shaders stay under the Metal uniform-declaration limit', () {
+    // On Impeller/Metal a fragment shader with more than ~32 separate
+    // uniform declarations (samplers included) silently renders white,
+    // while the headless tester is fine. Group vec4 uniforms into arrays
+    // (with #define aliases) and keep a safety margin.
+    final decl = RegExp(
+      r'^\s*uniform\s+(float|vec2|vec3|vec4|sampler2D)\s+\w+',
+      multiLine: true,
+    );
+    final over = <String>[];
+    for (final f in Directory('shaders').listSync().whereType<File>()) {
+      if (!f.path.endsWith('.frag')) continue;
+      final n = decl.allMatches(f.readAsStringSync()).length;
+      if (n > 24) over.add('${f.path}: $n');
+    }
+    expect(over, isEmpty);
+  });
 }

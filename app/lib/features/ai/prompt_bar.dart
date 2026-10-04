@@ -51,6 +51,7 @@ class _PromptBarState extends ConsumerState<PromptBar> {
   }
 
   Future<void> _submit([String? override]) async {
+    _focus.unfocus();
     final instruction = (override ?? _text.text).trim();
     if (instruction.isEmpty) return;
     _last = instruction;
@@ -201,6 +202,9 @@ class _PromptBarState extends ConsumerState<PromptBar> {
                             child: TextField(
                               controller: _text,
                               focusNode: _focus,
+                              // Desktop: clicking anywhere else gives the
+                              // keyboard back to the editor shortcuts.
+                              onTapOutside: (_) => _focus.unfocus(),
                               style: LumenType.body(touch: true)
                                   .copyWith(fontSize: 14, color: t.textPrimary),
                               decoration: InputDecoration(

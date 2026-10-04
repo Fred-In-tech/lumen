@@ -12,85 +12,86 @@
 precision highp float;
 
 uniform vec2 uSize;            // 0-1   pass size (px)
-uniform vec4 uTile;            // 2-5   pass offset xy in the source, full wh
-uniform vec4 uMapInfo;         // 6-9   map grid W, H, face count, 0
-uniform vec4 uFaceInfo0;         // 10-13 face 0: teeth cap L, active, IOD, lip gloss L
-uniform vec4 uFaceInfo1;         // 14-17 face 0: lip chroma gain, lip L shift, blush a, blush b
-uniform vec4 uFaceInfo2;         // 18-21 face 0: right iris x, y, left iris x, y (map px)
-uniform vec4 uFaceInfo3;         // 22-25 face 1: teeth cap L, active, IOD, lip gloss L
-uniform vec4 uFaceInfo4;         // 26-29 face 1: lip chroma gain, lip L shift, blush a, blush b
-uniform vec4 uFaceInfo5;         // 30-33 face 1: right iris x, y, left iris x, y (map px)
-uniform vec4 uFaceInfo6;         // 34-37 face 2: teeth cap L, active, IOD, lip gloss L
-uniform vec4 uFaceInfo7;         // 38-41 face 2: lip chroma gain, lip L shift, blush a, blush b
-uniform vec4 uFaceInfo8;         // 42-45 face 2: right iris x, y, left iris x, y (map px)
-uniform vec4 uFaceInfo9;         // 46-49 face 3: teeth cap L, active, IOD, lip gloss L
-uniform vec4 uFaceInfo10;        // 50-53 face 3: lip chroma gain, lip L shift, blush a, blush b
-uniform vec4 uFaceInfo11;        // 54-57 face 3: right iris x, y, left iris x, y (map px)
-uniform vec4 uFaceInfo12;        // 58-61 face 4: teeth cap L, active, IOD, lip gloss L
-uniform vec4 uFaceInfo13;        // 62-65 face 4: lip chroma gain, lip L shift, blush a, blush b
-uniform vec4 uFaceInfo14;        // 66-69 face 4: right iris x, y, left iris x, y (map px)
-uniform vec4 uFaceInfo15;        // 70-73 face 5: teeth cap L, active, IOD, lip gloss L
-uniform vec4 uFaceInfo16;        // 74-77 face 5: lip chroma gain, lip L shift, blush a, blush b
-uniform vec4 uFaceInfo17;        // 78-81 face 5: right iris x, y, left iris x, y (map px)
-uniform vec4 uFaceInfo18;        // 82-85 face 6: teeth cap L, active, IOD, lip gloss L
-uniform vec4 uFaceInfo19;        // 86-89 face 6: lip chroma gain, lip L shift, blush a, blush b
-uniform vec4 uFaceInfo20;        // 90-93 face 6: right iris x, y, left iris x, y (map px)
-uniform vec4 uFaceInfo21;        // 94-97 face 7: teeth cap L, active, IOD, lip gloss L
-uniform vec4 uFaceInfo22;        // 98-101 face 7: lip chroma gain, lip L shift, blush a, blush b
-uniform vec4 uFaceInfo23;        // 102-105 face 7: right iris x, y, left iris x, y (map px)
-uniform vec4 uBackdropInfo0;    // 106-109 backdrop W, H, active, tau L
-uniform vec4 uBackdropInfo1;    // 110-113 median backdrop L, a, b, tau C
-uniform vec4 uRetouch;          // 114-117 face count, any active, spot ramp, 0
-uniform vec4 uFace0;             // 118-121 face 0: smooth, texture gain, even, red-eye
-uniform vec4 uFace1;             // 122-125 face 0: dark circles, bags, lid protect, shine
-uniform vec4 uFace2;             // 126-129 face 0: eye whites, iris, red vein, glare
-uniform vec4 uFace3;             // 130-133 face 0: teeth bright, teeth desat, acne, freckle
-uniform vec4 uFace4;             // 134-137 face 0: mole, lips, blush, wrinkle crow's feet
-uniform vec4 uFace5;             // 138-141 face 0: wrinkle forehead, frown, smile, marionette
-uniform vec4 uFace6;             // 142-145 face 1: smooth, texture gain, even, red-eye
-uniform vec4 uFace7;             // 146-149 face 1: dark circles, bags, lid protect, shine
-uniform vec4 uFace8;             // 150-153 face 1: eye whites, iris, red vein, glare
-uniform vec4 uFace9;             // 154-157 face 1: teeth bright, teeth desat, acne, freckle
-uniform vec4 uFace10;            // 158-161 face 1: mole, lips, blush, wrinkle crow's feet
-uniform vec4 uFace11;            // 162-165 face 1: wrinkle forehead, frown, smile, marionette
-uniform vec4 uFace12;            // 166-169 face 2: smooth, texture gain, even, red-eye
-uniform vec4 uFace13;            // 170-173 face 2: dark circles, bags, lid protect, shine
-uniform vec4 uFace14;            // 174-177 face 2: eye whites, iris, red vein, glare
-uniform vec4 uFace15;            // 178-181 face 2: teeth bright, teeth desat, acne, freckle
-uniform vec4 uFace16;            // 182-185 face 2: mole, lips, blush, wrinkle crow's feet
-uniform vec4 uFace17;            // 186-189 face 2: wrinkle forehead, frown, smile, marionette
-uniform vec4 uFace18;            // 190-193 face 3: smooth, texture gain, even, red-eye
-uniform vec4 uFace19;            // 194-197 face 3: dark circles, bags, lid protect, shine
-uniform vec4 uFace20;            // 198-201 face 3: eye whites, iris, red vein, glare
-uniform vec4 uFace21;            // 202-205 face 3: teeth bright, teeth desat, acne, freckle
-uniform vec4 uFace22;            // 206-209 face 3: mole, lips, blush, wrinkle crow's feet
-uniform vec4 uFace23;            // 210-213 face 3: wrinkle forehead, frown, smile, marionette
-uniform vec4 uFace24;            // 214-217 face 4: smooth, texture gain, even, red-eye
-uniform vec4 uFace25;            // 218-221 face 4: dark circles, bags, lid protect, shine
-uniform vec4 uFace26;            // 222-225 face 4: eye whites, iris, red vein, glare
-uniform vec4 uFace27;            // 226-229 face 4: teeth bright, teeth desat, acne, freckle
-uniform vec4 uFace28;            // 230-233 face 4: mole, lips, blush, wrinkle crow's feet
-uniform vec4 uFace29;            // 234-237 face 4: wrinkle forehead, frown, smile, marionette
-uniform vec4 uFace30;            // 238-241 face 5: smooth, texture gain, even, red-eye
-uniform vec4 uFace31;            // 242-245 face 5: dark circles, bags, lid protect, shine
-uniform vec4 uFace32;            // 246-249 face 5: eye whites, iris, red vein, glare
-uniform vec4 uFace33;            // 250-253 face 5: teeth bright, teeth desat, acne, freckle
-uniform vec4 uFace34;            // 254-257 face 5: mole, lips, blush, wrinkle crow's feet
-uniform vec4 uFace35;            // 258-261 face 5: wrinkle forehead, frown, smile, marionette
-uniform vec4 uFace36;            // 262-265 face 6: smooth, texture gain, even, red-eye
-uniform vec4 uFace37;            // 266-269 face 6: dark circles, bags, lid protect, shine
-uniform vec4 uFace38;            // 270-273 face 6: eye whites, iris, red vein, glare
-uniform vec4 uFace39;            // 274-277 face 6: teeth bright, teeth desat, acne, freckle
-uniform vec4 uFace40;            // 278-281 face 6: mole, lips, blush, wrinkle crow's feet
-uniform vec4 uFace41;            // 282-285 face 6: wrinkle forehead, frown, smile, marionette
-uniform vec4 uFace42;            // 286-289 face 7: smooth, texture gain, even, red-eye
-uniform vec4 uFace43;            // 290-293 face 7: dark circles, bags, lid protect, shine
-uniform vec4 uFace44;            // 294-297 face 7: eye whites, iris, red vein, glare
-uniform vec4 uFace45;            // 298-301 face 7: teeth bright, teeth desat, acne, freckle
-uniform vec4 uFace46;            // 302-305 face 7: mole, lips, blush, wrinkle crow's feet
-uniform vec4 uFace47;            // 306-309 face 7: wrinkle forehead, frown, smile, marionette
-uniform vec4 uBackdropParams;   // 310-313 clean, unify, luminance, strays
-uniform vec4 uClothesParams;    // 314-317 clothes wrinkles, lint, active, 0
+uniform vec4 uVec0[79];
+#define uTile uVec0[0]  // 2-5   pass offset xy in the source, full wh
+#define uMapInfo uVec0[1]  // 6-9   map grid W, H, face count, 0
+#define uFaceInfo0 uVec0[2]  // 10-13 face 0: teeth cap L, active, IOD, lip gloss L
+#define uFaceInfo1 uVec0[3]  // 14-17 face 0: lip chroma gain, lip L shift, blush a, blush b
+#define uFaceInfo2 uVec0[4]  // 18-21 face 0: right iris x, y, left iris x, y (map px)
+#define uFaceInfo3 uVec0[5]  // 22-25 face 1: teeth cap L, active, IOD, lip gloss L
+#define uFaceInfo4 uVec0[6]  // 26-29 face 1: lip chroma gain, lip L shift, blush a, blush b
+#define uFaceInfo5 uVec0[7]  // 30-33 face 1: right iris x, y, left iris x, y (map px)
+#define uFaceInfo6 uVec0[8]  // 34-37 face 2: teeth cap L, active, IOD, lip gloss L
+#define uFaceInfo7 uVec0[9]  // 38-41 face 2: lip chroma gain, lip L shift, blush a, blush b
+#define uFaceInfo8 uVec0[10]  // 42-45 face 2: right iris x, y, left iris x, y (map px)
+#define uFaceInfo9 uVec0[11]  // 46-49 face 3: teeth cap L, active, IOD, lip gloss L
+#define uFaceInfo10 uVec0[12]  // 50-53 face 3: lip chroma gain, lip L shift, blush a, blush b
+#define uFaceInfo11 uVec0[13]  // 54-57 face 3: right iris x, y, left iris x, y (map px)
+#define uFaceInfo12 uVec0[14]  // 58-61 face 4: teeth cap L, active, IOD, lip gloss L
+#define uFaceInfo13 uVec0[15]  // 62-65 face 4: lip chroma gain, lip L shift, blush a, blush b
+#define uFaceInfo14 uVec0[16]  // 66-69 face 4: right iris x, y, left iris x, y (map px)
+#define uFaceInfo15 uVec0[17]  // 70-73 face 5: teeth cap L, active, IOD, lip gloss L
+#define uFaceInfo16 uVec0[18]  // 74-77 face 5: lip chroma gain, lip L shift, blush a, blush b
+#define uFaceInfo17 uVec0[19]  // 78-81 face 5: right iris x, y, left iris x, y (map px)
+#define uFaceInfo18 uVec0[20]  // 82-85 face 6: teeth cap L, active, IOD, lip gloss L
+#define uFaceInfo19 uVec0[21]  // 86-89 face 6: lip chroma gain, lip L shift, blush a, blush b
+#define uFaceInfo20 uVec0[22]  // 90-93 face 6: right iris x, y, left iris x, y (map px)
+#define uFaceInfo21 uVec0[23]  // 94-97 face 7: teeth cap L, active, IOD, lip gloss L
+#define uFaceInfo22 uVec0[24]  // 98-101 face 7: lip chroma gain, lip L shift, blush a, blush b
+#define uFaceInfo23 uVec0[25]  // 102-105 face 7: right iris x, y, left iris x, y (map px)
+#define uBackdropInfo0 uVec0[26]  // 106-109 backdrop W, H, active, tau L
+#define uBackdropInfo1 uVec0[27]  // 110-113 median backdrop L, a, b, tau C
+#define uRetouch uVec0[28]  // 114-117 face count, any active, spot ramp, 0
+#define uFace0 uVec0[29]  // 118-121 face 0: smooth, texture gain, even, red-eye
+#define uFace1 uVec0[30]  // 122-125 face 0: dark circles, bags, lid protect, shine
+#define uFace2 uVec0[31]  // 126-129 face 0: eye whites, iris, red vein, glare
+#define uFace3 uVec0[32]  // 130-133 face 0: teeth bright, teeth desat, acne, freckle
+#define uFace4 uVec0[33]  // 134-137 face 0: mole, lips, blush, wrinkle crow's feet
+#define uFace5 uVec0[34]  // 138-141 face 0: wrinkle forehead, frown, smile, marionette
+#define uFace6 uVec0[35]  // 142-145 face 1: smooth, texture gain, even, red-eye
+#define uFace7 uVec0[36]  // 146-149 face 1: dark circles, bags, lid protect, shine
+#define uFace8 uVec0[37]  // 150-153 face 1: eye whites, iris, red vein, glare
+#define uFace9 uVec0[38]  // 154-157 face 1: teeth bright, teeth desat, acne, freckle
+#define uFace10 uVec0[39]  // 158-161 face 1: mole, lips, blush, wrinkle crow's feet
+#define uFace11 uVec0[40]  // 162-165 face 1: wrinkle forehead, frown, smile, marionette
+#define uFace12 uVec0[41]  // 166-169 face 2: smooth, texture gain, even, red-eye
+#define uFace13 uVec0[42]  // 170-173 face 2: dark circles, bags, lid protect, shine
+#define uFace14 uVec0[43]  // 174-177 face 2: eye whites, iris, red vein, glare
+#define uFace15 uVec0[44]  // 178-181 face 2: teeth bright, teeth desat, acne, freckle
+#define uFace16 uVec0[45]  // 182-185 face 2: mole, lips, blush, wrinkle crow's feet
+#define uFace17 uVec0[46]  // 186-189 face 2: wrinkle forehead, frown, smile, marionette
+#define uFace18 uVec0[47]  // 190-193 face 3: smooth, texture gain, even, red-eye
+#define uFace19 uVec0[48]  // 194-197 face 3: dark circles, bags, lid protect, shine
+#define uFace20 uVec0[49]  // 198-201 face 3: eye whites, iris, red vein, glare
+#define uFace21 uVec0[50]  // 202-205 face 3: teeth bright, teeth desat, acne, freckle
+#define uFace22 uVec0[51]  // 206-209 face 3: mole, lips, blush, wrinkle crow's feet
+#define uFace23 uVec0[52]  // 210-213 face 3: wrinkle forehead, frown, smile, marionette
+#define uFace24 uVec0[53]  // 214-217 face 4: smooth, texture gain, even, red-eye
+#define uFace25 uVec0[54]  // 218-221 face 4: dark circles, bags, lid protect, shine
+#define uFace26 uVec0[55]  // 222-225 face 4: eye whites, iris, red vein, glare
+#define uFace27 uVec0[56]  // 226-229 face 4: teeth bright, teeth desat, acne, freckle
+#define uFace28 uVec0[57]  // 230-233 face 4: mole, lips, blush, wrinkle crow's feet
+#define uFace29 uVec0[58]  // 234-237 face 4: wrinkle forehead, frown, smile, marionette
+#define uFace30 uVec0[59]  // 238-241 face 5: smooth, texture gain, even, red-eye
+#define uFace31 uVec0[60]  // 242-245 face 5: dark circles, bags, lid protect, shine
+#define uFace32 uVec0[61]  // 246-249 face 5: eye whites, iris, red vein, glare
+#define uFace33 uVec0[62]  // 250-253 face 5: teeth bright, teeth desat, acne, freckle
+#define uFace34 uVec0[63]  // 254-257 face 5: mole, lips, blush, wrinkle crow's feet
+#define uFace35 uVec0[64]  // 258-261 face 5: wrinkle forehead, frown, smile, marionette
+#define uFace36 uVec0[65]  // 262-265 face 6: smooth, texture gain, even, red-eye
+#define uFace37 uVec0[66]  // 266-269 face 6: dark circles, bags, lid protect, shine
+#define uFace38 uVec0[67]  // 270-273 face 6: eye whites, iris, red vein, glare
+#define uFace39 uVec0[68]  // 274-277 face 6: teeth bright, teeth desat, acne, freckle
+#define uFace40 uVec0[69]  // 278-281 face 6: mole, lips, blush, wrinkle crow's feet
+#define uFace41 uVec0[70]  // 282-285 face 6: wrinkle forehead, frown, smile, marionette
+#define uFace42 uVec0[71]  // 286-289 face 7: smooth, texture gain, even, red-eye
+#define uFace43 uVec0[72]  // 290-293 face 7: dark circles, bags, lid protect, shine
+#define uFace44 uVec0[73]  // 294-297 face 7: eye whites, iris, red vein, glare
+#define uFace45 uVec0[74]  // 298-301 face 7: teeth bright, teeth desat, acne, freckle
+#define uFace46 uVec0[75]  // 302-305 face 7: mole, lips, blush, wrinkle crow's feet
+#define uFace47 uVec0[76]  // 306-309 face 7: wrinkle forehead, frown, smile, marionette
+#define uBackdropParams uVec0[77]  // 310-313 clean, unify, luminance, strays
+#define uClothesParams uVec0[78]  // 314-317 clothes wrinkles, lint, active, 0
 
 uniform sampler2D uSource;     // 0: sRGB source (FilterQuality.none)
 uniform sampler2D uB1;         // 1: W x H bands (sRGB, dithered), FilterQuality.none

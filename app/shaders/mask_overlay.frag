@@ -8,13 +8,14 @@
 precision highp float;
 
 uniform vec2 uOutSize;   // 0-1   pass size (px)
-uniform vec4 uTile;      // 2-5   tile offset xy, full output wh
-uniform vec4 uCrop;      // 6-9   l, t, r, b
-uniform vec4 uGeom;      // 10-13 angle rad, rotate90, flipH, flipV
-uniform vec4 uSrc;       // 14-17 source wh, mask grid wh
-uniform vec4 uSlot;      // 18-21 one-hot channel of the mask in its atlas
-uniform vec4 uTint;      // 22-25 r, g, b, max alpha (straight)
-uniform vec4 uWarpInfo;  // 26-29 warp grid wh, range, enabled (as develop)
+uniform vec4 uVec0[7];
+#define uTile uVec0[0]  // 2-5   tile offset xy, full output wh
+#define uCrop uVec0[1]  // 6-9   l, t, r, b
+#define uGeom uVec0[2]  // 10-13 angle rad, rotate90, flipH, flipV
+#define uSrc uVec0[3]  // 14-17 source wh, mask grid wh
+#define uSlot uVec0[4]  // 18-21 one-hot channel of the mask in its atlas
+#define uTint uVec0[5]  // 22-25 r, g, b, max alpha (straight)
+#define uWarpInfo uVec0[6]  // 26-29 warp grid wh, range, enabled (as develop)
 
 uniform sampler2D uMasks;  // the atlas holding the mask (FilterQuality.none)
 uniform sampler2D uWarp;   // warp field atlas (FilterQuality.none)

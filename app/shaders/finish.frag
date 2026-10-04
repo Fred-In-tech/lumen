@@ -7,10 +7,11 @@
 precision highp float;
 
 uniform vec2 uSize;      // 0-1   pass size (px)
-uniform vec4 uTile;      // 2-5   offset xy in the full output, full wh
-uniform vec4 uSharpen;   // 6-9   amount 0-1.5, radius px, detail, masking
-uniform vec4 uGrain;     // 10-13 amount, size px (full res), roughness, seed
-uniform vec4 uDither;    // 14-17 enabled, previewScale, 0, 0
+uniform vec4 uVec0[4];
+#define uTile uVec0[0]  // 2-5   offset xy in the full output, full wh
+#define uSharpen uVec0[1]  // 6-9   amount 0-1.5, radius px, detail, masking
+#define uGrain uVec0[2]  // 10-13 amount, size px (full res), roughness, seed
+#define uDither uVec0[3]  // 14-17 enabled, previewScale, 0, 0
 
 uniform sampler2D uImage;  // develop output (FilterQuality.none)
 
