@@ -23,4 +23,7 @@ export 'src/render/render.dart';
 export 'src/analysis/analysis.dart';
 export 'src/auto/auto.dart';
 export 'src/api/api.dart';
+export 'src/retouch/retouch.dart';
+export 'src/inpaint/inpaint.dart';
+export 'src/vision/vision.dart';
 export 'src/testing/testing.dart';

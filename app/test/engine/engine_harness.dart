@@ -18,6 +18,7 @@ Future<RgbaBuffer> gpuRender(
   double scale = 1,
   bool showClipping = false,
   String assetId = 'test',
+  Map<String, MaskRaster> maskRasters = const {},
 }) async {
   final shaders = await ShaderLibrary.load();
   final maps = aux ?? AuxMaps.compute(AuxMaps.proxy(src));
@@ -28,7 +29,7 @@ Future<RgbaBuffer> gpuRender(
     source: image,
     aux: textures,
     assetId: assetId,
-  );
+  )..maskRasters = maskRasters;
   try {
     final out = await graph.render(s, scale: scale, showClipping: showClipping);
     final buf = await bufferFromImage(out);

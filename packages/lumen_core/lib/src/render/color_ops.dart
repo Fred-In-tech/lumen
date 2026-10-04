@@ -48,8 +48,9 @@ bool colorOpsActive(Float32List f) {
 }
 
 /// Applies HSL, vibrance/saturation, grading and B&W to OkLab [lab]
-/// (in place: L, a, b).
-void applyColorOps(Float64List lab, Float32List f) {
+/// (in place: L, a, b). [saturation] overrides the global value (it carries
+/// the per-pixel local mask sum).
+void applyColorOps(Float64List lab, Float32List f, {double? saturation}) {
   var l = lab[0], a = lab[1], b = lab[2];
   var c = math.sqrt(a * a + b * b);
   var h = okHue(a, b);
@@ -69,7 +70,8 @@ void applyColorOps(Float64List lab, Float32List f) {
     l *= 1 + kHslLumScale * dl * chromaW;
   }
   // 10. Vibrance then saturation.
-  final vib = f[DevelopIndex.color], sat = f[DevelopIndex.color + 1];
+  final vib = f[DevelopIndex.color];
+  final sat = saturation ?? f[DevelopIndex.color + 1];
   var k = 1 + sat;
   if (vib > 0) {
     final lowSat = 1 - smoothstep(0, kVibranceChromaKnee, c);

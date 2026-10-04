@@ -11,8 +11,9 @@ const String kEngineVersion = 'lumen-1';
 
 // ---- Layout -----------------------------------------------------------------
 
-/// Number of floats in `develop.frag` uniforms (PLAN.md §1.6 table).
-const int kDevelopFloatCount = 94;
+/// Number of floats in `develop.frag` uniforms (PLAN.md §1.6 table + mask
+/// grid vec4 + 8 masks × 3 vec4).
+const int kDevelopFloatCount = 194;
 
 /// Number of floats in `finish.frag` uniforms.
 const int kFinishFloatCount = 18;
@@ -26,6 +27,12 @@ const int kToneLutRows = 4;
 
 /// Long edge of the analysis (aux) maps, in pixels.
 const int kAnalysisLongEdge = 512;
+
+/// Long edge of the mask coverage grid, in pixels (source-uv space).
+const int kMaskLongEdge = 1024;
+
+/// Masks rendered per develop pass (2 atlases × 4 masks).
+const int kMaxRenderedMasks = 8;
 
 // ---- Log-luma packing ---------------------------------------------------------
 

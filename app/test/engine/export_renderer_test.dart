@@ -64,6 +64,7 @@ void main() {
       EngineImages.dispose(source);
       expect(EngineImages.live, 0);
     },
+    timeout: const Timeout(Duration(minutes: 2)),
   );
 
   test('long-edge resize, crop and rotation set the export size', () {

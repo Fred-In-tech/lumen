@@ -433,7 +433,6 @@ List<ParamSpec> _build() {
       max: 150,
       xmp: 'Sharpness',
       bipolar: false,
-      localAllowed: true,
     ),
     ParamSpec(
       id: P.sharpenRadius,
@@ -474,7 +473,6 @@ List<ParamSpec> _build() {
       max: 100,
       xmp: 'LuminanceSmoothing',
       bipolar: false,
-      localAllowed: true,
     ),
     ParamSpec(
       id: P.noiseColor,

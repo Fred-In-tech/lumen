@@ -6,8 +6,11 @@
 /// * `uploadRgba(bytes, w, h)`: RGBA8888 bytes → `ui.Image`.
 /// * `readRgba(image)`: `ui.Image` → RGBA8888 bytes (premultiplied; every
 ///   engine image is opaque, so this equals straight RGBA).
-/// * `runDevelop`, `runFinish`, `runDenoise`: one pass each, given packed
-///   uniforms from `lumen_core`. The caller owns (and disposes) the result.
+/// * `runDevelop`, `runFinish`, `runDenoise`, `runMaskOverlay`: one pass
+///   each, given packed uniforms from `lumen_core`. The caller owns (and
+///   disposes) the result.
+/// * `emptyMaskAtlas`: a shared 1×1 transparent image bound when no mask
+///   atlas is in use (never disposed, not in the ledger).
 /// * `EngineImages`: debug counter of live engine-created images.
 library;
 
@@ -94,7 +97,22 @@ ui.Image _run(
   }
 }
 
-/// Develop uber pass. [floats] from `DevelopUniforms.pack`.
+ui.Image? _emptyMaskAtlas;
+
+/// Shared 1×1 transparent image (coverage 0) for unused mask samplers.
+ui.Image get emptyMaskAtlas {
+  final cached = _emptyMaskAtlas;
+  if (cached != null) return cached;
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder);
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(1, 1);
+  picture.dispose();
+  return _emptyMaskAtlas = image;
+}
+
+/// Develop uber pass. [floats] from `DevelopUniforms.pack`; [masks0] and
+/// [masks1] are the mask atlases (default: [emptyMaskAtlas]).
 ui.Image runDevelop(
   ShaderLibrary shaders, {
   required Float32List floats,
@@ -104,6 +122,8 @@ ui.Image runDevelop(
   required ui.Image lut,
   required int width,
   required int height,
+  ui.Image? masks0,
+  ui.Image? masks1,
 }) => _run(
   shaders.develop,
   floats,
@@ -112,7 +132,25 @@ ui.Image runDevelop(
     (auxA, ui.FilterQuality.none),
     (auxB, ui.FilterQuality.none),
     (lut, ui.FilterQuality.none),
+    (masks0 ?? emptyMaskAtlas, ui.FilterQuality.none),
+    (masks1 ?? emptyMaskAtlas, ui.FilterQuality.none),
   ],
+  width,
+  height,
+);
+
+/// Mask overlay pass. [floats] from `MaskOverlayUniforms.pack`; [atlas]
+/// holds the mask.
+ui.Image runMaskOverlay(
+  ShaderLibrary shaders, {
+  required Float32List floats,
+  required ui.Image atlas,
+  required int width,
+  required int height,
+}) => _run(
+  shaders.maskOverlay,
+  floats,
+  [(atlas, ui.FilterQuality.none)],
   width,
   height,
 );

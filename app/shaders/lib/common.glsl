@@ -73,3 +73,69 @@ float hash12(vec2 p) {
   p3 += dot(p3, p3.yzx + 33.33);
   return fract((p3.x + p3.y) * p3.z);
 }
+
+// ---- Geometry (geometry_mapping.dart sourceUvFor) --------------------------
+// crop = l, t, r, b; geom = angle rad, rotate90, flipH, flipV; src = wh.
+vec2 sourceUvFrom(vec2 outUv, vec4 crop, vec4 geom, vec2 src) {
+  vec2 c = mix(crop.xy, crop.zw, outUv);
+  float k = mod(floor(geom.y + 0.5), 4.0);
+  bool odd = k == 1.0 || k == 3.0;
+  vec2 dims = odd ? src.yx : src.xy;
+  if (geom.x != 0.0) {
+    vec2 p = (c - 0.5) * dims;
+    float ca = cos(geom.x);
+    float sa = sin(geom.x);
+    c = vec2(p.x * ca + p.y * sa, -p.x * sa + p.y * ca) / dims + 0.5;
+  }
+  if (geom.z > 0.5) c.x = 1.0 - c.x;
+  if (geom.w > 0.5) c.y = 1.0 - c.y;
+  if (k == 1.0) return vec2(c.y, 1.0 - c.x);
+  if (k == 2.0) return vec2(1.0 - c.x, 1.0 - c.y);
+  if (k == 3.0) return vec2(1.0 - c.y, c.x);
+  return c;
+}
+
+// ---- Mask atlases (mask_rasterizer.dart MaskAtlases) -----------------------
+// Bilinear taps over texel centers of a grid-sized tile: lo/hi texel coords
+// (clamped) and the fractional weights.
+void maskTaps(vec2 uv, vec2 grid, out vec2 lo, out vec2 hi, out vec2 f) {
+  vec2 p = uv * grid - 0.5;
+  vec2 i0 = floor(p);
+  f = p - i0;
+  lo = clamp(i0, vec2(0.0), grid - 1.0);
+  hi = clamp(i0 + 1.0, vec2(0.0), grid - 1.0);
+}
+
+vec4 bilerp(vec4 a, vec4 b, vec4 c, vec4 d, vec2 f) {
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// ---- Local tone (local_adjust.dart localTone, tone_lut.dart curves) --------
+float contrastCurveN(float x, float c) {
+  float g = exp2(clamp(c, -1.0, 1.0));
+  const float p = 0.46;
+  return x < p ? p * pow(x / p, g)
+               : 1.0 - (1.0 - p) * pow((1.0 - x) / (1.0 - p), g);
+}
+
+float levelsN(float x, float w, float b) {
+  float wIn = w > 0.0 ? 1.0 - 0.25 * w : 1.0;
+  float wOut = w < 0.0 ? 1.0 + 0.25 * w : 1.0;
+  float bIn = b < 0.0 ? -0.25 * b : 0.0;
+  float bOut = b > 0.0 ? 0.25 * b : 0.0;
+  return bOut + (wOut - bOut) * clamp((x - bIn) / (wIn - bIn), 0.0, 1.0);
+}
+
+// cwb = local contrast, whites, blacks (normalized, clamped to -1..1).
+float localTone(float x, vec3 cwb) {
+  float y = clamp(x, 0.0, 1.0);
+  if (cwb.x != 0.0) y = contrastCurveN(y, cwb.x);
+  if (cwb.y != 0.0 || cwb.z != 0.0) y = levelsN(y, cwb.y, cwb.z);
+  return y;
+}
+
+// RGBTone: max -> tmx, min -> tmn, middle channel by relative position.
+vec3 hueTone(vec3 c, float mx, float mn, float tmx, float tmn) {
+  if (mx - mn < 1e-6) return vec3(tmx);
+  return tmn + (c - mn) * ((tmx - tmn) / (mx - mn));
+}

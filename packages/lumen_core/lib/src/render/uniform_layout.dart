@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../color/rgb.dart';
 import '../color/white_balance.dart';
 import '../model/develop_settings.dart';
+import '../model/mask.dart';
 import '../model/param_registry.dart';
 import '../model/treatment.dart';
 import 'engine_constants.dart';
@@ -23,6 +24,8 @@ class DevelopContext {
     required this.auxHeight,
     this.airlight = const Rgb(1, 1, 1),
     this.showClipping = false,
+    this.maskWidth = 1,
+    this.maskHeight = 1,
   });
 
   /// Size of the image this pass renders (a tile during export).
@@ -49,6 +52,10 @@ class DevelopContext {
 
   /// Paint clipped highlights red and crushed shadows blue.
   final bool showClipping;
+
+  /// Mask grid size (one atlas tile, see `MaskAtlases`).
+  final int maskWidth;
+  final int maskHeight;
 }
 
 /// One uniform of `develop.frag`, in declaration order.
@@ -76,6 +83,15 @@ abstract final class DevelopIndex {
   static const bwMix = 78;
   static const vignette = 86;
   static const vignette2 = 90;
+
+  /// `vec4 uMaskGrid`: mask grid w, h, active mask count, 0.
+  static const maskGrid = 94;
+
+  /// First of the 8 × 3 `vec4 uMask{i}A/B/C` (12 floats per mask, in
+  /// [kLocalParams] order).
+  static const masks = 98;
+
+  static int mask(int i) => masks + 12 * i;
 }
 
 /// Packs [DevelopSettings] into the `develop.frag` float uniforms.
@@ -83,7 +99,7 @@ abstract final class DevelopIndex {
 /// The CPU reference pipeline consumes the same packed floats, so every
 /// slider → shader-unit mapping lives in exactly one place.
 abstract final class DevelopUniforms {
-  static const List<UniformSlot> table = [
+  static final List<UniformSlot> table = List.unmodifiable(<UniformSlot>[
     (name: 'uOutSize', index: 0, length: 2),
     (name: 'uTile', index: 2, length: 4),
     (name: 'uCrop', index: 6, length: 4),
@@ -108,7 +124,13 @@ abstract final class DevelopUniforms {
     (name: 'uBwMix1', index: 82, length: 4),
     (name: 'uVignette', index: 86, length: 4),
     (name: 'uVignette2', index: 90, length: 4),
-  ];
+    (name: 'uMaskGrid', index: 94, length: 4),
+    for (var i = 0; i < 8; i++) ...[
+      (name: 'uMask${i}A', index: 98 + 12 * i, length: 4),
+      (name: 'uMask${i}B', index: 102 + 12 * i, length: 4),
+      (name: 'uMask${i}C', index: 106 + 12 * i, length: 4),
+    ],
+  ]);
 
   static Float32List pack(DevelopSettings s, DevelopContext ctx) {
     final f = Float32List(kDevelopFloatCount);
@@ -217,6 +239,32 @@ abstract final class DevelopUniforms {
       ctx.showClipping ? 1 : 0,
       0,
     ]);
+    _packMasks(f, s.masks, ctx);
     return f;
+  }
+
+  /// Local adjustments in shader units: exposure in EV, the rest / 100.
+  static void _packMasks(
+    Float32List f,
+    List<LocalMask> masks,
+    DevelopContext ctx,
+  ) {
+    var active = false;
+    final n = masks.length < kMaxRenderedMasks
+        ? masks.length
+        : kMaxRenderedMasks;
+    for (var i = 0; i < n; i++) {
+      final adj = masks[i].localAdjustments;
+      if (adj.isEmpty) continue;
+      active = true;
+      for (var k = 0; k < kLocalParams.length; k++) {
+        final id = kLocalParams[k];
+        final v = adj[id] ?? 0;
+        f[DevelopIndex.mask(i) + k] = id == P.exposure ? v : v / 100;
+      }
+    }
+    f[DevelopIndex.maskGrid] = ctx.maskWidth.toDouble();
+    f[DevelopIndex.maskGrid + 1] = ctx.maskHeight.toDouble();
+    f[DevelopIndex.maskGrid + 2] = active ? n.toDouble() : 0;
   }
 }

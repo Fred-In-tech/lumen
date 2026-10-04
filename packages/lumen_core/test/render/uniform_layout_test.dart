@@ -14,13 +14,13 @@ const _ctx = DevelopContext(
 
 void main() {
   group('DevelopUniforms', () {
-    test('packs exactly kDevelopFloatCount (94) floats', () {
-      expect(kDevelopFloatCount, 94);
-      expect(DevelopUniforms.pack(DevelopSettings.defaults, _ctx).length, 94);
+    test('packs exactly kDevelopFloatCount (194) floats', () {
+      expect(kDevelopFloatCount, 194);
+      expect(DevelopUniforms.pack(DevelopSettings.defaults, _ctx).length, 194);
     });
 
     test('index table matches PLAN.md §1.6 and is contiguous', () {
-      const expected = {
+      final expected = {
         'uOutSize': (0, 2),
         'uTile': (2, 4),
         'uCrop': (6, 4),
@@ -45,6 +45,12 @@ void main() {
         'uBwMix1': (82, 4),
         'uVignette': (86, 4),
         'uVignette2': (90, 4),
+        'uMaskGrid': (94, 4),
+        for (var i = 0; i < 8; i++) ...{
+          'uMask${i}A': (98 + 12 * i, 4),
+          'uMask${i}B': (102 + 12 * i, 4),
+          'uMask${i}C': (106 + 12 * i, 4),
+        },
       };
       var next = 0;
       for (final u in DevelopUniforms.table) {
@@ -74,6 +80,8 @@ void main() {
       expect(f[90], 0);
       expect(f[91], closeTo(1.5, 1e-6));
       expect(f[92], 0);
+      expect(f.sublist(94, 98), [1, 1, 0, 0]);
+      expect(f.sublist(98).every((v) => v == 0), isTrue);
     });
 
     test('maps slider units to shader units', () {
@@ -165,6 +173,72 @@ void main() {
       );
       expect(f.sublist(0, 6), [64, 32, 128, 96, 1000, 500]);
       expect(f[DevelopIndex.vignette2 + 1], 2);
+    });
+  });
+
+  group('mask uniforms', () {
+    LocalMask mask(String id, Map<String, double> adj) =>
+        LocalMask(id: id, name: id, kind: MaskKind.radial, adjustments: adj);
+
+    test('pack the 12 local params per mask in kLocalParams order', () {
+      final s = DevelopSettings.defaults.copyWith(
+        masks: [
+          mask('a', {P.exposure: 1.5, P.temp: 40, P.blacks: -20}),
+          mask('b', {}),
+          mask('c', {P.clarity: 60, P.dehaze: -10, P.saturation: 25}),
+        ],
+      );
+      final f = DevelopUniforms.pack(
+        s,
+        const DevelopContext(
+          outWidth: 10,
+          outHeight: 10,
+          sourceWidth: 10,
+          sourceHeight: 10,
+          auxWidth: 1,
+          auxHeight: 1,
+          maskWidth: 640,
+          maskHeight: 480,
+        ),
+      );
+      expect(f.sublist(DevelopIndex.maskGrid, DevelopIndex.maskGrid + 4), [
+        640,
+        480,
+        3,
+        0,
+      ]);
+      final a = DevelopIndex.mask(0);
+      expect(f[a], 1.5); // exposure in EV
+      expect(f[a + 1], closeTo(0.4, 1e-7)); // temp
+      expect(f[a + 11], closeTo(-0.2, 1e-7)); // blacks
+      expect(
+        f
+            .sublist(DevelopIndex.mask(1), DevelopIndex.mask(2))
+            .every((v) => v == 0),
+        isTrue,
+      );
+      final c = DevelopIndex.mask(2);
+      expect(f[c + 3], closeTo(0.25, 1e-7)); // saturation
+      expect(f[c + 6], closeTo(0.6, 1e-7)); // clarity
+      expect(f[c + 8], closeTo(-0.1, 1e-7)); // dehaze
+    });
+
+    test('masks without adjustments are inactive (count 0)', () {
+      final s = DevelopSettings.defaults.copyWith(masks: [mask('a', {})]);
+      final f = DevelopUniforms.pack(s, _ctx);
+      expect(f[DevelopIndex.maskGrid + 2], 0);
+    });
+
+    test('only the first 8 masks are packed', () {
+      final s = DevelopSettings.defaults.copyWith(
+        masks: [
+          for (var i = 0; i < 10; i++) mask('m$i', {P.exposure: 0.1 * (i + 1)}),
+        ],
+      );
+      final f = DevelopUniforms.pack(s, _ctx);
+      expect(f[DevelopIndex.maskGrid + 2], 8);
+      expect(f[DevelopIndex.mask(7)], closeTo(0.8, 1e-6));
+      expect(f.length, kDevelopFloatCount);
     });
   });
 

@@ -8,6 +8,13 @@
 ///   borrows `source` and `aux` (the caller keeps owning them), owns its LUT
 ///   texture and denoise cache. Each `render` returns a new image owned by
 ///   the caller. `outputSize(settings, scale)` gives the frame size.
+/// * Masks: `settings.masks` are rendered automatically. Coverage atlases
+///   come from the graph's `maskCache` (rebuilt only when coverage changes;
+///   adjustments are uniforms). Set `maskRasters` (`maskRef` → decoded
+///   `MaskRaster`) for AI masks; missing rasters cover nothing.
+/// * `renderMaskOverlay(settings, index, {scale, tint})`: one mask's
+///   coverage as a premultiplied tint (default 50 % red), same size and
+///   geometry as `render` (draw it over the frame for "show overlay").
 library;
 
 import 'dart:math' as math;
@@ -18,6 +25,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'aux_cache.dart';
 import 'gpu_pass.dart';
 import 'lut_texture.dart';
+import 'mask_atlas_cache.dart';
 import 'shader_library.dart';
 
 abstract interface class FrameRenderer {
@@ -40,7 +48,11 @@ class RenderGraph implements FrameRenderer {
     this.assetId = '',
     ({int width, int height})? originalSize,
   }) : originalSize =
-           originalSize ?? (width: source.width, height: source.height);
+           originalSize ?? (width: source.width, height: source.height),
+       maskCache = MaskAtlasCache(
+         sourceWidth: source.width,
+         sourceHeight: source.height,
+       );
 
   final ShaderLibrary shaders;
 
@@ -56,6 +68,13 @@ class RenderGraph implements FrameRenderer {
   /// Size of the original file, for resolution-dependent effects (grain,
   /// sharpen radius).
   final ({int width, int height}) originalSize;
+
+  /// Mask coverage atlases of this photo (owned by the graph).
+  final MaskAtlasCache maskCache;
+
+  /// Decoded AI mask rasters by `maskRef`.
+  Map<String, MaskRaster> get maskRasters => maskCache.rasters;
+  set maskRasters(Map<String, MaskRaster> value) => maskCache.rasters = value;
 
   LutTexture? _lut;
   ui.Image? _denoised;
@@ -79,6 +98,7 @@ class RenderGraph implements FrameRenderer {
   }) async {
     if (_disposed) throw StateError('RenderGraph disposed');
     final lut = await _lutFor(settings);
+    final masks = await maskCache.obtain(settings.masks);
     if (_disposed) throw StateError('RenderGraph disposed');
     final src = _sourceFor(settings);
     final size = outputSize(settings, scale);
@@ -95,6 +115,8 @@ class RenderGraph implements FrameRenderer {
           auxHeight: aux.height,
           airlight: aux.maps.airlight,
           showClipping: showClipping,
+          maskWidth: masks.width,
+          maskHeight: masks.height,
         ),
       ),
       source: src,
@@ -103,6 +125,8 @@ class RenderGraph implements FrameRenderer {
       lut: lut.image,
       width: size.width,
       height: size.height,
+      masks0: masks.atlas0,
+      masks1: masks.atlas1,
     );
     if (FinishUniforms.isIdentity(settings)) return developed;
     final full = outputSizeFor(
@@ -125,6 +149,41 @@ class RenderGraph implements FrameRenderer {
     );
     EngineImages.dispose(developed);
     return finished;
+  }
+
+  Future<ui.Image> renderMaskOverlay(
+    DevelopSettings settings,
+    int index, {
+    double scale = 1,
+    MaskTint tint = kDefaultMaskTint,
+  }) async {
+    if (_disposed) throw StateError('RenderGraph disposed');
+    final masks = await maskCache.obtain(settings.masks);
+    if (_disposed) throw StateError('RenderGraph disposed');
+    if (index < 0 || index >= masks.count) {
+      throw RangeError.range(index, 0, masks.count - 1, 'index');
+    }
+    final size = outputSize(settings, scale);
+    return runMaskOverlay(
+      shaders,
+      floats: MaskOverlayUniforms.pack(
+        settings,
+        DevelopContext(
+          outWidth: size.width,
+          outHeight: size.height,
+          sourceWidth: source.width,
+          sourceHeight: source.height,
+          auxWidth: aux.width,
+          auxHeight: aux.height,
+        ),
+        masks.atlases,
+        index,
+        tint: tint,
+      ),
+      atlas: masks.atlasFor(index),
+      width: size.width,
+      height: size.height,
+    );
   }
 
   Future<LutTexture> _lutFor(DevelopSettings s) async {
@@ -164,6 +223,7 @@ class RenderGraph implements FrameRenderer {
     if (_disposed) return;
     _disposed = true;
     _releaseLut();
+    maskCache.dispose();
     EngineImages.dispose(_denoised);
     _denoised = null;
   }

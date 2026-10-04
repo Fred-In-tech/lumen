@@ -7,3 +7,6 @@ export 'uniform_layout.dart';
 export 'finish_uniforms.dart';
 export 'aux_maps.dart';
 export 'geometry_mapping.dart';
+export 'mask_rasterizer.dart';
+export 'local_adjust.dart' show LocalIndex, localTone;
+export 'mask_overlay.dart';

@@ -14,6 +14,9 @@
 ///   reported per tile (0..1); a cancelled [CancelToken] stops between
 ///   tiles with [ExportCancelled]. Aux textures are the preview's (they are
 ///   resolution independent), so tiles have no seams.
+/// * Masks: pass the preview's `MaskAtlasTextures` as `masks` (resolution
+///   independent, source-uv space) or let them be rasterized from
+///   `settings.masks` (with `maskRasters` for AI masks).
 /// * Encode the result with `encodeImage(EncodeRequest(...))`.
 library;
 
@@ -26,6 +29,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'aux_cache.dart';
 import 'gpu_pass.dart';
 import 'lut_texture.dart';
+import 'mask_atlas_cache.dart';
 import 'shader_library.dart';
 
 /// Default cap for the export long edge (Android/Windows/web); Apple
@@ -109,6 +113,8 @@ class ExportRenderer {
     int tileSize = 2048,
     void Function(double progress)? onProgress,
     CancelToken? cancel,
+    MaskAtlasTextures? masks,
+    Map<String, MaskRaster> maskRasters = const {},
   }) async {
     final full = outputSizeFor(source.width, source.height, settings.geometry);
     final size = exportSize(
@@ -119,6 +125,17 @@ class ExportRenderer {
     );
     final finish = !FinishUniforms.isIdentity(settings);
     final apron = finish ? 4 : 0;
+    final ownMasks = masks == null;
+    final atlases =
+        masks ??
+        await MaskAtlasTextures.upload(
+          MaskRasterizer.build(
+            settings.masks,
+            source.width,
+            source.height,
+            rasters: maskRasters,
+          ),
+        );
     final lut = await LutTexture.upload(ToneLut.bake(settings));
     final src = DenoiseUniforms.isIdentity(settings)
         ? source
@@ -160,6 +177,8 @@ class ExportRenderer {
             auxWidth: aux.width,
             auxHeight: aux.height,
             airlight: aux.maps.airlight,
+            maskWidth: atlases.width,
+            maskHeight: atlases.height,
           );
           var image = runDevelop(
             shaders,
@@ -170,6 +189,8 @@ class ExportRenderer {
             lut: lut.image,
             width: rw,
             height: rh,
+            masks0: atlases.atlas0,
+            masks1: atlases.atlas1,
           );
           if (finish) {
             final developed = image;
@@ -200,6 +221,7 @@ class ExportRenderer {
       }
     } finally {
       lut.dispose();
+      if (ownMasks) atlases.dispose();
       if (!identical(src, source)) EngineImages.dispose(src);
     }
     return ExportPixels(size.width, size.height, frame);
