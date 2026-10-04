@@ -25,7 +25,17 @@ enum FaceGroup {
 /// Where a retouch parameter applies: per face, or once per image.
 enum PortraitScope { face, image }
 
-enum PortraitSection { skin, blemish, eyes, teeth, shape, background, hair }
+enum PortraitSection {
+  skin,
+  blemish,
+  wrinkles,
+  eyes,
+  teeth,
+  makeup,
+  shape,
+  background,
+  hair,
+}
 
 class PortraitParamSpec {
   const PortraitParamSpec(
@@ -63,6 +73,13 @@ abstract final class PortraitIds {
   static const acne = 'blemish.acne';
   static const freckle = 'blemish.freckle';
   static const mole = 'blemish.mole';
+  static const wrinkleForehead = 'wrinkle.forehead';
+  static const wrinkleFrown = 'wrinkle.frown';
+  static const wrinkleCrowsFeet = 'wrinkle.crowsFeet';
+  static const wrinkleSmile = 'wrinkle.smile';
+  static const wrinkleMarionette = 'wrinkle.marionette';
+  static const lips = 'makeup.lips';
+  static const blush = 'makeup.blush';
   static const darkCircles = 'eyes.darkCircles';
   static const eyeBags = 'eyes.bags';
   static const lidProtect = 'eyes.lidProtect';
@@ -97,6 +114,11 @@ abstract final class PortraitRegistry {
     _P(PortraitIds.acne, 'Acne & blemishes', _S.blemish),
     _P(PortraitIds.freckle, 'Freckles', _S.blemish),
     _P(PortraitIds.mole, 'Moles', _S.blemish),
+    _P(PortraitIds.wrinkleForehead, 'Forehead lines', _S.wrinkles),
+    _P(PortraitIds.wrinkleFrown, 'Frown lines', _S.wrinkles),
+    _P(PortraitIds.wrinkleCrowsFeet, 'Crow’s feet', _S.wrinkles),
+    _P(PortraitIds.wrinkleSmile, 'Smile lines', _S.wrinkles),
+    _P(PortraitIds.wrinkleMarionette, 'Marionette lines', _S.wrinkles),
     _P(PortraitIds.darkCircles, 'Dark circles', _S.eyes),
     _P(PortraitIds.eyeBags, 'Eye bags', _S.eyes),
     _P(
@@ -111,6 +133,8 @@ abstract final class PortraitRegistry {
     _P(PortraitIds.glare, 'Glasses glare', _S.eyes),
     _P(PortraitIds.teethBrightness, 'Teeth brightness', _S.teeth),
     _P(PortraitIds.teethDesaturate, 'Teeth whitening', _S.teeth),
+    _P(PortraitIds.lips, 'Lip colour', _S.makeup),
+    _P(PortraitIds.blush, 'Blush', _S.makeup),
     _P(PortraitIds.faceWidth, 'Face width', _S.shape, min: -100),
     _P(PortraitIds.vShape, 'V-shape', _S.shape, min: -100),
     _P(PortraitIds.chin, 'Chin', _S.shape, min: -100),
