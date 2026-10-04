@@ -1,3 +1,6 @@
+import 'package:collection/collection.dart';
+
+import '../inpaint/heal_op.dart';
 import '../model/develop_settings.dart';
 import 'geometry.dart';
 import 'mask.dart';
@@ -21,7 +24,7 @@ enum HistoryKind {
 /// One reversible change: [path] goes from [from] to [to] (JSON values).
 ///
 /// Paths: `values.<paramId>`, `curves.<channel>`, `treatment`, `geometry`,
-/// `masks`, `portrait`.
+/// `masks`, `portrait`, `heal`.
 class HistoryOp {
   const HistoryOp(this.path, this.from, this.to);
 
@@ -64,6 +67,7 @@ DevelopSettings _apply(DevelopSettings s, String path, Object? v) {
           : [],
     ),
     'portrait' => s.copyWith(portrait: PortraitSettings.fromJson(v)),
+    'heal' => s.copyWith(heal: parseHealOps(v)),
     _ => s,
   };
 }
@@ -97,6 +101,15 @@ List<HistoryOp> _diffOps(DevelopSettings a, DevelopSettings b) {
   }
   if (a.portrait != b.portrait) {
     ops.add(HistoryOp('portrait', a.portrait.toJson(), b.portrait.toJson()));
+  }
+  if (!const ListEquality<HealOp>().equals(a.heal, b.heal)) {
+    ops.add(
+      HistoryOp(
+        'heal',
+        [for (final h in a.heal) h.toJson()],
+        [for (final h in b.heal) h.toJson()],
+      ),
+    );
   }
   return ops;
 }

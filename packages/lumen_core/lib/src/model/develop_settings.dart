@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 
+import '../inpaint/heal_op.dart';
 import 'geometry.dart';
 import 'mask.dart';
 import 'param_registry.dart';
@@ -18,6 +19,7 @@ class DevelopSettings {
     this.geometry = Geometry.none,
     this.masks = const [],
     this.portrait = PortraitSettings.empty,
+    this.heal = const [],
   });
 
   factory DevelopSettings.fromJson(Object? json) {
@@ -48,6 +50,7 @@ class DevelopSettings {
             )
           : const [],
       portrait: PortraitSettings.fromJson(json['portrait']),
+      heal: parseHealOps(json['heal']),
     );
   }
 
@@ -61,6 +64,9 @@ class DevelopSettings {
 
   /// Per-face and backdrop retouch (Evoto-style portrait module).
   final PortraitSettings portrait;
+
+  /// Ordered heal / remove / clone ops (patches drawn onto the source).
+  final List<HealOp> heal;
 
   /// Non-default scalar values (read-only view).
   Map<ParamId, double> get nonDefaultValues => Map.unmodifiable(_values);
@@ -91,6 +97,7 @@ class DevelopSettings {
       geometry: geometry,
       masks: masks,
       portrait: portrait,
+      heal: heal,
     );
   }
 
@@ -100,6 +107,7 @@ class DevelopSettings {
     Geometry? geometry,
     List<LocalMask>? masks,
     PortraitSettings? portrait,
+    List<HealOp>? heal,
   }) => DevelopSettings(
     values: _values,
     curves: curves ?? this.curves,
@@ -107,6 +115,7 @@ class DevelopSettings {
     geometry: geometry ?? this.geometry,
     masks: masks == null ? this.masks : List.unmodifiable(masks),
     portrait: portrait ?? this.portrait,
+    heal: heal == null ? this.heal : List.unmodifiable(heal),
   );
 
   /// Returns a copy with every scalar in [ids] reset to its default.
@@ -120,7 +129,8 @@ class DevelopSettings {
       treatment == Treatment.color &&
       geometry.isIdentity &&
       masks.isEmpty &&
-      portrait.isDefault;
+      portrait.isDefault &&
+      heal.isEmpty;
 
   /// Scalar params whose values differ between this and [other].
   Set<ParamId> changedParams(DevelopSettings other) => {
@@ -135,6 +145,7 @@ class DevelopSettings {
     'geometry': geometry.toJson(),
     'masks': [for (final m in masks) m.toJson()],
     if (!portrait.isDefault) 'portrait': portrait.toJson(),
+    if (heal.isNotEmpty) 'heal': [for (final h in heal) h.toJson()],
   };
 
   @override
@@ -145,7 +156,8 @@ class DevelopSettings {
       other.treatment == treatment &&
       other.geometry == geometry &&
       const ListEquality<LocalMask>().equals(other.masks, masks) &&
-      other.portrait == portrait;
+      other.portrait == portrait &&
+      const ListEquality<HealOp>().equals(other.heal, heal);
 
   @override
   int get hashCode => Object.hash(
@@ -155,6 +167,7 @@ class DevelopSettings {
     geometry,
     const ListEquality<LocalMask>().hash(masks),
     portrait,
+    const ListEquality<HealOp>().hash(heal),
   );
 
   @override

@@ -14,9 +14,11 @@ enum SettingsGroup {
   effects,
   geometry,
   masks,
-  portrait;
+  portrait,
+  heal;
 
-  /// Default selection of the copy dialog: everything except geometry and masks.
+  /// Default selection of the copy dialog: everything except geometry,
+  /// masks and heal ops (those are image-specific).
   static const Set<SettingsGroup> defaultCopy = {
     light, color, presence, hsl, bw, curve, grading, detail, effects, //
     portrait,
@@ -50,6 +52,7 @@ enum SettingsGroup {
     geometry => 'Crop & geometry',
     masks => 'Masks',
     portrait => 'Portrait retouch',
+    heal => 'Heal & remove',
   };
 }
 
@@ -76,5 +79,6 @@ DevelopSettings pasteSettings({
         portrait: groups.contains(SettingsGroup.portrait)
             ? source.portrait
             : null,
+        heal: groups.contains(SettingsGroup.heal) ? source.heal : null,
       );
 }
