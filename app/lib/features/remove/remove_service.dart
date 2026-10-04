@@ -8,6 +8,8 @@ import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/portrait/portrait_state.dart';
+import 'package:lumen/features/remove/heal_transfer.dart';
+import 'package:lumen/features/remove/model_bridge.dart';
 import 'package:lumen/features/remove/remove_jobs.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/features/remove/remove_status.dart';
@@ -127,7 +129,12 @@ class RemoveService {
       }
       _report(
         assetId,
-        RemoveDone(kind: kind, ops: outcome.ops, method: outcome.method),
+        RemoveDone(
+          kind: kind,
+          ops: outcome.ops,
+          method: outcome.method,
+          note: outcome.note,
+        ),
       );
       return outcome.ops;
     } on InpaintCancelled {
@@ -169,39 +176,49 @@ class RemoveService {
         ),
       ),
     );
-    final method = plan.method;
+    var method = plan.method;
     if (method == null) return null;
     _report(run.assetId, RemoveRunning(kind: HealKind.remove, method: method));
-    final InpaintResult result;
+    InpaintResult? result;
+    String? note;
     if (method == InpaintMethod.model && model != null) {
-      // MI-GAN seam: the model lives on its own interpreter isolate, so
-      // the pipeline runs here and cancels cooperatively.
-      final base = ctx.input.healedBase();
-      result = await InpaintPipeline.remove(
-        base,
-        rasterizeHoleMask(strokes, ctx.width, ctx.height),
-        model: model,
-        method: method,
-        shouldCancel: () => run.cancelled,
-      );
-    } else {
-      result = await run.track(
-        startClassicalRemoval(
-          _runner,
-          ctx.input,
-          method,
-          const InpaintConfig(),
-        ),
-      );
+      try {
+        result = await run.track(
+          startModelRemoval(_runner, ctx.input, model, const InpaintConfig()),
+        );
+      } on InpaintCancelled {
+        rethrow;
+      } on Object catch (e, st) {
+        // Errors from the worker arrive as RemoteError (an Error subtype).
+        if (run.cancelled) rethrow;
+        _log.warning('AI fill failed for ${run.assetId}', e, st);
+        note = 'AI fill failed, so Patch fill was used instead.';
+        method = InpaintMethod.patchMatch;
+        _report(
+          run.assetId,
+          RemoveRunning(kind: HealKind.remove, method: method),
+        );
+      }
     }
+    final InpaintResult done =
+        result ??
+        await run.track<InpaintResult>(
+          startClassicalRemoval(
+            _runner,
+            ctx.input,
+            method,
+            const InpaintConfig(),
+          ),
+        );
     return _commit(
       run,
       ctx,
-      patches: result.patches,
-      engine: result.engineId,
-      ai: result.ai,
+      patches: done.patches,
+      engine: done.engineId,
+      ai: done.ai,
       faceIntersect: plan.faceIntersect,
       method: method,
+      note: note,
     );
   }
 
@@ -266,12 +283,16 @@ class RemoveService {
     required bool faceIntersect,
     InpaintMethod? method,
     (double, double)? cloneOffset,
+    String? note,
   }) async {
     run.throwIfCancelled();
     if (patches.isEmpty) return null;
     final assetId = run.assetId;
     final before = _ref.read(editorProvider(assetId)).value;
-    final ids = _newIds(before?.doc, patches.length);
+    final ids = newHealOpIds(
+      before == null ? const {} : referencedPatchRefs(before.doc),
+      patches.length,
+    );
     final now = DateTime.now().toUtc();
     final ops = [
       for (var i = 0; i < patches.length; i++)
@@ -317,7 +338,7 @@ class RemoveService {
     } on Exception catch (e, st) {
       _log.warning('patch cleanup failed for $assetId', e, st);
     }
-    return _Outcome(List.unmodifiable(ops), method);
+    return _Outcome(List.unmodifiable(ops), method, note);
   }
 
   Future<void> _discard(
@@ -334,22 +355,17 @@ class RemoveService {
     }
   }
 
-  /// Fresh op ids that no op in [doc] (settings, history, snapshots) uses,
-  /// so a new PNG never overwrites one an undo could bring back.
-  List<String> _newIds(EditDocument? doc, int count) {
-    final taken = doc == null ? const <String>{} : referencedPatchRefs(doc);
-    final stamp = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-    final ids = <String>[];
-    for (var n = 0; ids.length < count; n++) {
-      final id = 'h${stamp}_$n';
-      if (!taken.contains('$kRetouchDir/$id.png')) ids.add(id);
-    }
-    return ids;
+  /// Faces already found for the photo. Read only: a removal never starts
+  /// a face analysis (the Remove panel does, when it opens).
+  List<FaceBox> _faces(String assetId) {
+    final known =
+        _ref.exists(portraitFacesStatusProvider(assetId)) ||
+        _ref.exists(portraitFacesProvider(assetId));
+    if (!known) return const [];
+    return [
+      ...?_ref.read(portraitFacesProvider(assetId))?.faces.map((f) => f.box),
+    ];
   }
-
-  List<FaceBox> _faces(String assetId) => [
-    ...?_ref.read(portraitFacesProvider(assetId))?.faces.map((f) => f.box),
-  ];
 
   CancellableRunner get _runner => _ref.read(cancellableRunnerProvider);
 
@@ -408,7 +424,8 @@ class _Context {
 }
 
 class _Outcome {
-  const _Outcome(this.ops, this.method);
+  const _Outcome(this.ops, this.method, this.note);
   final List<HealOp> ops;
   final InpaintMethod? method;
+  final String? note;
 }

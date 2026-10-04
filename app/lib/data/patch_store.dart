@@ -56,7 +56,21 @@ abstract interface class PatchStore {
 
   /// Deletes one patch (no-op when missing).
   Future<void> delete(String assetId, String ref);
+
+  /// Copies the stored PNG [fromRef] of [fromAsset] to [toRef] of [toAsset]
+  /// byte for byte. False when the source is missing or unsafe; throws
+  /// [ArgumentError] for an unsafe target.
+  Future<bool> copy(
+    String fromAsset,
+    String fromRef,
+    String toAsset,
+    String toRef,
+  );
 }
+
+/// Opens the store lazily, so callers only touch it when a photo has heal
+/// ops (tests and photos without retouching never need a store).
+typedef PatchStoreGetter = Future<PatchStore> Function();
 
 /// Every patch ref [doc] can still render: the current settings, both sides
 /// of every history entry (undo and redo), snapshots and the AI record's

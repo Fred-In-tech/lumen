@@ -10,6 +10,8 @@ import 'package:lumen/features/editor/renderer/gpu_photo_renderer.dart';
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/export/export_service.dart';
 import 'package:lumen/features/export/export_targets.dart';
+import 'package:lumen/features/masks/ai_mask_source.dart';
+import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/widgets/buttons.dart';
 import 'package:lumen/widgets/lumen_slider.dart';
 import 'package:lumen/widgets/segmented.dart';
@@ -26,6 +28,8 @@ final exportServiceProvider = Provider<ExportService>(
   (ref) => ExportService(
     ref.watch(catalogRepositoryProvider),
     renderer: ref.watch(fullResRendererProvider),
+    patches: () => ref.read(patchStoreProvider.future),
+    maskLoader: ref.watch(aiMaskRasterLoaderProvider),
   ),
 );
 

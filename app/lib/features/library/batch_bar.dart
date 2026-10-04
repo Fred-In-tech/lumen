@@ -10,6 +10,8 @@ import 'package:lumen/design/type.dart';
 import 'package:lumen/features/batch/batch_auto_edit.dart';
 import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/library/library_actions.dart';
+import 'package:lumen/features/masks/ai_mask_source.dart';
+import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 import 'package:lumen/widgets/buttons.dart';
@@ -112,11 +114,14 @@ class BatchBar extends ConsumerWidget {
                   );
                   return;
                 }
+                var skipped = 0;
                 final n = await syncSettingsToAssets(
                   ref,
                   clip.settings,
                   clip.groups,
                   ids,
+                  sourceAssetId: clip.sourceAssetId,
+                  onHealsSkipped: (k) => skipped = k,
                 );
                 for (final id in ids) {
                   final doc = await ref
@@ -126,12 +131,17 @@ class BatchBar extends ConsumerWidget {
                     ref.read(catalogRepositoryProvider),
                     id,
                     doc.settings,
+                    patches: () => ref.read(patchStoreProvider.future),
+                    maskLoader: ref.read(aiMaskRasterLoaderProvider),
                   );
                 }
                 if (context.mounted) {
                   showToast(
                     context,
-                    'Settings synced to $n photos.',
+                    skipped == 0
+                        ? 'Settings synced to $n photos.'
+                        : 'Settings synced to $n photos. '
+                              '${skippedHealsMessage(skipped)}',
                     kind: ToastKind.success,
                   );
                 }

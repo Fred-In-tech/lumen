@@ -1,11 +1,14 @@
 import 'dart:collection';
+import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/data/patch_store.dart';
+import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
+import 'package:lumen/import/photo_decoder.dart';
 import 'package:lumen/platform/background.dart';
 
 /// A preview with the photo's heal patches drawn in: what the renderer
@@ -181,4 +184,34 @@ Future<RgbaBuffer> composeHealedFullRes(
   return runInBackground(
     () => composeHealed(source, ops, MapPatchLookup(patches)),
   );
+}
+
+/// True when [settings] has heal ops that draw something.
+bool hasVisibleHeals(DevelopSettings settings) =>
+    settings.heal.any((op) => !op.hidden && op.isRenderable);
+
+/// [original] decoded (long edge ≤ [maxLongEdge] when given) with the
+/// visible ops of [ops] drawn in: the source export, batch and thumbnail
+/// renders develop. The store is only opened when there is something to
+/// draw, so photos without retouching never touch it.
+Future<RgbaBuffer> decodeHealedSource(
+  Uint8List original, {
+  required String assetId,
+  required List<HealOp> ops,
+  required PatchStoreGetter? patches,
+  int? maxLongEdge,
+}) async {
+  final decoded = await decodePhoto(original, maxLongEdge: maxLongEdge);
+  final RgbaBuffer src;
+  try {
+    src = await rgbaFromImage(decoded);
+  } finally {
+    decoded.dispose();
+  }
+  final visible = [
+    for (final op in ops)
+      if (!op.hidden && op.isRenderable) op,
+  ];
+  if (patches == null || visible.isEmpty) return src;
+  return composeHealedFullRes(await patches(), assetId, src, visible);
 }

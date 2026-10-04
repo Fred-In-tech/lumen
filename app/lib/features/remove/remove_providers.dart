@@ -6,6 +6,7 @@ import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/data/patch_store_platform.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
+import 'package:lumen/features/remove/ai_remover.dart';
 import 'package:lumen/import/photo_decoder.dart';
 import 'package:lumen/platform/cancellable_task.dart';
 
@@ -14,9 +15,12 @@ final patchStoreProvider = FutureProvider<PatchStore>(
   (ref) => openPatchStore(),
 );
 
-/// The on-device inpainting model (MI-GAN). Null until its adapter
-/// overrides this provider; removal then uses the classical engines.
-final removeModelProvider = Provider<InpaintModel?>((ref) => null);
+/// The on-device inpainting model (MI-GAN) when the user has AI fill on
+/// and it is loaded; null otherwise (removal then uses the classic engines).
+final removeModelProvider = Provider<InpaintModel?>((ref) {
+  final ai = ref.watch(aiRemoverProvider);
+  return ai.usable ? ai.model : null;
+});
 
 /// Full-resolution, upright pixels of a photo.
 typedef SourceLoader = Future<RgbaBuffer> Function(String assetId);

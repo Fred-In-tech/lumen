@@ -56,6 +56,21 @@ class FilePatchStore implements PatchStore {
   }
 
   @override
+  Future<bool> copy(
+    String fromAsset,
+    String fromRef,
+    String toAsset,
+    String toRef,
+  ) async {
+    final target = pathFor(toAsset, toRef);
+    if (!isStorablePatchRef(fromRef)) return false;
+    final source = File(pathFor(fromAsset, fromRef));
+    if (!await source.exists()) return false;
+    await atomicWrite(target, await source.readAsBytes());
+    return true;
+  }
+
+  @override
   Future<void> delete(String assetId, String ref) async {
     if (!isStorablePatchRef(ref)) return;
     final file = File(pathFor(assetId, ref));

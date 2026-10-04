@@ -20,6 +20,7 @@ import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/masks/masks_panel.dart';
 import 'package:lumen/features/presets/presets_panel.dart';
 import 'package:lumen/features/portrait/portrait_panel.dart';
+import 'package:lumen/features/remove/remove_panel.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 import 'package:lumen/widgets/buttons.dart';
 
@@ -34,6 +35,7 @@ enum _Tab {
   detail,
   crop,
   masks,
+  remove,
   presets,
 }
 
@@ -68,6 +70,7 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
     _Tab.detail: ('Detail', LucideIcons.scanSearch),
     _Tab.crop: ('Crop', LucideIcons.crop),
     _Tab.masks: ('Masks', LucideIcons.squareDashed),
+    _Tab.remove: ('Remove', LucideIcons.eraser),
     _Tab.presets: ('Presets', LucideIcons.swatchBook),
   };
 
@@ -78,6 +81,7 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
       switch (tab) {
         _Tab.portrait => EditorModule.portrait,
         _Tab.masks => EditorModule.masks,
+        _Tab.remove => EditorModule.remove,
         _ => EditorModule.adjust,
       },
     );
@@ -138,6 +142,7 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
         sourceSize: sourceSizeOf(widget.session),
         touch: true,
       ),
+      _Tab.remove => RemovePanel(assetId: id, touch: true),
       _Tab.presets => PresetsPanel(assetId: id),
     };
   }
@@ -159,8 +164,11 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
       final tab = switch (m) {
         EditorModule.masks => _Tab.masks,
         EditorModule.portrait => _Tab.portrait,
+        EditorModule.remove => _Tab.remove,
         EditorModule.adjust =>
-          _tab == _Tab.masks || _tab == _Tab.portrait ? _Tab.light : _tab,
+          _tab == _Tab.masks || _tab == _Tab.portrait || _tab == _Tab.remove
+              ? _Tab.light
+              : _tab,
       };
       if (tab != _tab) setState(() => _tab = tab);
     });

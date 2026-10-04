@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
@@ -26,6 +27,16 @@ class _GreyModel implements InpaintModel {
     }
     return out;
   }
+}
+
+/// A model whose runtime fails (e.g. a GPU delegate crash).
+class _BrokenModel implements InpaintModel {
+  @override
+  String get id => 'broken@1';
+
+  @override
+  Future<RgbaBuffer> inpaint(RgbaBuffer crop, Uint8List keep) =>
+      Future.error(const FormatException('delegate failed'));
 }
 
 void main() {
@@ -100,19 +111,33 @@ void main() {
   test('the hole touching a detected face flags the op', () async {
     final h = await RemoveHarness.create(
       overrides: [
-        portraitFacesProvider('a').overrideWithValue(
-          const FaceAnalysis(
-            imageWidth: kW,
-            imageHeight: kH,
-            modelVersion: 'test',
-            faces: [DetectedFace(id: 'f1', box: FaceBox(0.5, 0.4, 0.2, 0.3))],
+        portraitFacesStatusProvider('a').overrideWithValue(
+          const AsyncData(
+            FaceAnalysis(
+              imageWidth: kW,
+              imageHeight: kH,
+              modelVersion: 'test',
+              faces: [DetectedFace(id: 'f1', box: FaceBox(0.5, 0.4, 0.2, 0.3))],
+            ),
           ),
         ),
       ],
     );
-    final ops = await h.container
-        .read(removeServiceProvider)
-        .remove('a', kObjectStroke, method: InpaintMethod.pushPull);
+    final service = h.container.read(removeServiceProvider);
+    // Before any face analysis was requested the service never starts one.
+    var ops = await service.remove(
+      'a',
+      kObjectStroke,
+      method: InpaintMethod.pushPull,
+    );
+    expect(ops.any((o) => o.faceIntersect), isFalse);
+    // The Remove panel watches the analysis; then the warning applies.
+    h.container.read(portraitFacesStatusProvider('a'));
+    ops = await service.remove(
+      'a',
+      kObjectStroke,
+      method: InpaintMethod.pushPull,
+    );
     expect(ops.every((o) => o.faceIntersect), isTrue);
     expect((h.status as RemoveDone).faceIntersect, isTrue);
   });
@@ -127,6 +152,19 @@ void main() {
     expect(ops.every((o) => o.ai && o.engine == 'fake-migan@1'), isTrue);
     expect(h.editor.history.entries.single.kind, HistoryKind.ai);
     expect((h.status as RemoveDone).ai, isTrue);
+  });
+
+  test('a failing AI fill falls back to Patch fill and says so', () async {
+    final h = await RemoveHarness.create(model: _BrokenModel());
+    final ops = await h.container
+        .read(removeServiceProvider)
+        .remove('a', kObjectStroke);
+    expect(ops.single.engine, 'patchmatch@1');
+    expect(ops.single.ai, isFalse);
+    final done = h.status as RemoveDone;
+    expect(done.method, InpaintMethod.patchMatch);
+    expect(done.note, contains('AI fill failed'));
+    expect(h.editor.history.entries.single.kind, HistoryKind.slider);
   });
 
   test('clone and heal brushes commit their own kinds', () async {

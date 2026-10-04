@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/design/tokens.dart';
+import 'package:lumen/features/editor/canvas_ink.dart';
 import 'package:lumen/features/editor/canvas_mapping.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
@@ -144,8 +145,7 @@ class _MaskCanvasState extends ConsumerState<MaskCanvas> {
       return;
     }
     if (_strokeMask == null) return;
-    // Decimate: a point every ~15 % of the brush radius keeps strokes small.
-    final step = (_brushRadius * 0.15).clamp(1.5, 12.0);
+    final step = brushPointStep(_brushRadius);
     setState(() {
       _pointer = p;
       if ((p - _strokeView.last).distance >= step) {

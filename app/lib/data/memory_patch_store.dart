@@ -35,6 +35,22 @@ class MemoryPatchStore implements PatchStore {
     _png[checkPatchAssetId(assetId)]?.remove(ref);
   }
 
+  @override
+  Future<bool> copy(
+    String fromAsset,
+    String fromRef,
+    String toAsset,
+    String toRef,
+  ) async {
+    checkPatchAssetId(toAsset);
+    checkPatchRef(toRef);
+    if (!isStorablePatchRef(fromRef)) return false;
+    final bytes = _png[checkPatchAssetId(fromAsset)]?[fromRef];
+    if (bytes == null) return false;
+    (_png[toAsset] ??= {})[toRef] = Uint8List.fromList(bytes);
+    return true;
+  }
+
   /// Drops every patch of [assetId] (the memory catalog's photo delete
   /// does not reach this store).
   void deleteAsset(String assetId) => _png.remove(assetId);

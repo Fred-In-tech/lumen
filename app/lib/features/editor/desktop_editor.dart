@@ -188,6 +188,7 @@ class _DesktopEditorState extends ConsumerState<DesktopEditor> {
                 active: cropMode ? null : _flyout,
                 cropMode: cropMode,
                 masksActive: !cropMode && module == EditorModule.masks,
+                removeActive: !cropMode && module == EditorModule.remove,
                 onAi: () => _toggle(_Flyout.ai),
                 onPresets: () => _toggle(_Flyout.presets),
                 onMasks: () {
@@ -198,6 +199,16 @@ class _DesktopEditorState extends ConsumerState<DesktopEditor> {
                         module == EditorModule.masks && !cropMode
                             ? EditorModule.adjust
                             : EditorModule.masks,
+                      );
+                },
+                onRemove: () {
+                  ref.read(editorProvider(id).notifier).setCropMode(false);
+                  ref
+                      .read(editorModuleProvider(id).notifier)
+                      .select(
+                        module == EditorModule.remove && !cropMode
+                            ? EditorModule.adjust
+                            : EditorModule.remove,
                       );
                 },
                 onCrop: () => ref
@@ -251,9 +262,11 @@ class _Rail extends StatelessWidget {
     required this.active,
     required this.cropMode,
     required this.masksActive,
+    required this.removeActive,
     required this.onAi,
     required this.onPresets,
     required this.onMasks,
+    required this.onRemove,
     required this.onCrop,
     required this.onLibrary,
   });
@@ -261,9 +274,11 @@ class _Rail extends StatelessWidget {
   final _Flyout? active;
   final bool cropMode;
   final bool masksActive;
+  final bool removeActive;
   final VoidCallback onAi;
   final VoidCallback onPresets;
   final VoidCallback onMasks;
+  final VoidCallback onRemove;
   final VoidCallback onCrop;
   final VoidCallback onLibrary;
 
@@ -336,6 +351,12 @@ class _Rail extends StatelessWidget {
             'Masks  M',
             masksActive,
             onMasks,
+          ),
+          item(
+            ic(EditorModule.remove.icon, removeActive),
+            'Remove  Q',
+            removeActive,
+            onRemove,
           ),
           item(
             ic(LucideIcons.crop, cropMode),

@@ -8,7 +8,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 enum EditorModule {
   adjust('Adjust', LucideIcons.slidersHorizontal),
   portrait('Portrait', LucideIcons.scanFace),
-  masks('Masks', LucideIcons.squareDashed);
+  masks('Masks', LucideIcons.squareDashed),
+  remove('Remove', LucideIcons.eraser);
 
   const EditorModule(this.label, this.icon);
 

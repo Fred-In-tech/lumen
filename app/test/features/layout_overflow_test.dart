@@ -18,7 +18,14 @@ import 'package:lumen/features/editor/editor_screen.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 import 'package:lumen/features/editor/renderer/renderer_factory.dart';
 import 'package:lumen/features/export/export_dialog.dart';
+import 'package:lumen/ai/ondevice/inference_backend.dart';
+import 'package:lumen/ai/ondevice/model_store.dart';
 import 'package:lumen/features/masks/canvas/mask_canvas.dart';
+import 'package:lumen/features/portrait/portrait_state.dart';
+import 'package:lumen/features/remove/ai_remover.dart';
+import 'package:lumen/features/remove/remove_canvas.dart';
+import 'package:lumen/features/remove/remove_panel.dart';
+import 'package:lumen/features/remove/remove_ui_state.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 List<Override> _overrides() => [
@@ -59,7 +66,29 @@ class _StillRenderer implements PhotoRenderer {
   void dispose() => _out.dispose();
 }
 
-Future<void> _openMasksEditor(WidgetTester tester, Size size) async {
+/// The AI remover was never downloaded here.
+class _NoAiRemover implements AiRemoverLoader {
+  @override
+  int get downloadBytes => 16312640;
+
+  @override
+  Future<bool> isInstalled() async => false;
+
+  @override
+  Future<InpaintModel> load({
+    required void Function(double? fraction) onProgress,
+    CancelToken? cancel,
+  }) => Future.error(const InferenceUnavailable('no runtime in tests'));
+}
+
+/// Opens the editor on photo 'a' and switches to the module whose phone
+/// tab is [tab] (desktop/tablet: its shortcut [key]).
+Future<void> _openEditor(
+  WidgetTester tester,
+  Size size, {
+  String tab = 'Masks',
+  LogicalKeyboardKey key = LogicalKeyboardKey.keyM,
+}) async {
   final img = (await tester.runAsync(
     () => createTestImage(width: 300, height: 200),
   ))!;
@@ -93,6 +122,11 @@ Future<void> _openMasksEditor(WidgetTester tester, Size size) async {
             GatewayStatus(url: '', reachable: false, visionAvailable: false),
           ),
         ),
+        // No face models or model store in widget tests.
+        portraitFacesStatusProvider.overrideWith(
+          (ref, assetId) => const AsyncData(null),
+        ),
+        aiRemoverLoaderProvider.overrideWithValue(_NoAiRemover()),
       ],
       child: MaterialApp(
         theme: buildLumenTheme(),
@@ -102,9 +136,9 @@ Future<void> _openMasksEditor(WidgetTester tester, Size size) async {
   );
   await tester.pumpAndSettle();
   if (size.width < 600) {
-    // Phone: the Masks tool tab.
+    // Phone: the module's tool tab.
     await tester.dragUntilVisible(
-      find.text('Masks'),
+      find.text(tab),
       // The tool tabs: the last horizontal list on the phone editor.
       find
           .byWidgetPredicate(
@@ -114,10 +148,10 @@ Future<void> _openMasksEditor(WidgetTester tester, Size size) async {
       const Offset(-120, 0),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Masks'));
+    await tester.tap(find.text(tab));
   } else {
-    // Desktop/tablet: the M shortcut.
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
+    // Desktop/tablet: the module shortcut.
+    await tester.sendKeyEvent(key);
   }
   await tester.pumpAndSettle();
 }
@@ -130,7 +164,7 @@ void main() {
         tester.view.physicalSize = size;
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
-        await _openMasksEditor(tester, size);
+        await _openEditor(tester, size);
         final container = ProviderScope.containerOf(
           tester.element(find.byType(EditorScreen)),
         );
@@ -149,6 +183,45 @@ void main() {
         expect(find.text('Editing: Brush 1'), findsOneWidget);
         expect(tester.takeException(), isNull);
         // Let the debounced save and thumbnail timers run out.
+        await tester.pump(const Duration(seconds: 2));
+      },
+    );
+  }
+
+  for (final size in const [Size(375, 812), Size(768, 1024), Size(1440, 900)]) {
+    testWidgets(
+      'no overflow at ${size.width.toInt()}×${size.height.toInt()}: editor Remove module',
+      (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await _openEditor(
+          tester,
+          size,
+          tab: 'Remove',
+          key: LogicalKeyboardKey.keyQ,
+        );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(EditorScreen)),
+        );
+        expect(container.read(editorModuleProvider('a')), EditorModule.remove);
+        expect(find.byType(RemoveCanvas), findsOneWidget);
+        expect(find.byType(RemovePanel), findsOneWidget);
+        expect(find.text(RemovePanel.emptyHint), findsOneWidget);
+        expect(find.text('AI fill'), findsOneWidget);
+        for (final tool in ['Heal', 'Clone']) {
+          await tester.ensureVisible(find.text(tool).last);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(tool).last);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: tool);
+        }
+        expect(container.read(removeUiProvider('a')).tool, RemoveTool.clone);
+        await tester.ensureVisible(find.text('Set source'));
+        await tester.tap(find.text('Set source'));
+        await tester.pumpAndSettle();
+        expect(find.text('Tap the photo to choose the source'), findsOneWidget);
+        expect(tester.takeException(), isNull);
         await tester.pump(const Duration(seconds: 2));
       },
     );

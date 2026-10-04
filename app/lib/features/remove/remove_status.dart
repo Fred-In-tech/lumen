@@ -29,11 +29,21 @@ final class RemoveFailed extends RemoveStatus {
 
 /// The run committed [ops] as one history entry.
 final class RemoveDone extends RemoveStatus {
-  const RemoveDone({required this.kind, required this.ops, this.method});
+  const RemoveDone({
+    required this.kind,
+    required this.ops,
+    this.method,
+    this.note,
+  });
 
   final HealKind kind;
   final List<HealOp> ops;
+
+  /// The engine that made the fill (after any fallback).
   final InpaintMethod? method;
+
+  /// Something the user should know, e.g. the AI fill fell back.
+  final String? note;
 
   /// An AI model generated the fill (show the AI label).
   bool get ai => ops.any((o) => o.ai);

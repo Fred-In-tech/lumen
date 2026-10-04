@@ -16,6 +16,7 @@ import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/masks/ai_mask_rasters.dart';
 import 'package:lumen/features/masks/mask_shortcuts.dart';
 import 'package:lumen/features/portrait/retouch_inputs.dart';
+import 'package:lumen/features/remove/remove_shortcuts.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 
 /// Editor route. Owns the [EditorSession] for the current photo and swaps it
@@ -195,7 +196,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
         _close();
       }
     } else {
-      // Module keys: M (Masks), O (overlay), Delete (selected mask).
+      // Module keys: Q (Remove), [ ] (brush size); M (Masks), O (overlay),
+      // Delete (selected mask).
+      final remove = handleRemoveShortcut(ref.read, _assetId, k);
+      if (remove == KeyEventResult.handled) return remove;
       return handleMaskShortcut(ref.read, _assetId, k, context: context);
     }
     return KeyEventResult.handled;

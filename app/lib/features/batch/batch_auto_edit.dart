@@ -11,8 +11,14 @@ import 'package:lumen/ai/auto_edit_service.dart';
 import 'package:lumen/ai/preview_encoder.dart';
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/catalog_repository.dart';
+import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
+import 'package:lumen/features/export/export_service.dart'
+    show loadAiMaskRasters;
 import 'package:lumen/features/library/library_tile.dart';
+import 'package:lumen/features/masks/ai_mask_source.dart';
+import 'package:lumen/features/remove/healed_source.dart';
+import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/import/photo_decoder.dart';
 
 final _log = Logger('BatchAutoEdit');
@@ -66,31 +72,36 @@ final batchProvider = NotifierProvider<BatchNotifier, BatchProgress?>(
 );
 
 /// Auto-edits one stored photo without opening the editor. Returns false on failure.
+///
+/// Heal ops are drawn into the analysis proxy and the thumbnail (from
+/// [patches]), so removed objects neither steer the edit nor reappear.
 Future<bool> autoEditStoredAsset({
   required CatalogRepository repo,
   required AutoEditService service,
   required String assetId,
   AiStyle style = AiStyle.natural,
+  PatchStoreGetter? patches,
+  AiMaskRasterLoader? maskLoader,
 }) async {
   try {
     final entry = await repo.get(assetId);
     if (entry == null) return false;
     final original = await repo.readOriginal(assetId);
     final doc = await repo.loadEdit(assetId);
-    final proxyImg = await decodePhoto(original, maxLongEdge: 512);
-    final proxy = await rgbaFromImage(proxyImg);
-    proxyImg.dispose();
+    Future<RgbaBuffer> source(int longEdge) => decodeHealedSource(
+      original,
+      assetId: assetId,
+      ops: doc.settings.heal,
+      patches: patches,
+      maxLongEdge: longEdge,
+    );
+    final proxy = await source(512);
     final result = await service.autoEdit(
       AiPhotoContext(
         proxy: proxy,
         current: doc.settings,
         exif: entry.exif,
-        visionJpeg: () async {
-          final img = await decodePhoto(original, maxLongEdge: 1024);
-          final buf = await rgbaFromImage(img);
-          img.dispose();
-          return encodeJpegNoMetadata(buf);
-        },
+        visionJpeg: () async => encodeJpegNoMetadata(await source(1024)),
       ),
       style: style,
     );
@@ -109,11 +120,11 @@ Future<bool> autoEditStoredAsset({
         updatedAt: DateTime.now().toUtc(),
       ),
     );
-    final thumbImg = await decodePhoto(original, maxLongEdge: 384);
-    final thumbSrc = await rgbaFromImage(thumbImg);
-    thumbImg.dispose();
-    final rendered = await runInBackground(
-      () => renderReference(thumbSrc, next),
+    final thumbSrc = await source(384);
+    final rendered = await _developInBackground(
+      thumbSrc,
+      next,
+      await loadAiMaskRasters(maskLoader, assetId, next.masks),
     );
     final out = await imageFromRgba(rendered);
     final png = await encodePng(out);
@@ -148,6 +159,8 @@ Future<(int, int)> batchAutoEdit(
   if (assetIds.isEmpty) return (0, 0);
   final repo = ref.read(catalogRepositoryProvider);
   final service = ref.read(autoEditServiceProvider);
+  Future<PatchStore> patches() => ref.read(patchStoreProvider.future);
+  final maskLoader = ref.read(aiMaskRasterLoaderProvider);
   final batch = ref.read(batchProvider.notifier)
     ..start('Auto-editing', assetIds.length);
   final busy = ref.read(busyAssetsProvider.notifier)..add(assetIds);
@@ -160,6 +173,8 @@ Future<(int, int)> batchAutoEdit(
         service: service,
         assetId: id,
         style: style,
+        patches: patches,
+        maskLoader: maskLoader,
       );
       success ? ok++ : failed++;
       busy.remove(id);
@@ -200,7 +215,13 @@ Future<int> applyPresetToAssets(
         updatedAt: DateTime.now().toUtc(),
       ),
     );
-    await refreshThumbnail(repo, id, next);
+    await refreshThumbnail(
+      repo,
+      id,
+      next,
+      patches: () => ref.read(patchStoreProvider.future),
+      maskLoader: ref.read(aiMaskRasterLoaderProvider),
+    );
     n++;
   }
   return n;
@@ -210,15 +231,23 @@ Future<int> applyPresetToAssets(
 Future<void> refreshThumbnail(
   CatalogRepository repo,
   String assetId,
-  DevelopSettings settings,
-) async {
+  DevelopSettings settings, {
+  PatchStoreGetter? patches,
+  AiMaskRasterLoader? maskLoader,
+}) async {
   try {
     final original = await repo.readOriginal(assetId);
-    final img = await decodePhoto(original, maxLongEdge: 384);
-    final src = await rgbaFromImage(img);
-    img.dispose();
-    final rendered = await runInBackground(
-      () => renderReference(src, settings),
+    final src = await decodeHealedSource(
+      original,
+      assetId: assetId,
+      ops: settings.heal,
+      patches: patches,
+      maxLongEdge: 384,
+    );
+    final rendered = await _developInBackground(
+      src,
+      settings,
+      await loadAiMaskRasters(maskLoader, assetId, settings.masks),
     );
     final out = await imageFromRgba(rendered);
     final png = await encodePng(out);
@@ -238,3 +267,13 @@ Future<void> refreshThumbnail(
     _log.warning('thumbnail $assetId failed: $e');
   }
 }
+
+/// Top-level so the isolate closure captures only its arguments (closures
+/// inside the callers would also capture their other locals, such as the
+/// patch-store getter and its `ref`).
+Future<RgbaBuffer> _developInBackground(
+  RgbaBuffer src,
+  DevelopSettings settings,
+  Map<String, MaskRaster> rasters,
+) =>
+    runInBackground(() => renderReference(src, settings, maskRasters: rasters));

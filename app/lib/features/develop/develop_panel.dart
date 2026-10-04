@@ -12,10 +12,10 @@ import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/features/editor/module_overlay.dart';
 import 'package:lumen/features/masks/masks_panel.dart';
+import 'package:lumen/features/remove/remove_panel.dart';
 import 'package:lumen/features/portrait/portrait_panel.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 import 'package:lumen/widgets/buttons.dart';
-import 'package:lumen/widgets/segmented.dart';
 import 'package:lumen/widgets/toast.dart';
 
 /// Right-hand develop panel (desktop/tablet): histogram, AI, groups, footer.
@@ -89,6 +89,7 @@ class DevelopPanel extends ConsumerWidget {
                   EditorModule.masks => [
                     MasksPanel(assetId: id, sourceSize: sourceSizeOf(session)),
                   ],
+                  EditorModule.remove => [RemovePanel(assetId: id)],
                 },
                 const SizedBox(height: Sp.s6),
               ],
@@ -141,20 +142,108 @@ class DevelopPanel extends ConsumerWidget {
   }
 }
 
-/// Module switcher at the top of the right panel (Adjust · Portrait · …).
+/// Module switcher at the top of the right panel (Adjust · Portrait · …):
+/// equal-width segments with icon and label, icon-only (with a tooltip)
+/// when the panel is too narrow for the labels. Each segment keeps its
+/// module name as its semantics label.
 class ModuleTabs extends ConsumerWidget {
   const ModuleTabs({super.key, required this.assetId});
 
   final String assetId;
 
+  /// Below this width per segment the labels are dropped.
+  static const minLabelledSegment = 76.0;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
     final module = ref.watch(editorModuleProvider(assetId));
-    return Segmented<EditorModule>(
-      value: module,
-      height: 30,
-      options: {for (final m in EditorModule.values) m: m.label},
-      onChanged: ref.read(editorModuleProvider(assetId).notifier).select,
+    final select = ref.read(editorModuleProvider(assetId).notifier).select;
+    const modules = EditorModule.values;
+    return LayoutBuilder(
+      builder: (context, c) {
+        final labelled =
+            (c.maxWidth - 4) / modules.length >= minLabelledSegment;
+        return Container(
+          height: 30,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: t.surface2,
+            borderRadius: BorderRadius.circular(Rad.sm),
+          ),
+          child: Row(
+            children: [
+              for (final m in modules)
+                Expanded(
+                  child: _ModuleSegment(
+                    module: m,
+                    selected: m == module,
+                    labelled: labelled,
+                    onTap: () => select(m),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ModuleSegment extends StatelessWidget {
+  const _ModuleSegment({
+    required this.module,
+    required this.selected,
+    required this.labelled,
+    required this.onTap,
+  });
+
+  final EditorModule module;
+  final bool selected;
+  final bool labelled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final color = selected ? t.textPrimary : t.textSecondary;
+    final body = AnimatedContainer(
+      duration: Motion.fast,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: selected ? t.surface3 : Colors.transparent,
+        borderRadius: BorderRadius.circular(Rad.sm - 2),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(module.icon, size: 14, color: selected ? t.accent : color),
+          if (labelled) ...[
+            const SizedBox(width: Sp.s1),
+            Flexible(
+              child: Text(
+                module.label,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: LumenType.label().copyWith(color: color),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: module.label,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: labelled ? '' : module.label,
+        child: GestureDetector(
+          onTap: onTap,
+          child: MouseRegion(cursor: SystemMouseCursors.click, child: body),
+        ),
+      ),
     );
   }
 }
