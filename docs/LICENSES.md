@@ -8,6 +8,9 @@ and non-commercial licenses are banned from the binaries.
 license). Regenerate the table below with `dart run tool/check_licenses.dart --markdown`.
 
 ## Notes
+- `flutter_litert` (Apache-2.0) bundles prebuilt TensorFlow Lite / LiteRT native libraries
+  (Apache-2.0) for every platform. On-device model weights are tracked separately in
+  `docs/MODEL_LICENSES.md`.
 - `dbus` (MPL-2.0) is pulled in only for Linux builds by `desktop_drop` / `file_picker_linux`
   and is used unmodified, which MPL permits in a proprietary product.
 - **Icons:** `lucide_icons_flutter` (MIT wrapper) around Lucide icons (ISC).
@@ -55,6 +58,7 @@ license). Regenerate the table below with `dart run tool/check_licenses.dart --m
 | flutter | BSD-3-Clause |
 | flutter_driver | BSD-3-Clause (Flutter SDK) |
 | flutter_lints | BSD-3-Clause |
+| flutter_litert | Apache-2.0 |
 | flutter_riverpod | MIT |
 | flutter_test | BSD-3-Clause (Flutter SDK) |
 | flutter_web_plugins | BSD-3-Clause (Flutter SDK) |
@@ -102,6 +106,7 @@ license). Regenerate the table below with `dart run tool/check_licenses.dart --m
 | posix | MIT |
 | process | BSD-3-Clause |
 | pub_semver | BSD-3-Clause |
+| quiver | Apache-2.0 |
 | record_use | BSD-3-Clause |
 | riverpod | MIT |
 | share_plus | BSD-3-Clause |

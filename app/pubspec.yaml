@@ -51,6 +51,7 @@ dependencies:
   image: ^4.10.1
   cross_file: ^0.3.5+5
   http: ^1.6.0
+  flutter_litert: 3.9.3
 
 dev_dependencies:
   flutter_test:
@@ -86,6 +87,10 @@ flutter:
     - shaders/finish.frag
     - shaders/denoise.frag
     - shaders/mask_overlay.frag
+
+  # On-device face models bundled in the binary (Apache-2.0, see docs/MODEL_LICENSES.md).
+  assets:
+    - assets/models/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
