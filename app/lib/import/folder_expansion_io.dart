@@ -16,7 +16,7 @@ Future<List<XFile>> expandFolders(List<XFile> items, {int limit = 2000}) async {
         final ext = p.extension(e.path).replaceFirst('.', '').toLowerCase();
         if (e is File &&
             kImportExtensions.contains(ext) &&
-            !p.basename(e.path).startsWith('.')) {
+            !_isDerived(p.split(p.relative(e.path, from: dir.path)))) {
           out.add(XFile(e.path));
         }
       }
@@ -25,4 +25,19 @@ Future<List<XFile>> expandFolders(List<XFile> items, {int limit = 2000}) async {
     }
   }
   return out;
+}
+
+/// Hidden files/folders and Lumen's own derived data (face caches and heal
+/// patches under `assets/<id>/`), so dropping a library folder never imports
+/// private face maps or retouch patches as photos.
+bool _isDerived(List<String> segments) {
+  for (var i = 0; i < segments.length; i++) {
+    final s = segments[i];
+    if (s.startsWith('.')) return true;
+    if (i < segments.length - 1 && (s == 'cache' || s == 'retouch')) {
+      if (i >= 2 && segments[i - 2] == 'assets') return true;
+      if (s == 'cache') return true;
+    }
+  }
+  return false;
 }

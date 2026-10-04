@@ -46,3 +46,4 @@ original ──► RETOUCH STAGE (pixel layer, cached) ──► DEVELOP (GPU ub
 | W8 | GPU `retouch.frag` pass mirroring the W5 CPU kernel + render-graph integration | planned after W5 |
 | W9 | AI masks (Subject/Person/Background/Face skin) from Selfie Multiclass | planned after W4 |
 | W10 | Face reshape (MLS warp field in `develop`), backdrop clean, extras | later |
+| P1 | **Privacy hardening before launch:** keep face caches and models out of OS backups. Move `cache/` under one excluded root. iOS: `NSURLIsExcludedFromBackupKey`. Android: `dataExtractionRules` + `fullBackupContent`. macOS: the backup-exclude xattr. Legal review of BIPA for on-device face geometry. | planned |
