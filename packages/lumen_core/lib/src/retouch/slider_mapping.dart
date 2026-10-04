@@ -4,7 +4,6 @@ library;
 
 import 'dart:math' as math;
 
-
 /// Amplitude-selective threshold on |mid.L| (OkLab): structure above
 /// 2.5× this survives smoothing (§3.1). Lowered when smoothing > 0.6.
 const double kAmpThreshold = 0.035;

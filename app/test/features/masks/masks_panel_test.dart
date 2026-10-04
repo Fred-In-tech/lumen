@@ -210,7 +210,10 @@ void main() {
       );
       expect(item.enabled, isFalse, reason: k.name);
     }
-    await tester.tap(find.text(MaskKind.subject.menuLabel), warnIfMissed: false);
+    await tester.tap(
+      find.text(MaskKind.subject.menuLabel),
+      warnIfMissed: false,
+    );
     await tester.pumpAndSettle();
     expect(masksOf(c), isEmpty);
   });
