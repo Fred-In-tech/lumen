@@ -64,7 +64,8 @@ Plan, decisions and workstream status: `docs/PHASE2.md`. Research: `docs/researc
 - **Portrait retouch:** on-device face detection (BlazeFace + FaceMesh V2 via LiteRT), groups and individuals, Auto Retouch, skin, blemishes with spot editor, wrinkles, eyes, teeth, makeup. GPU pass `R` with CPU parity ≤ 1/255.
 - **Masks:** linear/radial/brush + AI masks (Selfie Multiclass), 12 local sliders, GPU parity ≤ 1/255.
 - **Remove:** heal/clone/remove brushes, classical fills, optional MI-GAN AI fill, heal-aware export and paste.
-- **Tests:** `tool/verify.sh` ALL CHECKS PASSED at `4abc91f` + format: core 683 (line coverage 96.4 %), app 325 (+2 opt-in skips), server, licenses, secrets.
+- **Tests:** `tool/verify.sh` ALL CHECKS PASSED at `82e0369` (2026-10-04): core line coverage 96.4 %, app 453 (+2 opt-in skips), server 74, licenses, secrets.
+- **Phase 2b (2026-10-04):** face reshape + liquify, backdrop cleanup + red-eye, need-scaled automatic retouch (Auto / batch / import / sync), portrait presets, Smart Cull, headshot crop, hold-to-compare, control search, skin pen, AI Color Match, background swap/blur, glasses glare, clothing de-wrinkle. Evoto P0 list complete; see `docs/PHASE2.md` for what is open.
 - **Open:** the P1 privacy item in `docs/PHASE2.md`. All retouch thresholds are tuned on a synthetic portrait generator and need a check on a licensed real-photo set. MI-GAN's Places2 training data needs legal review before sale.
 
 ## Known limitations / next steps (Phase 2, per PLAN §3.2)

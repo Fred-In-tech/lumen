@@ -49,6 +49,19 @@ original ──► RETOUCH STAGE (pixel layer, cached) ──► DEVELOP (GPU ub
 | W11 | Backdrop cleanup (clean, unify, luminance, stray hairs) + red-eye | ✅ done (`716c5ec`) |
 | W12 | Automatic start-to-finish: need-scaled Auto Retouch, Auto = colour + retouch, batch/import/sync, portrait presets | ✅ done (`1653c62`) |
 | W13 | Smart Cull + headshot crop | ✅ done (`e0a32ee`), batch headshot (`a8380b3`) |
-| W14 | Hold-to-compare per section, control search, Manual Tuning Pen (skin) | ✅ compare (`e0041d9`), search (`e05d00f`), pen UI (`a8380b3`); pen engine in progress |
+| W14 | Hold-to-compare per section, control search, Manual Tuning Pen (skin) | ✅ compare (`e0041d9`), search (`e05d00f`), pen (`a8380b3`, `d194507`) |
+| W15 | AI Color Match (reference look → sliders, single + batch) | ✅ done (`467f019`) |
+| W16 | Background swap / blur behind the person matte (pass B), export + paste | ✅ done (`6ec4fe7`, `9fd2c71`) |
+| W17 | Glasses glare + clothing de-wrinkle / lint | ✅ done (`ebf7119`, `82e0369`) |
+
+### Evoto parity (research 06 §5)
+- **P0: all done.** Face detection, group tags and per-face/group sliders; blemish removal that keeps freckles; skin smoothing; dark circles and eye bags with lid protection; face shine; eyes (iris, whites, red veins, red-eye); teeth; clean backdrop, unify lighting and banding; Manual Tuning Pen (skin); character-aware presets, selective sync, hold-to-compare; glasses glare; stray hairs on plain backdrops.
+- **P1, done:** wrinkle zones, even skin tone, face reshape, manual liquify and healing, AI Color Match, backdrop changer, auto headshot crop, basic makeup, clothing de-wrinkle, culling.
+- **Open (needs a decision or the cloud):**
+  - Body reshape needs the MediaPipe Pose model (5.8 MB, needs download approval).
+  - Unifying face-to-body complexion.
+  - Hair tools beyond AI Hair masks with local sliders.
+  - Generative tools (expand, smile, sky replacement), which need a cloud sidecar plus a license review.
+  - Style training and gallery delivery.
 | X1 | Export, batch and thumbnails honour heal ops, retouch maps and AI mask rasters; live heal preview | ✅ done (`4abc91f`) |
 | P1 | Privacy hardening: face caches + models excluded from OS backups (iOS/macOS `isExcludedFromBackup` via `lumen/backup` channel + startup sweep; Android `dataExtractionRules`/`fullBackupContent` exclude `assets/` and `models/`) | ✅ done; BIPA legal review still open (user) |
