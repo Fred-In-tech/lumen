@@ -272,4 +272,32 @@ void main() {
       expect(e.applyBackward(s), DevelopSettings.defaults);
     });
   });
+
+  test('withoutParams turns params off everywhere (hold-to-compare)', () {
+    final p = PortraitSettings.empty
+        .withGroupValue(FaceGroup.all, PortraitIds.skinSoftening, 40)
+        .withGroupValue(FaceGroup.child, PortraitIds.skinSoftening, 10)
+        .withGroupValue(FaceGroup.all, PortraitIds.acne, 80)
+        .withIndividualValue('p1', PortraitIds.skinSoftening, 5)
+        .withImageValue(PortraitIds.bgClean, 50);
+    final off = p.withoutParams({
+      PortraitIds.skinSoftening,
+      PortraitIds.bgClean,
+    });
+    for (final g in FaceGroup.values) {
+      expect(off.valueFor(PortraitIds.skinSoftening, group: g), 0);
+    }
+    expect(
+      off.valueFor(
+        PortraitIds.skinSoftening,
+        group: FaceGroup.male,
+        personId: 'p1',
+      ),
+      0,
+    );
+    expect(off.valueFor(PortraitIds.acne, group: FaceGroup.male), 80);
+    expect(off.imageValue(PortraitIds.bgClean), 0);
+    expect(off.groups.containsKey(FaceGroup.child), isFalse);
+    expect(identical(p.withoutParams({}), p), isTrue);
+  });
 }

@@ -10,6 +10,7 @@ import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/editor/compare_suppress.dart';
 import 'package:lumen/features/editor/desktop_editor.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_session.dart';
@@ -155,7 +156,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
         geometry: s.settings.geometry.copyWith(crop: CropRect.full),
       );
     }
-    return s.settings;
+    return withSuppressed(
+      s.settings,
+      ref.read(compareSuppressProvider(_assetId)),
+    );
   }
 
   Future<void> _goTo(String id) async {
@@ -272,6 +276,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
         session.render(_renderSettings(n), interactive: !committed);
         if (committed) session.scheduleThumbnail(n.settings);
       }
+    });
+    // Hold-to-compare: re-render without the held section's params.
+    ref.listen<Set<String>>(compareSuppressProvider(_assetId), (_, _) {
+      final st = ref.read(editorProvider(_assetId)).value;
+      if (st != null && session != null) session.render(_renderSettings(st));
     });
     // AI masks read decoded rasters; push them whenever their refs change.
     ref.listen<AsyncValue<Map<String, MaskRaster>>>(

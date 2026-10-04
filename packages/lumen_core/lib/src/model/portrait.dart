@@ -330,6 +330,24 @@ class PortraitSettings {
       ? this
       : _copy(individuals: const {}, spots: PortraitSpots.none);
 
+  /// Without [ids] anywhere (all groups, people and image scope): what the
+  /// photo looks like with those retouch params off (hold-to-compare).
+  PortraitSettings withoutParams(Set<String> ids) {
+    if (ids.isEmpty) return this;
+    Map<String, double> drop(Map<String, double> m) =>
+        Map.unmodifiable({...m}..removeWhere((k, _) => ids.contains(k)));
+    Map<K, Map<String, double>> dropAll<K>(Map<K, Map<String, double>> m) =>
+        Map.unmodifiable({
+          for (final e in m.entries)
+            if (drop(e.value).isNotEmpty) e.key: drop(e.value),
+        });
+    return _copy(
+      groups: dropAll(groups),
+      individuals: dropAll(individuals),
+      image: drop(image),
+    );
+  }
+
   /// Replaces the spot decisions.
   PortraitSettings withSpots(PortraitSpots spots) => _copy(spots: spots);
 

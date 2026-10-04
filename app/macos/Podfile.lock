@@ -4,6 +4,8 @@ PODS:
   - file_picker_darwin (1.0.0):
     - Flutter
     - FlutterMacOS
+  - flutter_litert (3.9.3):
+    - FlutterMacOS
   - FlutterMacOS (1.0.0)
   - share_plus (0.0.1):
     - FlutterMacOS
@@ -11,6 +13,7 @@ PODS:
 DEPENDENCIES:
   - desktop_drop (from `Flutter/ephemeral/.symlinks/plugins/desktop_drop/macos`)
   - file_picker_darwin (from `Flutter/ephemeral/.symlinks/plugins/file_picker_darwin/darwin`)
+  - flutter_litert (from `Flutter/ephemeral/.symlinks/plugins/flutter_litert/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
   - share_plus (from `Flutter/ephemeral/.symlinks/plugins/share_plus/macos`)
 
@@ -19,6 +22,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/desktop_drop/macos
   file_picker_darwin:
     :path: Flutter/ephemeral/.symlinks/plugins/file_picker_darwin/darwin
+  flutter_litert:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_litert/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
   share_plus:
@@ -27,6 +32,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   desktop_drop: 10a3e6a7fa9dbe350541f2574092fecfa345a07b
   file_picker_darwin: 4c2b9a50ea44cb3b071381ea0cf48591bdd80251
+  flutter_litert: 9931220d8e0fd9ad686d32f3b617b35b699d3807
   FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
   share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
 

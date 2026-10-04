@@ -13,6 +13,7 @@ class DevelopGroup extends StatefulWidget {
     this.initiallyOpen = false,
     this.modified = false,
     this.onReset,
+    this.onHoldCompare,
   });
 
   final String title;
@@ -20,6 +21,10 @@ class DevelopGroup extends StatefulWidget {
   final bool initiallyOpen;
   final bool modified;
   final VoidCallback? onReset;
+
+  /// Press-and-hold the eye to see the photo without this group (true while
+  /// held). Shown only when the group is modified.
+  final ValueChanged<bool>? onHoldCompare;
 
   @override
   State<DevelopGroup> createState() => _DevelopGroupState();
@@ -77,6 +82,12 @@ class _DevelopGroupState extends State<DevelopGroup> {
                         ),
                       ),
                     ),
+                    if (widget.modified && widget.onHoldCompare != null)
+                      _HoldCompareEye(
+                        title: widget.title,
+                        hover: _hover,
+                        onHold: widget.onHoldCompare!,
+                      ),
                     if (widget.modified && widget.onReset != null)
                       Tooltip(
                         message: 'Reset ${widget.title}',
@@ -125,6 +136,65 @@ class _DevelopGroupState extends State<DevelopGroup> {
               : const SizedBox(width: double.infinity),
         ),
       ],
+    );
+  }
+}
+
+/// Eye icon: shows the photo without the group while pressed.
+class _HoldCompareEye extends StatefulWidget {
+  const _HoldCompareEye({
+    required this.title,
+    required this.hover,
+    required this.onHold,
+  });
+
+  final String title;
+  final bool hover;
+  final ValueChanged<bool> onHold;
+
+  @override
+  State<_HoldCompareEye> createState() => _HoldCompareEyeState();
+}
+
+class _HoldCompareEyeState extends State<_HoldCompareEye> {
+  bool _held = false;
+
+  void _set(bool v) {
+    if (_held == v) return;
+    setState(() => _held = v);
+    widget.onHold(v);
+  }
+
+  @override
+  void dispose() {
+    if (_held) widget.onHold(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Tooltip(
+      message: 'Hold to compare without ${widget.title}',
+      child: Semantics(
+        button: true,
+        label: 'Hold to compare without ${widget.title}',
+        child: GestureDetector(
+          onTapDown: (_) => _set(true),
+          onTapUp: (_) => _set(false),
+          onTapCancel: () => _set(false),
+          child: Padding(
+            padding: const EdgeInsets.all(Sp.s1),
+            child: Icon(
+              _held ? LucideIcons.eyeOff : LucideIcons.eye,
+              size: 14,
+              color: _held
+                  ? t.accent
+                  : (widget.hover ? t.textSecondary : t.textTertiary),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/features/develop/develop_group.dart';
+import 'package:lumen/features/editor/compare_suppress.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/portrait/portrait_slider.dart';
 import 'package:lumen/features/portrait/portrait_state.dart';
@@ -109,6 +110,10 @@ class PortraitPanel extends ConsumerWidget {
             initiallyOpen: section.title == 'Skin',
             modified: _modified(portrait, section.ids, target),
             onReset: () => _resetSection(ref, section, target),
+            onHoldCompare: (held) {
+              final c = ref.read(compareSuppressProvider(assetId).notifier);
+              held ? c.hold(section.ids.toSet()) : c.release();
+            },
             child: Column(
               children: [
                 if (section.title == 'Blemishes')

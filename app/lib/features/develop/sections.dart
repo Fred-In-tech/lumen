@@ -9,6 +9,7 @@ import 'package:lumen/features/develop/grading_section.dart';
 import 'package:lumen/features/develop/hsl_section.dart';
 import 'package:lumen/features/develop/param_slider.dart';
 import 'package:lumen/features/develop/tone_curve_editor.dart';
+import 'package:lumen/features/editor/compare_suppress.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/widgets/segmented.dart';
 
@@ -41,6 +42,11 @@ class DevelopSections extends ConsumerWidget {
       editorProvider(assetId).select((v) => v.value?.settings),
     );
     final ctl = ref.read(editorProvider(assetId).notifier);
+    ValueChanged<bool> compareAll(List<ParamGroup> groups) => (held) {
+      final c = ref.read(compareSuppressProvider(assetId).notifier);
+      held ? c.hold({for (final g in groups) ..._ids(g)}) : c.release();
+    };
+    ValueChanged<bool> compare(ParamGroup g) => compareAll([g]);
     Widget sliders(Iterable<ParamId> ids) => Column(
       children: [
         for (final id in ids)
@@ -52,6 +58,7 @@ class DevelopSections extends ConsumerWidget {
       initiallyOpen: true,
       modified: _anyModified(s, _ids(ParamGroup.light)),
       onReset: () => ctl.resetGroup(ParamGroup.light, 'Light'),
+      onHoldCompare: compare(ParamGroup.light),
       child: sliders(_ids(ParamGroup.light)),
     );
     final color = DevelopGroup(
@@ -69,6 +76,11 @@ class DevelopSections extends ConsumerWidget {
         ctl.resetGroup(ParamGroup.hsl, 'HSL');
         ctl.resetGroup(ParamGroup.bw, 'B&W');
       },
+      onHoldCompare: compareAll([
+        ParamGroup.color,
+        ParamGroup.hsl,
+        ParamGroup.bw,
+      ]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -110,6 +122,7 @@ class DevelopSections extends ConsumerWidget {
       title: 'Color grading',
       modified: _anyModified(s, _ids(ParamGroup.grading)),
       onReset: () => ctl.resetGroup(ParamGroup.grading, 'Color grading'),
+      onHoldCompare: compare(ParamGroup.grading),
       child: GradingSection(assetId: assetId, touch: touch),
     );
     final effects = DevelopGroup(
@@ -122,6 +135,7 @@ class DevelopSections extends ConsumerWidget {
         ctl.resetGroup(ParamGroup.presence, 'Presence');
         ctl.resetGroup(ParamGroup.effects, 'Effects');
       },
+      onHoldCompare: compareAll([ParamGroup.presence, ParamGroup.effects]),
       child: Column(
         children: [
           sliders([P.texture, P.clarity, P.dehaze]),
@@ -142,6 +156,7 @@ class DevelopSections extends ConsumerWidget {
       title: 'Detail',
       modified: _anyModified(s, _ids(ParamGroup.detail)),
       onReset: () => ctl.resetGroup(ParamGroup.detail, 'Detail'),
+      onHoldCompare: compare(ParamGroup.detail),
       child: Column(
         children: [
           sliders([
