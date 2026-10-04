@@ -45,6 +45,10 @@ original ──► RETOUCH STAGE (pixel layer, cached) ──► DEVELOP (GPU ub
 | W7c | Remove tool UI + heal/clone brushes + MI-GAN adapter + export/paste of heal ops | ✅ done (`21f386d`) |
 | W8 | GPU `retouch.frag` pass mirroring the W5 CPU kernel + render-graph integration | ✅ done (`102aca0`), parity max 1/255 |
 | W9 | AI masks (Subject, Background, Face skin, Hair, Clothing) from Selfie Multiclass | ✅ done (`d7f6a91`, `585fd33`); Sky needs a cloud model |
-| W10 | Face reshape (MLS warp field in `develop`), backdrop clean, extras | later |
+| W10 | Face reshape (MLS warp in `develop`) + liquify | ✅ done (`90e029c`, UI `a8380b3`), parity ≤ 3/255 |
+| W11 | Backdrop cleanup (clean, unify, luminance, stray hairs) + red-eye | ✅ done (`716c5ec`) |
+| W12 | Automatic start-to-finish: need-scaled Auto Retouch, Auto = colour + retouch, batch/import/sync, portrait presets | ✅ done (`1653c62`) |
+| W13 | Smart Cull + headshot crop | ✅ done (`e0a32ee`), batch headshot (`a8380b3`) |
+| W14 | Hold-to-compare per section, control search, Manual Tuning Pen (skin) | ✅ compare (`e0041d9`), search (`e05d00f`), pen UI (`a8380b3`); pen engine in progress |
 | X1 | Export, batch and thumbnails honour heal ops, retouch maps and AI mask rasters; live heal preview | ✅ done (`4abc91f`) |
 | P1 | Privacy hardening: face caches + models excluded from OS backups (iOS/macOS `isExcludedFromBackup` via `lumen/backup` channel + startup sweep; Android `dataExtractionRules`/`fullBackupContent` exclude `assets/` and `models/`) | ✅ done; BIPA legal review still open (user) |
