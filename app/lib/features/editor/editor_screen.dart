@@ -15,6 +15,7 @@ import 'package:lumen/features/editor/desktop_editor.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/features/editor/phone_editor.dart';
+import 'package:lumen/features/search/control_search_dialog.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 import 'package:lumen/features/editor/renderer/renderer_factory.dart';
 import 'package:lumen/features/export/export_dialog.dart';
@@ -235,6 +236,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
       );
     } else if (k == LogicalKeyboardKey.keyR) {
       ctl.setCropMode(true);
+    } else if (k == LogicalKeyboardKey.slash) {
+      showControlSearch(context, ref, _assetId, session: _session);
     } else if (k == LogicalKeyboardKey.keyA) {
       final session = _session;
       if (session != null) runAutoEdit(ref, session);

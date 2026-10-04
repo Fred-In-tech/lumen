@@ -11,6 +11,8 @@ import 'package:lumen/features/develop/param_slider.dart';
 import 'package:lumen/features/develop/tone_curve_editor.dart';
 import 'package:lumen/features/editor/compare_suppress.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
+import 'package:lumen/features/search/reveal.dart';
+import 'package:lumen/features/search/reveal_target.dart';
 import 'package:lumen/widgets/segmented.dart';
 
 /// True when any param in [ids] differs from its default.
@@ -42,6 +44,9 @@ class DevelopSections extends ConsumerWidget {
       editorProvider(assetId).select((v) => v.value?.settings),
     );
     final ctl = ref.read(editorProvider(assetId).notifier);
+    final reveal = ref.watch(revealControlProvider(assetId));
+    int? open(List<ParamGroup> groups) =>
+        revealSignal(reveal, [for (final g in groups) ..._ids(g)]);
     ValueChanged<bool> compareAll(List<ParamGroup> groups) => (held) {
       final c = ref.read(compareSuppressProvider(assetId).notifier);
       held ? c.hold({for (final g in groups) ..._ids(g)}) : c.release();
@@ -50,11 +55,16 @@ class DevelopSections extends ConsumerWidget {
     Widget sliders(Iterable<ParamId> ids) => Column(
       children: [
         for (final id in ids)
-          ParamSlider(assetId: assetId, param: id, touch: touch),
+          RevealTarget(
+            assetId: assetId,
+            id: id,
+            child: ParamSlider(assetId: assetId, param: id, touch: touch),
+          ),
       ],
     );
     final light = DevelopGroup(
       title: 'Light',
+      openSignal: open([ParamGroup.light]),
       initiallyOpen: true,
       modified: _anyModified(s, _ids(ParamGroup.light)),
       onReset: () => ctl.resetGroup(ParamGroup.light, 'Light'),
@@ -63,6 +73,7 @@ class DevelopSections extends ConsumerWidget {
     );
     final color = DevelopGroup(
       title: 'Color',
+      openSignal: open([ParamGroup.color, ParamGroup.hsl, ParamGroup.bw]),
       initiallyOpen: true,
       modified:
           _anyModified(s, [
@@ -101,6 +112,7 @@ class DevelopSections extends ConsumerWidget {
     );
     final curve = DevelopGroup(
       title: 'Curve',
+      openSignal: open([ParamGroup.curve]),
       modified:
           _anyModified(s, _ids(ParamGroup.curve)) ||
           !(s?.curves.isIdentity ?? true),
@@ -120,6 +132,7 @@ class DevelopSections extends ConsumerWidget {
     );
     final grading = DevelopGroup(
       title: 'Color grading',
+      openSignal: open([ParamGroup.grading]),
       modified: _anyModified(s, _ids(ParamGroup.grading)),
       onReset: () => ctl.resetGroup(ParamGroup.grading, 'Color grading'),
       onHoldCompare: compare(ParamGroup.grading),
@@ -127,6 +140,7 @@ class DevelopSections extends ConsumerWidget {
     );
     final effects = DevelopGroup(
       title: 'Effects',
+      openSignal: open([ParamGroup.presence, ParamGroup.effects]),
       modified: _anyModified(s, [
         ..._ids(ParamGroup.presence),
         ..._ids(ParamGroup.effects),
@@ -154,6 +168,7 @@ class DevelopSections extends ConsumerWidget {
     );
     final detail = DevelopGroup(
       title: 'Detail',
+      openSignal: open([ParamGroup.detail]),
       modified: _anyModified(s, _ids(ParamGroup.detail)),
       onReset: () => ctl.resetGroup(ParamGroup.detail, 'Detail'),
       onHoldCompare: compare(ParamGroup.detail),

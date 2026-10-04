@@ -14,6 +14,7 @@ class DevelopGroup extends StatefulWidget {
     this.modified = false,
     this.onReset,
     this.onHoldCompare,
+    this.openSignal,
   });
 
   final String title;
@@ -26,12 +27,26 @@ class DevelopGroup extends StatefulWidget {
   /// held). Shown only when the group is modified.
   final ValueChanged<bool>? onHoldCompare;
 
+  /// Opens the group whenever this changes to a new non-null value (search
+  /// revealing one of its controls).
+  final int? openSignal;
+
   @override
   State<DevelopGroup> createState() => _DevelopGroupState();
 }
 
 class _DevelopGroupState extends State<DevelopGroup> {
-  late bool _open = widget.initiallyOpen;
+  late bool _open = widget.initiallyOpen || widget.openSignal != null;
+
+  @override
+  void didUpdateWidget(DevelopGroup old) {
+    super.didUpdateWidget(old);
+    final s = widget.openSignal;
+    if (s != null && s != old.openSignal && !_open) {
+      setState(() => _open = true);
+    }
+  }
+
   bool _hover = false;
 
   @override

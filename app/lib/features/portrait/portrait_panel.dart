@@ -10,6 +10,8 @@ import 'package:lumen/features/editor/compare_suppress.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/portrait/portrait_slider.dart';
 import 'package:lumen/features/portrait/portrait_state.dart';
+import 'package:lumen/features/search/reveal.dart';
+import 'package:lumen/features/search/reveal_target.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 import 'package:lumen/widgets/buttons.dart';
 import 'package:lumen/widgets/segmented.dart';
@@ -79,6 +81,7 @@ class PortraitPanel extends ConsumerWidget {
           .select((s) => s.value?.settings.portrait ?? PortraitSettings.empty),
     );
     final target = ui.target;
+    final reveal = ref.watch(revealControlProvider(assetId));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -99,7 +102,11 @@ class PortraitPanel extends ConsumerWidget {
               const SizedBox(height: Sp.s3),
               _TargetTabs(assetId: assetId, ui: ui),
               const SizedBox(height: Sp.s3),
-              _AutoRetouchButton(assetId: assetId),
+              RevealTarget(
+                assetId: assetId,
+                id: 'autoRetouch',
+                child: _AutoRetouchButton(assetId: assetId),
+              ),
             ],
           ),
         ),
@@ -108,6 +115,10 @@ class PortraitPanel extends ConsumerWidget {
             key: ValueKey('portrait-${section.title}'),
             title: section.title,
             initiallyOpen: section.title == 'Skin',
+            openSignal: revealSignal(reveal, [
+              ...section.ids,
+              if (section.title == 'Blemishes') 'editSpots',
+            ]),
             modified: _modified(portrait, section.ids, target),
             onReset: () => _resetSection(ref, section, target),
             onHoldCompare: (held) {
@@ -117,15 +128,27 @@ class PortraitPanel extends ConsumerWidget {
             child: Column(
               children: [
                 if (section.title == 'Blemishes')
-                  _SpotEditRow(assetId: assetId, ui: ui, portrait: portrait),
+                  RevealTarget(
+                    assetId: assetId,
+                    id: 'editSpots',
+                    child: _SpotEditRow(
+                      assetId: assetId,
+                      ui: ui,
+                      portrait: portrait,
+                    ),
+                  ),
                 for (final id in section.ids)
                   if (_visible(portrait, id, target))
-                    PortraitSlider(
-                      key: ValueKey('$id-${target.group}-${target.personId}'),
+                    RevealTarget(
                       assetId: assetId,
-                      param: id,
-                      target: target,
-                      touch: touch,
+                      id: id,
+                      child: PortraitSlider(
+                        key: ValueKey('$id-${target.group}-${target.personId}'),
+                        assetId: assetId,
+                        param: id,
+                        target: target,
+                        touch: touch,
+                      ),
                     ),
               ],
             ),

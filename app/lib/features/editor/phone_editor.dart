@@ -21,6 +21,9 @@ import 'package:lumen/features/masks/masks_panel.dart';
 import 'package:lumen/features/presets/presets_panel.dart';
 import 'package:lumen/features/portrait/portrait_panel.dart';
 import 'package:lumen/features/remove/remove_panel.dart';
+import 'package:lumen/features/search/control_index.dart';
+import 'package:lumen/features/search/control_search_dialog.dart';
+import 'package:lumen/features/search/reveal.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 import 'package:lumen/widgets/buttons.dart';
 
@@ -159,6 +162,19 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
         ? 1.5
         : entry.width / entry.height;
     final module = ref.watch(editorModuleProvider(id));
+    // Search reveals a develop slider: show its tool tab.
+    ref.listen<RevealRequest?>(revealControlProvider(id), (_, r) {
+      if (r == null || r.entry.kind != ControlKind.developParam) return;
+      final tab = switch (ParamRegistry.byId(r.entry.id).group) {
+        ParamGroup.light => _Tab.light,
+        ParamGroup.color || ParamGroup.hsl || ParamGroup.bw => _Tab.color,
+        ParamGroup.curve => _Tab.curve,
+        ParamGroup.grading => _Tab.grading,
+        ParamGroup.presence || ParamGroup.effects => _Tab.effects,
+        ParamGroup.detail => _Tab.detail,
+      };
+      if (tab != _tab) setState(() => _tab = tab);
+    });
     // Keep the tab in step when the module changes elsewhere (the M key).
     ref.listen(editorModuleProvider(id), (_, m) {
       final tab = switch (m) {
@@ -208,6 +224,18 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
                   onPressed: (state?.canRedo ?? false) ? ctl.redo : null,
                 ),
                 const Spacer(),
+                LumenIconButton(
+                  icon: LucideIcons.search,
+                  tooltip: 'Search controls',
+                  size: 44,
+                  iconSize: 20,
+                  onPressed: () => showControlSearch(
+                    context,
+                    ref,
+                    id,
+                    session: widget.session,
+                  ),
+                ),
                 LumenIconButton(
                   icon: LucideIcons.squareSplitHorizontal,
                   tooltip: 'Compare',

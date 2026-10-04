@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/design/tokens.dart';
@@ -14,6 +15,7 @@ import 'package:lumen/features/editor/module_overlay.dart';
 import 'package:lumen/features/masks/masks_panel.dart';
 import 'package:lumen/features/remove/remove_panel.dart';
 import 'package:lumen/features/portrait/portrait_panel.dart';
+import 'package:lumen/features/search/control_search_dialog.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 import 'package:lumen/widgets/buttons.dart';
 import 'package:lumen/widgets/toast.dart';
@@ -64,7 +66,18 @@ class DevelopPanel extends ConsumerWidget {
                   style: LumenType.monoStyle().copyWith(color: t.textTertiary),
                 ),
                 const SizedBox(height: Sp.s3),
-                ModuleTabs(assetId: id),
+                Row(
+                  children: [
+                    Expanded(child: ModuleTabs(assetId: id)),
+                    const SizedBox(width: Sp.s1),
+                    LumenIconButton(
+                      icon: LucideIcons.search,
+                      tooltip: 'Search controls  /',
+                      onPressed: () =>
+                          showControlSearch(context, ref, id, session: session),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
