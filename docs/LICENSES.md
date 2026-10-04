@@ -7,6 +7,23 @@ and non-commercial licenses are banned from the binaries.
 **Automated check:** `dart run tool/check_licenses.dart` (exit 1 on any banned or unknown
 license). Regenerate the table below with `dart run tool/check_licenses.dart --markdown`.
 
+## Supply-chain review (every new dependency)
+Every package or model is vetted before install: verified publisher, commercial license,
+exact version pin, and for native binaries a scan of linked libraries and imported symbols.
+- `flutter_litert` 3.9.3 (2026-10-03): verified publisher `hugo.ml`, Apache-2.0, 160/160 pub
+  points, ~10.6k downloads/30 days, source on GitHub. Pinned exactly (no caret). Its macOS
+  dylibs are **ad-hoc signed** (not Google-signed). Scan: they link only Apple system
+  frameworks (CoreFoundation, Foundation, Metal) and libc++, and import **no** networking
+  (socket/connect/getaddrinfo/NSURL/nw_*) or process-launch (exec*/posix_spawn/system/popen)
+  symbols; the only embedded URLs are tensorflow.org docs links. Transitive `quiver` is
+  published by google.dev.
+- **Before release:** build the LiteRT/TFLite native libraries from Google's official source
+  tag (or use Google-signed artifacts), re-sign them with our Developer ID, and compare
+  behaviour against the contract tests.
+- Model files come only from Google's `storage.googleapis.com/mediapipe-models` and the
+  `litert-community` org on Hugging Face; sizes matched the published byte counts and every
+  file's SHA-256 is pinned (see `docs/MODEL_LICENSES.md`). Models are data, not code.
+
 ## Notes
 - `flutter_litert` (Apache-2.0) bundles prebuilt TensorFlow Lite / LiteRT native libraries
   (Apache-2.0) for every platform. On-device model weights are tracked separately in
