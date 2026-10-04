@@ -64,8 +64,8 @@ Plan, decisions and workstream status: `docs/PHASE2.md`. Research: `docs/researc
 - **Portrait retouch:** on-device face detection (BlazeFace + FaceMesh V2 via LiteRT), groups and individuals, Auto Retouch, skin, blemishes with spot editor, wrinkles, eyes, teeth, makeup. GPU pass `R` with CPU parity ≤ 1/255.
 - **Masks:** linear/radial/brush + AI masks (Selfie Multiclass), 12 local sliders, GPU parity ≤ 1/255.
 - **Remove:** heal/clone/remove brushes, classical fills, optional MI-GAN AI fill, heal-aware export and paste.
-- **Tests:** core 683, app 315 (+2 opt-in skips) green at `21f386d`.
-- **Open:** see the P1 privacy item and the "X1" export integration in `docs/PHASE2.md`. All retouch thresholds are tuned on a synthetic portrait generator and need a check on a licensed real-photo set. MI-GAN's Places2 training data needs legal review before sale.
+- **Tests:** `tool/verify.sh` ALL CHECKS PASSED at `4abc91f` + format: core 683 (line coverage 96.4 %), app 325 (+2 opt-in skips), server, licenses, secrets.
+- **Open:** the P1 privacy item in `docs/PHASE2.md`. All retouch thresholds are tuned on a synthetic portrait generator and need a check on a licensed real-photo set. MI-GAN's Places2 training data needs legal review before sale.
 
 ## Known limitations / next steps (Phase 2, per PLAN §3.2)
 - Sky masks need a cloud model (no commercial on-device option yet); upscale is not built.

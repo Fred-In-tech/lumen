@@ -38,13 +38,13 @@ original ──► RETOUCH STAGE (pixel layer, cached) ──► DEVELOP (GPU ub
 | W2 | Research: Evoto teardown (06) | ✅ done |
 | W3 | Research: portrait-retouch tech + licenses (07) | ✅ done |
 | W4 | On-device inference: LiteRT backend, ModelStore (SHA-256, resume, disk guard, LRU), FaceAnalyzer, face cache | ✅ done (`5797750`), faces wired to Portrait (`3bf39dc`) |
-| W5 | Retouch core: face regions, skin parser, RetouchMaps, blemish heal, CPU kernel, uniforms | ✅ v1 done (`381adb0`); wrinkles, lips and blush in progress |
+| W5 | Retouch core: face regions, skin parser, RetouchMaps, blemish heal, CPU kernel, uniforms | ✅ done (`381adb0`, wrinkles/makeup/shine `2b55422`, spot editor `5c740a3`) |
 | W6 | Object removal core: push-pull, Telea, PatchMatch, crop/feather/detail pipeline, heal ops | ✅ done (`1e70950`), app plumbing (`e3f76b6`) |
 | W7a | Portrait module UI: group tabs, Individual, sections, Auto Retouch, face boxes, tags | ✅ done; live retouch (`d502a61`) |
 | W7b | Masks module UI + canvas tools (linear/radial/brush, overlay) | ✅ done (`8661617`) |
-| W7c | Remove tool UI + heal/clone brushes + MI-GAN adapter + export/paste of heal ops | 🔨 in progress |
+| W7c | Remove tool UI + heal/clone brushes + MI-GAN adapter + export/paste of heal ops | ✅ done (`21f386d`) |
 | W8 | GPU `retouch.frag` pass mirroring the W5 CPU kernel + render-graph integration | ✅ done (`102aca0`), parity max 1/255 |
 | W9 | AI masks (Subject, Background, Face skin, Hair, Clothing) from Selfie Multiclass | ✅ done (`d7f6a91`, `585fd33`); Sky needs a cloud model |
 | W10 | Face reshape (MLS warp field in `develop`), backdrop clean, extras | later |
-| X1 | Export and batch honour retouch maps and AI mask rasters (heal ops via W7c) | planned next |
+| X1 | Export, batch and thumbnails honour heal ops, retouch maps and AI mask rasters; live heal preview | ✅ done (`4abc91f`) |
 | P1 | **Privacy hardening before launch:** keep face caches and models out of OS backups. Move `cache/` under one excluded root. iOS: `NSURLIsExcludedFromBackupKey`. Android: `dataExtractionRules` + `fullBackupContent`. macOS: the backup-exclude xattr. Legal review of BIPA for on-device face geometry. | planned |
