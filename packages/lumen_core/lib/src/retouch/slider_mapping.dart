@@ -1,0 +1,65 @@
+/// UI slider values (PortraitRegistry, 0–100 or ±100) → internal retouch
+/// parameters (research 07 §3.13, adapted to the registry ids).
+library;
+
+import 'dart:math' as math;
+
+import '../model/portrait.dart';
+
+/// Amplitude-selective threshold on |mid.L| (OkLab): structure above
+/// 2.5× this survives smoothing (§3.1). Lowered when smoothing > 0.6.
+const double kAmpThreshold = 0.035;
+const double kAmpThresholdStrong = 0.025;
+const double kStrongSmoothing = 0.6;
+
+/// Fine-band gain at Texture −100 / +100 (0 keeps pores exactly).
+const double kTextureGainMin = 0.4;
+const double kTextureGainMax = 1.4;
+
+/// Even tone at 100 pulls 80 % of the base chroma to the skin reference.
+const double kEvenToneMax = 0.8;
+
+/// Smooth skin: `(v/100)^0.8` (more resolution at the low end).
+double mapSmoothing(double v) =>
+    math.pow((v / 100).clamp(0.0, 1.0), 0.8).toDouble();
+
+double mapAmpThreshold(double smooth) =>
+    smooth > kStrongSmoothing ? kAmpThresholdStrong : kAmpThreshold;
+
+/// Skin texture (bipolar, default 0 = keep the fine band as is).
+double mapTextureGain(double v) {
+  final t = (v / 100).clamp(-1.0, 1.0);
+  return t <= 0 ? 1 + (1 - kTextureGainMin) * t : 1 + (kTextureGainMax - 1) * t;
+}
+
+double mapEvenTone(double v) => kEvenToneMax * (v / 100).clamp(0.0, 1.0);
+
+/// Linear 0–100 → 0..1 (under-eye, shine, eyes, teeth, blemish classes).
+double mapLinear(double v) => (v / 100).clamp(0.0, 1.0);
+
+/// Starting values of an Auto Retouch preset (research 06: eye whites and
+/// iris 80/80, lower-lid protection 100). Step 10 scales these by the
+/// detected need; the identity defaults of the registry stay 0.
+const Map<String, double> kAutoRetouchValues = {
+  PortraitIds.skinSoftening: 35,
+  PortraitIds.skinEven: 30,
+  PortraitIds.skinShine: 30,
+  PortraitIds.acne: 70,
+  PortraitIds.darkCircles: 45,
+  PortraitIds.eyeBags: 30,
+  PortraitIds.lidProtect: 100,
+  PortraitIds.eyeWhites: 80,
+  PortraitIds.iris: 80,
+  PortraitIds.redVein: 50,
+  PortraitIds.teethBrightness: 25,
+  PortraitIds.teethDesaturate: 40,
+};
+
+/// [kAutoRetouchValues] as settings on the All group.
+PortraitSettings autoRetouchSettings() {
+  var s = PortraitSettings.empty;
+  for (final e in kAutoRetouchValues.entries) {
+    s = s.withGroupValue(FaceGroup.all, e.key, e.value);
+  }
+  return s;
+}

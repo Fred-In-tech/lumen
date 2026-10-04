@@ -1,0 +1,187 @@
+/// Frequency-separated push-pull spot healing (research 07 §3.3).
+///
+/// The spot is filled from its ring by push-pull on a pore-scale-smoothed
+/// copy, so pores (finer than [kHealPoreSigmaIod]) continue through the
+/// healed spot. The full delta is split for the retouch pass:
+/// * `low = G(σ1) ∗ Δ` (OkLab L, a, b) heals the `B1` band (`Bh` texture);
+/// * `high = Δ − low` (L, a, b) corrects the fine band, so a spot narrower
+///   than σ1 does not survive as a ghost in `I − B1` when smoothing is on.
+library;
+
+import 'dart:math' as math;
+import 'dart:typed_data';
+
+import 'blemish_types.dart';
+import 'face_frame.dart';
+import 'filters.dart';
+import 'lab_planes.dart';
+import 'map_rect.dart';
+import 'push_pull.dart';
+import 'region_parts.dart';
+
+/// Hole = disc of radius × 1.3 with a 30 % feather (§3.3 healing step 1).
+const double kHealHoleScale = 1.3;
+const double kHealHoleFeather = 0.3;
+
+/// Pore-scale smoothing before the fill (detail below this survives), in
+/// IOD units, but never below [kHealPoreSigmaMinPx] pixels.
+const double kHealPoreSigmaIod = 0.0035;
+const double kHealPoreSigmaMinPx = 0.7;
+
+/// `B1` sigma (research 07 §3.0: σ1 = 0.012 IOD).
+const double kB1SigmaIod = 0.012;
+
+/// Spot codes cover the hole plus this many σ1 of delta spill.
+const double kSpotCodeSpillSigmas = 2.5;
+
+/// Heal deltas of one face over its work rect.
+class HealPlanes {
+  const HealPlanes({
+    required this.rect,
+    required this.lowL,
+    required this.lowA,
+    required this.lowB,
+    required this.highL,
+    required this.highA,
+    required this.highB,
+    required this.spotCode,
+    required this.healed,
+  });
+
+  final MapRect rect;
+  final Float32List lowL;
+  final Float32List lowA;
+  final Float32List lowB;
+  final Float32List highL;
+  final Float32List highA;
+  final Float32List highB;
+
+  /// Nearest spot's code per pixel (0 = none), see [encodeSpotCode].
+  final Uint8List spotCode;
+
+  /// [lab] with every non-kept spot healed (input of `B2` and `B3`).
+  final LabPlanes healed;
+}
+
+/// Computes the heal deltas for [spots] of face [f] from [lab].
+HealPlanes healBlemishes(
+  FaceFrame f,
+  LabPlanes lab,
+  List<BlemishCandidate> spots, {
+  required int gridW,
+  required int gridH,
+  BlemishOverrides overrides = BlemishOverrides.none,
+}) {
+  final rect = lab.rect, n = rect.area;
+  final active = [
+    for (final s in spots)
+      if (!overrides.keep.contains(s.id)) s,
+  ];
+  final sigma1 = kB1SigmaIod * f.iod;
+  final alpha = Float32List(n);
+  final best = Float32List(n)..fillRange(0, n, double.infinity);
+  final codes = Uint8List(n);
+  var x0 = rect.x1, y0 = rect.y1, x1 = rect.x0, y1 = rect.y0;
+  var margin = 0.0;
+  for (final s in active) {
+    final cx = s.u * gridW, cy = s.v * gridH;
+    final rh = s.radiusIod * f.iod * kHealHoleScale;
+    final reach = rh + kSpotCodeSpillSigmas * sigma1;
+    margin = math.max(margin, 3 * rh + 3 * sigma1);
+    final code = encodeSpotCode(
+      s.kind,
+      s.threshold,
+      forced: overrides.remove.contains(s.id),
+    );
+    final box = MapRect.around(cx, cy, reach + 1, reach + 1, gridW, gridH);
+    final ys = math.max(box.y0, rect.y0), ye = math.min(box.y1, rect.y1);
+    final xs = math.max(box.x0, rect.x0), xe = math.min(box.x1, rect.x1);
+    x0 = math.min(x0, xs);
+    y0 = math.min(y0, ys);
+    x1 = math.max(x1, xe);
+    y1 = math.max(y1, ye);
+    for (var y = ys; y < ye; y++) {
+      for (var x = xs; x < xe; x++) {
+        final dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+        final d = math.sqrt(dx * dx + dy * dy);
+        if (d > reach) continue;
+        final i = rect.index(x, y);
+        final a = 1 - smoothstep((1 - kHealHoleFeather) * rh, rh, d);
+        if (a > alpha[i]) alpha[i] = a;
+        if (d < best[i]) {
+          best[i] = d;
+          codes[i] = code;
+        }
+      }
+    }
+  }
+  final zero = Float32List(n);
+  if (x1 <= x0 || y1 <= y0) {
+    return HealPlanes(
+      rect: rect,
+      lowL: zero,
+      lowA: zero,
+      lowB: zero,
+      highL: zero,
+      highA: zero,
+      highB: zero,
+      spotCode: codes,
+      healed: lab,
+    );
+  }
+  // Fill only around the holes (plus a ring margin), not the whole rect.
+  final m = margin.ceil();
+  final work = MapRect(
+    math.max(rect.x0, x0 - m),
+    math.max(rect.y0, y0 - m),
+    math.min(rect.x1, x1 + m) - math.max(rect.x0, x0 - m),
+    math.min(rect.y1, y1 + m) - math.max(rect.y0, y0 - m),
+  );
+  final ww = work.w, wh = work.h;
+  final trust = cropPlane(alpha, rect, work);
+  for (var i = 0; i < trust.length; i++) {
+    trust[i] = 1 - trust[i];
+  }
+  final poreSigma = math.max(kHealPoreSigmaMinPx, kHealPoreSigmaIod * f.iod);
+  final full = <Float32List>[];
+  final low = <Float32List>[];
+  for (final c in lab.channels) {
+    final sub = cropPlane(c, rect, work);
+    final smooth = gaussianBlur(sub, ww, wh, poreSigma);
+    final d = subtractPlanes(pushPull(smooth, trust, ww, wh), smooth);
+    full.add(d);
+    low.add(gaussianBlur(d, ww, wh, sigma1));
+  }
+  final healed = [
+    for (var k = 0; k < 3; k++) _pasteAdd(lab.channels[k], rect, full[k], work),
+  ];
+  return HealPlanes(
+    rect: rect,
+    lowL: _pasteAdd(zero, rect, low[0], work),
+    lowA: _pasteAdd(zero, rect, low[1], work),
+    lowB: _pasteAdd(zero, rect, low[2], work),
+    highL: _pasteAdd(zero, rect, subtractPlanes(full[0], low[0]), work),
+    highA: _pasteAdd(zero, rect, subtractPlanes(full[1], low[1]), work),
+    highB: _pasteAdd(zero, rect, subtractPlanes(full[2], low[2]), work),
+    spotCode: codes,
+    healed: LabPlanes(rect, healed[0], healed[1], healed[2]),
+  );
+}
+
+/// A copy of [base] (covering [rect]) with [delta] (covering [sub]) added.
+Float32List _pasteAdd(
+  Float32List base,
+  MapRect rect,
+  Float32List delta,
+  MapRect sub,
+) {
+  final out = Float32List.fromList(base);
+  for (var y = sub.y0; y < sub.y1; y++) {
+    var i = rect.index(sub.x0, y);
+    var j = (y - sub.y0) * sub.w;
+    for (var x = 0; x < sub.w; x++, i++, j++) {
+      out[i] += delta[j];
+    }
+  }
+  return out;
+}

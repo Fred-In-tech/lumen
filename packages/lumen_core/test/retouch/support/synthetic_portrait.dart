@@ -1,0 +1,362 @@
+/// Deterministic synthetic portraits for the retouch tests: a skin oval
+/// with pores (fine noise), blotches (mid band), dark circles, shine,
+/// forehead sine-ridge wrinkles, blemishes of known size and contrast, a
+/// flat cheek patch with a high-contrast stripe and a low-contrast blotch,
+/// plus eyes, brows, lips, teeth and hair.
+library;
+
+import 'dart:math' as math;
+import 'dart:typed_data';
+
+import 'package:lumen_core/lumen_core.dart';
+
+import 'synthetic_landmarks.dart';
+
+enum SynthSpotKind { acne, freckle, mole }
+
+/// A blemish centred at local `(x, y)` with visible radius [radius] (IOD
+/// units, = 2σ of its Gaussian profile).
+class SynthSpot {
+  const SynthSpot(this.x, this.y, this.radius, this.kind);
+  final double x;
+  final double y;
+  final double radius;
+  final SynthSpotKind kind;
+
+  ({double l, double a, double b}) get delta => switch (kind) {
+    SynthSpotKind.acne => (l: -0.035, a: 0.045, b: 0.008),
+    SynthSpotKind.freckle => (l: -0.045, a: 0.006, b: 0.028),
+    SynthSpotKind.mole => (l: -0.28, a: 0.01, b: 0.005),
+  };
+}
+
+const kAcneSpots = [
+  SynthSpot(0.55, 0.55, 0.026, SynthSpotKind.acne),
+  SynthSpot(0.30, -0.70, 0.022, SynthSpotKind.acne),
+  SynthSpot(0.15, 1.55, 0.03, SynthSpotKind.acne),
+  SynthSpot(0.80, 0.80, 0.024, SynthSpotKind.acne),
+];
+const kFreckleSpots = [
+  SynthSpot(-0.35, 0.40, 0.02, SynthSpotKind.freckle),
+  SynthSpot(-0.45, 0.30, 0.022, SynthSpotKind.freckle),
+  SynthSpot(0.40, 0.38, 0.02, SynthSpotKind.freckle),
+  SynthSpot(-0.25, -0.70, 0.022, SynthSpotKind.freckle),
+];
+const kMoleSpots = [SynthSpot(-0.30, 1.45, 0.045, SynthSpotKind.mole)];
+const kDefaultSpots = [...kAcneSpots, ...kFreckleSpots, ...kMoleSpots];
+
+/// Mid-band blotches (σ = [kBlotchSigma] IOD, between B1 and B2 of §3.0):
+/// a jittered grid over the skin, away from features, spots and the patch.
+const kBlotchSigma = 0.025;
+const kBlotchAmpL = 0.016;
+final List<({double x, double y, double s})> kBlotches = _blotchGrid();
+
+List<({double x, double y, double s})> _blotchGrid() {
+  final out = <({double x, double y, double s})>[];
+  for (var gy = 0; gy < 15; gy++) {
+    for (var gx = 0; gx < 11; gx++) {
+      final jx = _hash(gx * 7 + 3, gy * 13 + 1) * 0.05;
+      final jy = _hash(gx * 11 + 5, gy * 3 + 7) * 0.05;
+      final x = -0.9 + gx * 0.18 + jx, y = -0.9 + gy * 0.18 + jy;
+      final nearFeature =
+          (y > -0.5 && y < 0.25 && x.abs() > 0.1) || // brows, eyes
+          (y > 0.55 && y < 0.9 && x.abs() < 0.3) || // nose base
+          (y > 0.9 && y < 1.32 && x.abs() < 0.55) || // mouth
+          (x > kPatchX0 - 0.1 && y > kPatchY0 - 0.1 && y < kPatchY1 + 0.1) ||
+          x * x / (1.05 * 1.05) + math.pow((y - 0.6) / 1.3, 2) > 1 ||
+          kDefaultSpots.any(
+            (p) => math.pow(p.x - x, 2) + math.pow(p.y - y, 2) < 0.012,
+          );
+      if (nearFeature) continue;
+      out.add((x: x, y: y, s: _hash(gx, gy) > 0 ? 1.0 : -1.0));
+    }
+  }
+  return out;
+}
+
+/// Broad cheek redness (base band, for Even tone): centre and σ (IOD).
+const kRednessX = 0.62, kRednessY = 0.40, kRednessSigma = 0.12;
+const kRednessA = 0.02;
+
+/// A point on the tongue inside the open mouth (local y at x = 0).
+const kMouthTongueY = 1.16;
+
+/// Sclera vein lines `y = k·dx + c` (local, relative to the eye centre).
+const kVeinLines = [(0.25, 0.0), (-0.3, 0.012), (0.1, -0.02)];
+const kVeinHalfWidth = 0.004;
+
+/// True on a vein line, outside the iris (dx relative to the eye centre).
+bool isVein(double dx, double y) =>
+    dx.abs() > kIrisRadius * 1.15 &&
+    kVeinLines.any((v) => (y - v.$1 * dx - v.$2).abs() < kVeinHalfWidth);
+
+/// Nostril centre (local), the centroid of landmarks 98, 64, 48, 115.
+const kNostrilX = 0.185, kNostrilY = 0.725;
+
+/// Flat cheek patch (local rect) with a stripe and a faint blotch.
+const kPatchX0 = -0.98, kPatchX1 = -0.62, kPatchY0 = 0.62, kPatchY1 = 0.98;
+const kStripeX = -0.90, kStripeHalfW = 0.02, kStripeDepth = 0.12;
+const kPatchBlotchX = -0.74, kPatchBlotchY = 0.80, kPatchBlotchDepth = 0.02;
+
+class SynthFace {
+  const SynthFace({
+    required this.id,
+    required this.cx,
+    required this.cy,
+    required this.iod,
+    this.group = FaceGroup.all,
+    this.personId,
+    this.spots = kDefaultSpots,
+    this.teethL = 0.80,
+    this.scleraL = 0.84,
+    this.poreAmp = 0.012,
+    this.veins = false,
+  });
+
+  final String id;
+
+  /// Eye midpoint and IOD in image pixels.
+  final double cx;
+  final double cy;
+  final double iod;
+  final FaceGroup group;
+  final String? personId;
+  final List<SynthSpot> spots;
+  final double teethL;
+  final double scleraL;
+  final double poreAmp;
+
+  /// Thin red veins in the sclera (for Red veins).
+  final bool veins;
+
+  ({double x, double y}) toPx(double x, double y) =>
+      (x: cx + x * iod, y: cy + y * iod);
+
+  ({double x, double y}) toLocal(double px, double py) =>
+      (x: (px - cx) / iod, y: (py - cy) / iod);
+}
+
+class SynthPortrait {
+  const SynthPortrait(this.image, this.analysis, this.faces);
+  final RgbaBuffer image;
+  final FaceAnalysis analysis;
+  final List<SynthFace> faces;
+}
+
+/// Renders [faces] on a `w × h` background and builds their analysis.
+SynthPortrait renderSynthPortrait(int w, int h, List<SynthFace> faces) {
+  final img = RgbaBuffer(w, h);
+  final lms = synthLandmarksLocal();
+  final polys = _Polys(lms);
+  final lab = Float64List(3);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      lab[0] = 0.55 + 0.1 * y / h;
+      lab[1] = -0.01;
+      lab[2] = -0.03;
+      for (final f in faces) {
+        final p = f.toLocal(x + 0.5, y + 0.5);
+        _shadeFace(f, polys, p.x, p.y, _hash(x, y), lab);
+      }
+      final rgb = oklabToLinearSrgb(Oklab(lab[0], lab[1], lab[2]));
+      img.setPixel(
+        x,
+        y,
+        (linearToSrgb(rgb.r) * 255).round(),
+        (linearToSrgb(rgb.g) * 255).round(),
+        (linearToSrgb(rgb.b) * 255).round(),
+      );
+    }
+  }
+  final analysis = FaceAnalysis(
+    imageWidth: w,
+    imageHeight: h,
+    modelVersion: 'synthetic',
+    faces: [
+      for (final f in faces)
+        DetectedFace(
+          id: f.id,
+          box: _box(f, lms, w, h),
+          landmarks: [
+            for (var i = 0; i < FaceMesh.landmarkCount; i++) ...[
+              f.toPx(lms[i]!.x, lms[i]!.y).x / w,
+              f.toPx(lms[i]!.x, lms[i]!.y).y / h,
+            ],
+          ],
+          group: f.group,
+          personId: f.personId,
+        ),
+    ],
+  );
+  return SynthPortrait(img, analysis, faces);
+}
+
+FaceBox _box(SynthFace f, Map<int, LocalPt> lms, int w, int h) {
+  final xs = [for (final i in FaceMesh.faceOval) f.toPx(lms[i]!.x, 0).x];
+  final ys = [for (final i in FaceMesh.faceOval) f.toPx(0, lms[i]!.y).y];
+  final x0 = xs.reduce(math.min), x1 = xs.reduce(math.max);
+  final y0 = ys.reduce(math.min), y1 = ys.reduce(math.max);
+  return FaceBox(x0 / w, y0 / h, (x1 - x0) / w, (y1 - y0) / h);
+}
+
+class _Polys {
+  _Polys(Map<int, LocalPt> m)
+    : eyes = [_loop(m, FaceMesh.rightEye), _loop(m, FaceMesh.leftEye)],
+      brows = [
+        _loop(m, [
+          ...FaceMesh.rightBrowLower,
+          ...FaceMesh.rightBrowUpper.reversed,
+        ]),
+        _loop(m, [
+          ...FaceMesh.leftBrowLower,
+          ...FaceMesh.leftBrowUpper.reversed,
+        ]),
+      ],
+      lipsOuter = _loop(m, FaceMesh.lipsOuter),
+      lipsInner = _loop(m, FaceMesh.lipsInner);
+
+  final List<List<LocalPt>> eyes;
+  final List<List<LocalPt>> brows;
+  final List<LocalPt> lipsOuter;
+  final List<LocalPt> lipsInner;
+
+  static List<LocalPt> _loop(Map<int, LocalPt> m, List<int> idx) => [
+    for (final i in idx) m[i]!,
+  ];
+}
+
+bool _inside(List<LocalPt> poly, double x, double y) {
+  var inside = false;
+  for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    final a = poly[i], b = poly[j];
+    if ((a.y > y) != (b.y > y) &&
+        x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+double _g(double dx, double dy, double sigma) =>
+    math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
+
+/// Deterministic per-pixel noise in [-1, 1].
+double _hash(int x, int y) {
+  var v = (x * 73856093) ^ (y * 19349663) ^ 0x5bd1e995;
+  v = (v ^ (v >> 13)) * 0x5bd1e995 & 0x7fffffff;
+  v ^= v >> 15;
+  return (v & 0xffff) / 32767.5 - 1;
+}
+
+void _shadeFace(
+  SynthFace f,
+  _Polys p,
+  double x,
+  double y,
+  double noise,
+  Float64List lab,
+) {
+  if (x.abs() > 1.6 || y < -1.9 || y > 2.3) return;
+  final ry = y < kOvalCy ? 1.65 : kOvalRyBottom;
+  final skinR = math.pow(x / kOvalRx, 2) + math.pow((y - kOvalCy) / ry, 2);
+  final headR = math.pow(x / 1.4, 2) + math.pow((y - 0.2) / 1.85, 2);
+  if (skinR > 1) {
+    if (headR <= 1 && y < 0.9) {
+      lab[0] = 0.27 + 0.03 * math.sin(x * 70);
+      lab[1] = 0.02;
+      lab[2] = 0.035;
+    }
+    return;
+  }
+  // Skin: base, side shading, blotches (mid band), pores (fine band).
+  var l = 0.70 - 0.05 * (x / kOvalRx) * (x / kOvalRx), a = 0.032, b = 0.045;
+  final inPatch = x > kPatchX0 && x < kPatchX1 && y > kPatchY0 && y < kPatchY1;
+  if (inPatch) {
+    if ((x - kStripeX).abs() < kStripeHalfW) l -= kStripeDepth;
+    l -= kPatchBlotchDepth * _g(x - kPatchBlotchX, y - kPatchBlotchY, 0.04);
+  } else {
+    // Mid-band blotches (σ ≈ 0.025 IOD, between B1 and B2 of §3.0).
+    for (final bl in kBlotches) {
+      final dx = x - bl.x, dy = y - bl.y;
+      if (dx.abs() > 0.1 || dy.abs() > 0.1) continue;
+      final g = _g(dx, dy, kBlotchSigma);
+      l += kBlotchAmpL * bl.s * g;
+      a += 0.008 * g;
+    }
+    l += f.poreAmp * noise;
+  }
+  a += kRednessA * _g(x - kRednessX, y - kRednessY, kRednessSigma);
+  // Dark circles under each eye.
+  for (final ex in const [-0.5, 0.5]) {
+    final w = _g(x - ex, (y - 0.13) * 2.2, 0.13);
+    l -= 0.06 * w;
+    a += 0.006 * w;
+    b -= 0.02 * w;
+  }
+  // Shine on the forehead centre and the nose tip.
+  final shine = math.max(_g(x, y + 0.6, 0.12), 0.8 * _g(x, y - 0.68, 0.05));
+  l += 0.10 * shine;
+  a *= 1 - 0.6 * shine;
+  b *= 1 - 0.6 * shine;
+  // Forehead wrinkles: horizontal sine ridges.
+  if (y > -0.85 && y < -0.55 && x.abs() < 0.5) {
+    l -= 0.015 * math.max(0.0, math.sin(y * 2 * math.pi / 0.08));
+  }
+  for (final s in f.spots) {
+    final g = _g(x - s.x, y - s.y, s.radius / 2);
+    final d = s.delta;
+    l += d.l * g;
+    a += d.a * g;
+    b += d.b * g;
+  }
+  lab[0] = l;
+  lab[1] = a;
+  lab[2] = b;
+  _features(f, p, x, y, lab);
+}
+
+void _features(SynthFace f, _Polys p, double x, double y, Float64List lab) {
+  void set(double l, double a, double b) {
+    lab[0] = l;
+    lab[1] = a;
+    lab[2] = b;
+  }
+
+  if (y > -0.5 && y < -0.2 && p.brows.any((q) => _inside(q, x, y))) {
+    set(0.30, 0.02, 0.04);
+  }
+  if (y.abs() < 0.1 && p.eyes.any((q) => _inside(q, x, y))) {
+    final ex = x < 0 ? -0.5 : 0.5;
+    final d = math.sqrt((x - ex) * (x - ex) + y * y);
+    if (_g(x - ex - 0.03, y + 0.03, 0.012) > 0.5) {
+      set(0.97, 0, 0);
+    } else if (d < 0.35 * kIrisRadius) {
+      set(0.12, 0, 0);
+    } else if (d < kIrisRadius) {
+      set(0.42 + 0.04 * math.sin(math.atan2(y, x - ex) * 12), 0.015, 0.06);
+    } else if (f.veins && isVein(x - ex, y)) {
+      set(f.scleraL - 0.08, 0.07, 0.03);
+    } else {
+      set(f.scleraL, 0.012, 0.02);
+    }
+  }
+  if (y > 0.95 && y < 1.3 && _inside(p.lipsOuter, x, y)) {
+    if (_inside(p.lipsInner, x, y)) {
+      final gap = ((x / 0.09) - (x / 0.09).roundToDouble()).abs() < 0.06;
+      if (y < kMouthY + 0.012) {
+        set(gap ? f.teethL - 0.15 : f.teethL, 0.0, 0.06);
+      } else {
+        set(0.38, 0.09, 0.03);
+      }
+    } else {
+      set(0.58, 0.11, 0.04);
+    }
+  }
+  // Nostrils on the ellipse implied by landmarks 98/64/48/115 (and mirror).
+  for (final nx in const [-kNostrilX, kNostrilX]) {
+    if (math.pow((x - nx) / 0.025, 2) + math.pow((y - kNostrilY) / 0.05, 2) <=
+        1) {
+      set(0.28, 0.03, 0.03);
+    }
+  }
+}
