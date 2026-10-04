@@ -7,6 +7,7 @@ import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 import 'package:lumen/features/masks/canvas/mask_canvas.dart';
+import 'package:lumen/features/portrait/face_boxes_overlay.dart';
 
 /// Canvas tools of the active [EditorModule], drawn over the photo in
 /// [PhotoCanvas.overlay] (outside crop mode).
@@ -25,8 +26,8 @@ class ModuleOverlay extends ConsumerWidget {
 
   /// Modules that draw on the canvas.
   static bool hasTools(EditorModule module) => switch (module) {
-    EditorModule.masks => true,
-    EditorModule.adjust || EditorModule.portrait => false,
+    EditorModule.masks || EditorModule.portrait => true,
+    EditorModule.adjust => false,
   };
 
   /// The overlay for [module], or null when it has no canvas tools (the
@@ -72,8 +73,11 @@ class ModuleOverlay extends ConsumerWidget {
             touch: touch,
             showTint: !showingBefore,
           ),
-          EditorModule.adjust ||
-          EditorModule.portrait => const SizedBox.shrink(),
+          EditorModule.portrait => FaceBoxesOverlay(
+            assetId: id,
+            mapping: mapping,
+          ),
+          EditorModule.adjust => const SizedBox.shrink(),
         };
       },
     );
