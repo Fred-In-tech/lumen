@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and lower (fullBackupContent). Photos, edits, face geometry,
+     AI rasters and models are not backed up: a photo library does not fit
+     Auto Backup's 25 MB quota, and face data must stay on the device.
+     Settings and presets are small and still backed up. -->
+<full-backup-content>
+    <exclude domain="file" path="lumen_catalog_v1/assets/" />
+    <exclude domain="file" path="models/" />
+</full-backup-content>

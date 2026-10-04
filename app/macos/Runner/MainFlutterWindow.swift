@@ -23,7 +23,35 @@ class MainFlutterWindow: NSWindow {
     self.backgroundColor = NSColor(calibratedWhite: 0.067, alpha: 1)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    BackupExclusion.register(messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
   }
 }
+
+/// `lumen/backup` channel: marks local-only derived data (face geometry, AI
+/// rasters, models) as excluded from Time Machine.
+enum BackupExclusion {
+  static func register(messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(name: "lumen/backup", binaryMessenger: messenger)
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "exclude",
+        let args = call.arguments as? [String: Any],
+        let path = args["path"] as? String
+      else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      do {
+        var url = URL(fileURLWithPath: path)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try url.setResourceValues(values)
+        result(true)
+      } catch {
+        result(FlutterError(code: "exclude_failed", message: error.localizedDescription, details: nil))
+      }
+    }
+  }
+}
+

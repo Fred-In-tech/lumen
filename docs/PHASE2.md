@@ -47,4 +47,4 @@ original ──► RETOUCH STAGE (pixel layer, cached) ──► DEVELOP (GPU ub
 | W9 | AI masks (Subject, Background, Face skin, Hair, Clothing) from Selfie Multiclass | ✅ done (`d7f6a91`, `585fd33`); Sky needs a cloud model |
 | W10 | Face reshape (MLS warp field in `develop`), backdrop clean, extras | later |
 | X1 | Export, batch and thumbnails honour heal ops, retouch maps and AI mask rasters; live heal preview | ✅ done (`4abc91f`) |
-| P1 | **Privacy hardening before launch:** keep face caches and models out of OS backups. Move `cache/` under one excluded root. iOS: `NSURLIsExcludedFromBackupKey`. Android: `dataExtractionRules` + `fullBackupContent`. macOS: the backup-exclude xattr. Legal review of BIPA for on-device face geometry. | planned |
+| P1 | Privacy hardening: face caches + models excluded from OS backups (iOS/macOS `isExcludedFromBackup` via `lumen/backup` channel + startup sweep; Android `dataExtractionRules`/`fullBackupContent` exclude `assets/` and `models/`) | ✅ done; BIPA legal review still open (user) |
