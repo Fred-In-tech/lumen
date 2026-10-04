@@ -7,10 +7,12 @@ import 'package:logging/logging.dart';
 import 'package:lumen_core/lumen_core.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:lumen/ai/ondevice/cache_dirs_io.dart';
 import 'package:lumen/ai/ondevice/disk_space_probe.dart';
 import 'package:lumen/ai/ondevice/model_download_io.dart';
 import 'package:lumen/ai/ondevice/model_store.dart';
 import 'package:lumen/data/atomic_file_io_impl_io.dart';
+import 'package:lumen/platform/platform_info.dart';
 
 final _log = Logger('ModelStore');
 
@@ -29,6 +31,7 @@ class FileModelStore implements ModelStore {
     DateTime Function()? clock,
     this.stallTimeout = const Duration(seconds: 30),
     this.closeClientOnDispose = false,
+    this.platform,
   }) : _http = client,
        _probe = diskProbe,
        _loadBundled = bundled,
@@ -44,6 +47,9 @@ class FileModelStore implements ModelStore {
 
   /// True when this store owns [client] (closed by [dispose]).
   final bool closeClientOnDispose;
+
+  /// Platform for backup exclusion of [root] (null = the running platform).
+  final PlatformInfo? platform;
   final http.Client _http;
   final DiskSpaceProbe _probe;
   final BundledModelLoader? _loadBundled;
@@ -118,6 +124,9 @@ class FileModelStore implements ModelStore {
     return null;
   }
 
+  Future<void> _ensureRoot() =>
+      ensureBackupExcludedDir(root, platform: platform);
+
   Future<ModelResult> _extractBundled(ModelSpec spec) async {
     final bytes = await _loadBundled?.call(spec.bundledAssetKey);
     if (bytes == null) {
@@ -131,6 +140,7 @@ class FileModelStore implements ModelStore {
       );
     }
     final path = pathFor(spec);
+    await _ensureRoot();
     await atomicWrite(path, bytes);
     _verified.add(path);
     return _ready(spec, path);
@@ -148,6 +158,7 @@ class FileModelStore implements ModelStore {
         InsufficientDiskSpace(requiredBytes: need, availableBytes: free),
       );
     }
+    await _ensureRoot();
     await _evict(incomingBytes: spec.bytes, keep: spec);
     final part = File('${pathFor(spec)}.part');
     final error = await downloadResumable(

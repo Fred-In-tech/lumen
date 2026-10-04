@@ -20,11 +20,12 @@ export 'src/render/rgba_buffer.dart';
 // Workstream barrels (each workstream owns its own barrel file):
 export 'src/model/model.dart';
 export 'src/render/render.dart';
+export 'src/warp/warp.dart';
 export 'src/analysis/analysis.dart';
 export 'src/auto/auto.dart';
 export 'src/api/api.dart';
 export 'src/retouch/retouch.dart';
 export 'src/inpaint/inpaint.dart';
 export 'src/vision/vision.dart';
+export 'src/cull/cull.dart';
 export 'src/testing/testing.dart';
-export 'src/warp/warp.dart';

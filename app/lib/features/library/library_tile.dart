@@ -7,6 +7,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/cull/cull_badges.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 
 /// Thumbnail bytes for (assetId, thumbVersion); refetched when the version bumps.
@@ -75,7 +76,11 @@ class _LibraryTileState extends ConsumerState<LibraryTile> {
     return Semantics(
       button: true,
       selected: widget.selected,
-      label: '${e.fileName}${e.hasEdits ? ', edited' : ''}',
+      label: [
+        e.fileName,
+        if (e.hasEdits) 'edited',
+        if (cullDescription(e, null) case final d when d.isNotEmpty) d,
+      ].join(', '),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
@@ -123,6 +128,7 @@ class _LibraryTileState extends ConsumerState<LibraryTile> {
                             );
                     },
                   ),
+                  CullBadges(entry: e),
                   if (busy) const _Shimmer(),
                   if (busy)
                     const Positioned(left: 8, top: 8, child: _EditingPill()),

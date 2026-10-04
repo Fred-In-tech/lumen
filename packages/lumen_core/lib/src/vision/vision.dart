@@ -15,3 +15,4 @@ export 'weighted_nms.dart';
 export 'ai_mask_planes.dart';
 export 'guided_filter.dart';
 export 'segmentation.dart';
+export 'headshot_crop.dart';

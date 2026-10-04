@@ -22,4 +22,17 @@ abstract final class MeshKeypoints {
 
   static const noseTip = 1;
   static const chin = 152;
+
+  /// Mid-forehead (top of the mesh; the hairline is above it).
+  static const foreheadTop = 10;
+
+  /// Face oval extremes at cheek height (face width).
+  static const rightCheekEdge = 234;
+  static const leftCheekEdge = 454;
+
+  /// Eye aspect ratio points (Soukupová & Čech): p1 and p4 are the
+  /// corners, p2/p3 the upper lid, p6/p5 the lower lid, so
+  /// EAR = (|p2−p6| + |p3−p5|) / (2·|p1−p4|).
+  static const rightEyeEar = [33, 160, 158, 133, 153, 144];
+  static const leftEyeEar = [362, 385, 387, 263, 373, 380];
 }

@@ -34,17 +34,24 @@ Future<ModelStore> openModelStore(
     diskProbe: ProcessDiskSpaceProbe(platform),
     budgetBytes: ModelBudget.forPlatform(platform),
     bundled: bundled,
+    platform: platform,
   );
 }
 
 /// Face cache next to the catalog (`<appSupport>/<storageId>/assets/…`).
 Future<FaceCache> openFaceCache() async {
   final support = await getApplicationSupportDirectory();
-  return FileFaceCache(p.join(support.path, kBrand.storageId));
+  return FileFaceCache(
+    p.join(support.path, kBrand.storageId),
+    platform: PlatformInfo.current(),
+  );
 }
 
 /// AI mask rasters next to the catalog (`…/assets/<id>/cache/masks/`).
 Future<AiRasterStore> openAiRasterStore() async {
   final support = await getApplicationSupportDirectory();
-  return FileAiRasterStore(p.join(support.path, kBrand.storageId));
+  return FileAiRasterStore(
+    p.join(support.path, kBrand.storageId),
+    platform: PlatformInfo.current(),
+  );
 }

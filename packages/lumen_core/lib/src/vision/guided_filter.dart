@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../render/rgba_buffer.dart';
+import 'tensor_sampling.dart';
 
 /// Mean over the (2r+1)² window around each pixel, clipped at the borders
 /// (the divisor is the number of pixels actually inside). O(1) per pixel:
@@ -102,15 +103,21 @@ Float32List _filterOne(
 }
 
 /// Rec. 709 luma of [src]'s 8-bit codes (0..1), area-averaged onto a
-/// [width]×[height] grid that spans the whole image (the guide for mask
-/// edge refinement; gamma-encoded luma follows visible edges).
+/// [width]×[height] grid spanning [region] (default: the whole image).
+/// Gamma-encoded luma follows visible edges (mask guide, culling).
 Float32List lumaPlane(
   RgbaBuffer src, {
   required int width,
   required int height,
+  PixelRegion? region,
 }) {
-  final cols = _spans(width, src.width);
-  final rows = _spans(height, src.height);
+  final r = region ?? (left: 0, top: 0, width: src.width, height: src.height);
+  final cols = [
+    for (final (a, b) in _spans(width, r.width)) (a + r.left, b + r.left),
+  ];
+  final rows = [
+    for (final (a, b) in _spans(height, r.height)) (a + r.top, b + r.top),
+  ];
   final out = Float32List(width * height);
   final d = src.data;
   for (var j = 0; j < height; j++) {

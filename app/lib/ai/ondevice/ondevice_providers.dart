@@ -27,6 +27,12 @@ final Map<String, String> kFaceModels = Map.unmodifiable({
 /// reject lengths are rescaled to the original size.
 const kFaceAnalysisLongEdge = kOnDeviceAnalysisLongEdge;
 
+/// On-device failures (no model, no runtime, no disk space, unsupported
+/// platform) are not transient: Riverpod's automatic retry would silently
+/// re-download or re-decode up to 10 times and keep `.future` callers
+/// waiting. Callers retry explicitly (`ref.invalidate`).
+Duration? noRetry(int retryCount, Object error) => null;
+
 final inferenceBackendProvider = Provider<InferenceBackend>(
   (ref) => createInferenceBackend(ref.watch(platformInfoProvider)),
 );
@@ -47,7 +53,7 @@ final modelStoreProvider = FutureProvider<ModelStore>((ref) async {
   );
   ref.onDispose(() => unawaited(store.dispose()));
   return store;
-});
+}, retry: noRetry);
 
 /// Download/verify progress for every model (drive a progress chip).
 final modelProgressProvider = StreamProvider<ModelProgress>((ref) async* {
@@ -55,7 +61,10 @@ final modelProgressProvider = StreamProvider<ModelProgress>((ref) async* {
   yield* store.progress;
 });
 
-final faceCacheProvider = FutureProvider<FaceCache>((ref) => openFaceCache());
+final faceCacheProvider = FutureProvider<FaceCache>(
+  (ref) => openFaceCache(),
+  retry: noRetry,
+);
 
 /// Resolves [spec] through the store and loads it with its contract checked.
 Future<InferenceSession> openVerifiedSession(
@@ -103,7 +112,7 @@ final faceAnalyzerProvider = FutureProvider<FaceAnalyzer>((ref) async {
   }
   ref.onDispose(() => unawaited(analyzer.dispose()));
   return analyzer;
-});
+}, retry: noRetry);
 
 final faceAnalysisServiceProvider = FutureProvider<FaceAnalysisService>((
   ref,
@@ -114,7 +123,7 @@ final faceAnalysisServiceProvider = FutureProvider<FaceAnalysisService>((
     models: kFaceModels,
     analyzer: () => ref.read(faceAnalyzerProvider.future),
   );
-});
+}, retry: noRetry);
 
 /// Faces of one photo: the cache when current, else a fresh analysis of the
 /// original (decoded at [kFaceAnalysisLongEdge]). This is what
@@ -137,4 +146,4 @@ final faceAnalysisProvider = FutureProvider.family<FaceCacheEntry, String>((
     sourceWidth: decoded.sourceWidth,
     sourceHeight: decoded.sourceHeight,
   );
-});
+}, retry: noRetry);

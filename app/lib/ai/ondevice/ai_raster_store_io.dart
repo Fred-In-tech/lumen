@@ -5,18 +5,23 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:lumen/ai/ondevice/ai_raster_store.dart';
+import 'package:lumen/ai/ondevice/cache_dirs_io.dart';
 import 'package:lumen/ai/ondevice/face_cache.dart';
 import 'package:lumen/data/atomic_file_io_impl_io.dart';
 import 'package:lumen/platform/background.dart';
+import 'package:lumen/platform/platform_info.dart';
 
 final _log = Logger('AiRasterStore');
 
 /// `<root>/assets/<id>/cache/masks/<maskRef>.png` (root = catalog root).
 /// PNG encode/decode runs off the UI isolate.
 class FileAiRasterStore implements AiRasterStore {
-  FileAiRasterStore(this.root);
+  FileAiRasterStore(this.root, {this.platform});
 
   final String root;
+
+  /// Platform for backup exclusion (null = the running platform).
+  final PlatformInfo? platform;
 
   String pathFor(String assetId, String maskRef) => p.join(
     root,
@@ -41,6 +46,10 @@ class FileAiRasterStore implements AiRasterStore {
   Future<void> write(String assetId, String maskRef, MaskRaster raster) async {
     final path = pathFor(assetId, maskRef);
     final png = await runInBackground(() => encodeMaskPng(raster));
+    await ensureBackupExcludedDir(
+      assetCacheDir(root, assetId),
+      platform: platform,
+    );
     await atomicWrite(path, png);
   }
 

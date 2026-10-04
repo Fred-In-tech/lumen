@@ -33,10 +33,11 @@ final maskSegmenterProvider = FutureProvider<MaskSegmenter>((ref) async {
   }
   ref.onDispose(() => unawaited(segmenter.dispose()));
   return segmenter;
-});
+}, retry: noRetry);
 
 final aiRasterStoreProvider = FutureProvider<AiRasterStore>(
   (ref) => openAiRasterStore(),
+  retry: noRetry,
 );
 
 /// Face boxes for per-face crops: accepted faces plus faces rejected only

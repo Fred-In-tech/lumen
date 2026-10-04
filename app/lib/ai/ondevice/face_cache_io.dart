@@ -5,17 +5,22 @@ import 'dart:typed_data';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:lumen/ai/ondevice/cache_dirs_io.dart';
 import 'package:lumen/ai/ondevice/face_cache.dart';
 import 'package:lumen/data/atomic_file_io_impl_io.dart';
+import 'package:lumen/platform/platform_info.dart';
 
 final _log = Logger('FaceCache');
 
 /// `<root>/assets/<id>/cache/face.json`, where root is the catalog root.
 /// Deleting a photo deletes `assets/<id>/` and with it this cache.
 class FileFaceCache implements FaceCache {
-  FileFaceCache(this.root);
+  FileFaceCache(this.root, {this.platform});
 
   final String root;
+
+  /// Platform for backup exclusion (null = the running platform).
+  final PlatformInfo? platform;
 
   String pathFor(String assetId) => p.join(
     root,
@@ -42,10 +47,17 @@ class FileFaceCache implements FaceCache {
   }
 
   @override
-  Future<void> write(String assetId, FaceCacheEntry entry) => atomicWrite(
-    pathFor(assetId),
-    Uint8List.fromList(utf8.encode(jsonEncode(entry.toJson()))),
-  );
+  Future<void> write(String assetId, FaceCacheEntry entry) async {
+    final path = pathFor(assetId);
+    await ensureBackupExcludedDir(
+      assetCacheDir(root, assetId),
+      platform: platform,
+    );
+    await atomicWrite(
+      path,
+      Uint8List.fromList(utf8.encode(jsonEncode(entry.toJson()))),
+    );
+  }
 
   @override
   Future<void> delete(String assetId) async {

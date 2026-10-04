@@ -1,13 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:lumen_core/lumen_core.dart';
 
+import 'package:lumen/ai/ondevice/face_cache.dart';
+import 'package:lumen/ai/ondevice/ondevice_providers.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/crop/headshot.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/widgets/buttons.dart';
 import 'package:lumen/widgets/lumen_slider.dart';
+import 'package:lumen/widgets/toast.dart';
 
 /// Aspect presets: id → width/height ratio (null = free / original).
 const kAspectPresets = <String, double?>{
@@ -15,6 +21,7 @@ const kAspectPresets = <String, double?>{
   'free': null,
   '1:1': 1,
   '4:5': 4 / 5,
+  '2:3': 2 / 3,
   '3:2': 3 / 2,
   '16:9': 16 / 9,
   '9:16': 9 / 16,
@@ -28,6 +35,50 @@ CropRect centeredCrop(double aspect, double imgAspect) {
   }
   final w = aspect / imgAspect;
   return CropRect((1 - w) / 2, 0, (1 + w) / 2, 1);
+}
+
+/// Frames the photo's faces as a headshot ([ratio]) and commits it as one
+/// geometry history entry. Tells the user when no face is found or the
+/// frame had to be shrunk to fit.
+Future<void> applyHeadshot(
+  BuildContext context,
+  WidgetRef ref,
+  String assetId,
+  HeadshotRatio ratio,
+) async {
+  final FaceCacheEntry faces;
+  try {
+    faces = await ref.read(faceAnalysisProvider(assetId).future);
+  } on Exception {
+    if (context.mounted) {
+      showToast(
+        context,
+        'Headshot crop needs face detection, which isn’t available here.',
+        kind: ToastKind.error,
+      );
+    }
+    return;
+  }
+  final s = ref.read(editorProvider(assetId)).value?.settings;
+  if (s == null || !context.mounted) return;
+  final crop = headshotFor(faces, s.geometry, ratio);
+  if (crop == null) {
+    showToast(context, 'No face found for a headshot crop.');
+    return;
+  }
+  ref
+      .read(editorProvider(assetId).notifier)
+      .commit(
+        s.copyWith(geometry: crop.geometry),
+        label: headshotLabel(ratio),
+        kind: HistoryKind.geometry,
+      );
+  if (crop.clipped) {
+    showToast(
+      context,
+      'The face is close to the edge, so the headshot frame is tighter.',
+    );
+  }
 }
 
 /// Geometry controls: aspect, straighten, rotate, flip, reset, done.
@@ -95,6 +146,25 @@ class CropPanel extends ConsumerWidget {
                     'Aspect ${e.key}',
                   );
                 },
+              ),
+          ],
+        ),
+        const SizedBox(height: Sp.s3),
+        Text(
+          'Headshot',
+          style: LumenType.caption().copyWith(color: t.textTertiary),
+        ),
+        const SizedBox(height: Sp.s1),
+        Wrap(
+          spacing: Sp.s1,
+          runSpacing: Sp.s1,
+          children: [
+            for (final r in HeadshotRatio.values)
+              _Chip(
+                label: r.id,
+                icon: LucideIcons.squareUserRound,
+                selected: false,
+                onTap: () => unawaited(applyHeadshot(context, ref, assetId, r)),
               ),
           ],
         ),
@@ -179,10 +249,12 @@ class _Chip extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.icon,
   });
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -201,11 +273,20 @@ class _Chip extends StatelessWidget {
             borderRadius: BorderRadius.circular(Rad.pill),
             border: Border.all(color: selected ? t.accent : t.lineStrong),
           ),
-          child: Text(
-            label,
-            style: LumenType.label().copyWith(
-              color: selected ? t.accent : t.textSecondary,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon case final i?) ...[
+                Icon(i, size: 13, color: t.textSecondary),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: LumenType.label().copyWith(
+                  color: selected ? t.accent : t.textSecondary,
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +10,10 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/cull/cull_actions.dart';
+import 'package:lumen/features/cull/cull_bar.dart';
+import 'package:lumen/features/cull/cull_providers.dart';
+import 'package:lumen/features/cull/library_filter.dart';
 import 'package:lumen/features/editor/editor_screen.dart';
 import 'package:lumen/features/library/batch_bar.dart';
 import 'package:lumen/features/library/date_groups.dart';
@@ -42,6 +48,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
+  /// P / X / U flag and 0–5 rate the selected photos (Lightroom keys).
+  Map<ShortcutActivator, VoidCallback> _flagShortcuts() {
+    final repo = ref.read(catalogRepositoryProvider);
+    Iterable<String> ids() => ref.read(selectionProvider).ids;
+    void flag(String f) => unawaited(setPhotoFlag(repo, ids(), f));
+    void rate(int n) => unawaited(setPhotoRating(repo, ids(), n));
+    const digits = [
+      LogicalKeyboardKey.digit0,
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+      LogicalKeyboardKey.digit4,
+      LogicalKeyboardKey.digit5,
+    ];
+    return {
+      const SingleActivator(LogicalKeyboardKey.keyP): () =>
+          flag(PhotoFlag.pick),
+      const SingleActivator(LogicalKeyboardKey.keyX): () =>
+          flag(PhotoFlag.reject),
+      const SingleActivator(LogicalKeyboardKey.keyU): () =>
+          flag(PhotoFlag.none),
+      for (var n = 0; n < digits.length; n++)
+        SingleActivator(digits[n]): () => rate(n),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
@@ -50,22 +82,29 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final selection = ref.watch(selectionProvider);
     final progress = ref.watch(importProgressProvider);
     final entries = library.value ?? const <CatalogEntry>[];
+    final filter = ref.watch(libraryFilterProvider);
+    final records = ref.watch(cullRecordsProvider).value ?? const {};
 
     Widget body = library.when(
       loading: () => const SizedBox.shrink(),
       error: (e, _) => Center(
         child: Text('Couldn’t open your library: $e', style: LumenType.body()),
       ),
-      data: (list) => list.isEmpty
-          ? EmptyLibrary(
-              dragging: _dragging,
-              onChoose: () => pickAndImport(context, ref),
-            )
-          : _Grid(
-              entries: list,
-              selection: selection,
-              onOpen: (e) => _open(list, e),
-            ),
+      data: (list) {
+        if (list.isEmpty) {
+          return EmptyLibrary(
+            dragging: _dragging,
+            onChoose: () => pickAndImport(context, ref),
+          );
+        }
+        final shown = applyLibraryFilter(list, filter, records);
+        if (shown.isEmpty) return _NoMatches(filter: filter);
+        return _Grid(
+          entries: shown,
+          selection: selection,
+          onOpen: (e) => _open(shown, e),
+        );
+      },
     );
 
     if (platform.supportsDragAndDrop) {
@@ -99,6 +138,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           shift: true,
         ): () =>
             pickAndImport(context, ref),
+        ..._flagShortcuts(),
       },
       child: Focus(
         autofocus: true,
@@ -112,6 +152,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   count: entries.length,
                   onImport: () => pickAndImport(context, ref),
                 ),
+                if (entries.isNotEmpty) CullBar(entries: entries),
                 if (progress != null)
                   LinearProgressIndicator(
                     value: progress.total == 0
@@ -317,6 +358,34 @@ class _Grid extends ConsumerWidget {
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 120)),
       ],
+    );
+  }
+}
+
+class _NoMatches extends ConsumerWidget {
+  const _NoMatches({required this.filter});
+
+  final LibraryFilter filter;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'No photos in ${filter.label}.',
+            style: LumenType.body().copyWith(color: t.textSecondary),
+          ),
+          const SizedBox(height: Sp.s3),
+          LumenButton(
+            label: 'Show all',
+            onPressed: () =>
+                ref.read(libraryFilterProvider.notifier).set(LibraryFilter.all),
+          ),
+        ],
+      ),
     );
   }
 }
