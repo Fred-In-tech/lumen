@@ -8,7 +8,9 @@ import 'package:lumen/app/providers.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/features/ai/auto_retouch.dart';
+import 'package:lumen/features/ai/reference_picker.dart';
 import 'package:lumen/features/batch/batch_auto_edit.dart';
+import 'package:lumen/features/batch/batch_color_match.dart';
 import 'package:lumen/features/batch/remeasure_sync.dart';
 import 'package:lumen/features/crop/headshot.dart';
 import 'package:lumen/features/export/export_dialog.dart';
@@ -108,6 +110,26 @@ class BatchBar extends ConsumerWidget {
                             '${noted.length == 1 ? 'photo' : 'photos'} were '
                             'not retouched (face analysis unavailable).',
                   kind: vision ? ToastKind.ai : ToastKind.success,
+                );
+              }
+            },
+          ),
+          LumenButton(
+            label: phone ? 'Match' : 'Match look',
+            icon: const Icon(LucideIcons.pipette, size: 14),
+            kind: ButtonKind.ghost,
+            tooltip: 'Match the selection to the look of a reference photo',
+            onPressed: () async {
+              final reference = await pickReferencePhoto(context);
+              if (reference == null) return;
+              final (ok, failed) = await batchColorMatch(ref, ids, reference);
+              if (context.mounted) {
+                showToast(
+                  context,
+                  failed == 0
+                      ? '$ok photos matched to ${reference.fileName}.'
+                      : '$ok matched, $failed failed.',
+                  kind: ToastKind.ai,
                 );
               }
             },

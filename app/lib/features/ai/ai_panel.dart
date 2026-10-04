@@ -7,6 +7,8 @@ import 'package:lumen/ai/ai_providers.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/features/ai/ai_auto_run.dart';
+import 'package:lumen/features/ai/color_match_run.dart';
+import 'package:lumen/features/ai/reference_picker.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
@@ -54,6 +56,26 @@ class _AiPanelState extends ConsumerState<AiPanel> {
         kind: ToastKind.info,
       );
     }
+  }
+
+  Future<void> _matchLook() async {
+    final id = widget.session.assetId;
+    final reference = await pickReferencePhoto(context, exclude: {id});
+    if (reference == null || !mounted) return;
+    setState(() {
+      _amount = 100;
+      _explainOpen = true;
+    });
+    final n = await runColorMatch(ref, id, reference);
+    if (!mounted || n == null) return;
+    showToast(
+      context,
+      n == 0
+          ? 'This photo already matches ${reference.fileName}.'
+          : 'Matched the look of ${reference.fileName}. Every change is a '
+                'slider.',
+      kind: ToastKind.ai,
+    );
   }
 
   @override
@@ -116,6 +138,16 @@ class _AiPanelState extends ConsumerState<AiPanel> {
             ),
           ),
         ],
+        const SizedBox(height: Sp.s1_5),
+        LumenButton(
+          label: 'Match look…',
+          icon: const Icon(LucideIcons.pipette, size: 14),
+          kind: ButtonKind.ghost,
+          height: widget.touch ? 44 : 30,
+          expand: true,
+          tooltip: 'Match the colour and tone of another photo',
+          onPressed: busy || state == null ? null : _matchLook,
+        ),
         if (ai != null && ai.postAi != null) ...[
           const SizedBox(height: Sp.s2),
           LumenSlider(

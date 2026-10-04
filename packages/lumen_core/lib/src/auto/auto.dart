@@ -4,6 +4,7 @@ export 'amount.dart';
 export 'atoms.dart';
 export 'auto_edit_provider.dart';
 export 'auto_tone_constants.dart';
+export 'color_match.dart';
 export 'guards.dart';
 export 'lexicon.dart';
 export 'local_auto_tone.dart';
