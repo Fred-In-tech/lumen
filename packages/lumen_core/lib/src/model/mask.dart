@@ -14,6 +14,8 @@ enum MaskKind {
   background,
   person,
   faceSkin,
+  hair,
+  clothes,
 
   /// A kind written by a newer app version. Kept verbatim for round-trips
   /// (see [LocalMask.rawJson]) and rendered as off (inert).
@@ -21,7 +23,13 @@ enum MaskKind {
 
   /// AI kinds are rasters (see [AiShape]).
   bool get isAi => switch (this) {
-    subject || sky || background || person || faceSkin => true,
+    subject ||
+    sky ||
+    background ||
+    person ||
+    faceSkin ||
+    hair ||
+    clothes => true,
     linear || radial || brush || unsupported => false,
   };
 

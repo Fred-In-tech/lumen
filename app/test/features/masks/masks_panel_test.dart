@@ -210,7 +210,7 @@ void main() {
       );
       expect(item.enabled, isFalse, reason: k.name);
     }
-    await tester.tap(find.text('Subject'), warnIfMissed: false);
+    await tester.tap(find.text(MaskKind.subject.menuLabel), warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(masksOf(c), isEmpty);
   });
@@ -220,7 +220,7 @@ void main() {
       overrides: [aiMaskSourceProvider.overrideWithValue(_FakeAiSource())],
     );
     await pumpIn(tester, c, _panel());
-    await _addFromMenu(tester, 'Subject');
+    await _addFromMenu(tester, MaskKind.subject.menuLabel);
     final m = masksOf(c).single;
     expect(m.kind, MaskKind.subject);
     expect(m.ai.maskRef, 'masks/subject.png');

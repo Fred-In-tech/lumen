@@ -21,6 +21,8 @@ enum AiRaster {
     MaskKind.subject || MaskKind.person => people,
     MaskKind.background => background,
     MaskKind.faceSkin => faceSkin,
+    MaskKind.hair => hair,
+    MaskKind.clothes => clothes,
     MaskKind.sky ||
     MaskKind.linear ||
     MaskKind.radial ||

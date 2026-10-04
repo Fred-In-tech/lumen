@@ -266,6 +266,8 @@ Map<String, Object?> defaultMaskShape(
         MaskKind.person ||
         MaskKind.background ||
         MaskKind.faceSkin ||
+        MaskKind.hair ||
+        MaskKind.clothes ||
         MaskKind.sky:
       return (ai ?? const AiShape()).toJson();
     case MaskKind.brush || MaskKind.unsupported:

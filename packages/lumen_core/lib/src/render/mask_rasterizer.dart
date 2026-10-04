@@ -159,7 +159,9 @@ abstract final class MaskRasterizer {
           MaskKind.sky ||
           MaskKind.background ||
           MaskKind.person ||
-          MaskKind.faceSkin:
+          MaskKind.faceSkin ||
+          MaskKind.hair ||
+          MaskKind.clothes:
         if (raster != null) _resample(raster, c, w, h);
     }
     for (final s in m.strokes) {

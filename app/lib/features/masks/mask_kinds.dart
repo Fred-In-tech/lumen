@@ -11,10 +11,12 @@ extension MaskKindDisplay on MaskKind {
     MaskKind.linear => 'Linear gradient',
     MaskKind.radial => 'Radial gradient',
     MaskKind.brush => 'Brush',
-    MaskKind.subject => 'Subject',
+    MaskKind.subject => 'Subject (people)',
     MaskKind.person => 'Person',
     MaskKind.background => 'Background',
     MaskKind.faceSkin => 'Face skin',
+    MaskKind.hair => 'Hair',
+    MaskKind.clothes => 'Clothing',
     MaskKind.sky => 'Sky',
     MaskKind.unsupported => 'Newer mask',
   };
@@ -23,6 +25,7 @@ extension MaskKindDisplay on MaskKind {
   String get shortName => switch (this) {
     MaskKind.linear => 'Linear',
     MaskKind.radial => 'Radial',
+    MaskKind.subject => 'Subject',
     _ => menuLabel,
   };
 
@@ -34,6 +37,8 @@ extension MaskKindDisplay on MaskKind {
     MaskKind.person => LucideIcons.personStanding,
     MaskKind.background => LucideIcons.image,
     MaskKind.faceSkin => LucideIcons.scanFace,
+    MaskKind.hair => LucideIcons.wind,
+    MaskKind.clothes => LucideIcons.shirt,
     MaskKind.sky => LucideIcons.cloudSun,
     MaskKind.unsupported => LucideIcons.circleOff,
   };
@@ -47,11 +52,14 @@ const List<MaskKind> kManualMaskKinds = [
 ];
 
 /// AI kinds, in "Add mask" menu order.
+/// [MaskKind.person] is left out: without instance segmentation it is the
+/// same raster as Subject (it still renders in documents that use it).
 const List<MaskKind> kAiMaskKinds = [
   MaskKind.subject,
-  MaskKind.person,
   MaskKind.background,
   MaskKind.faceSkin,
+  MaskKind.hair,
+  MaskKind.clothes,
   MaskKind.sky,
 ];
 
