@@ -12,7 +12,7 @@ import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 import 'package:lumen/import/photo_decoder.dart';
 
 /// Reference-pipeline renderer: correct everywhere, slower than the GPU path.
-class CpuPhotoRenderer implements PhotoRenderer {
+class CpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
   CpuPhotoRenderer({
     this.previewLongEdge = 1280,
     this.interactiveLongEdge = 640,
@@ -106,6 +106,27 @@ class CpuPhotoRenderer implements PhotoRenderer {
     }
   }
 
+  /// CPU twin of the GPU overlay (`renderMaskOverlayReference`) at the
+  /// interactive size. AI rasters are not loaded here, so AI masks show no
+  /// tint on this fallback path; vector masks and brush strokes do.
+  @override
+  Future<ui.Image?> renderMaskOverlay(
+    DevelopSettings settings,
+    int index, {
+    MaskTint tint = kDefaultMaskTint,
+  }) async {
+    final src = _small ?? _preview;
+    if (src == null || index < 0 || index >= settings.masks.length) {
+      return null;
+    }
+    final w = src.width, h = src.height;
+    final out = await runInBackground(
+      () => _overlay(w, h, settings, index, tint),
+    );
+    if (_disposed) return null;
+    return imageFromRgba(out);
+  }
+
   @override
   void dispose() {
     _disposed = true;
@@ -116,3 +137,18 @@ class CpuPhotoRenderer implements PhotoRenderer {
     _output.dispose();
   }
 }
+
+RgbaBuffer _overlay(
+  int width,
+  int height,
+  DevelopSettings settings,
+  int index,
+  MaskTint tint,
+) => renderMaskOverlayReference(
+  width,
+  height,
+  settings,
+  MaskRasterizer.build(settings.masks, width, height),
+  index,
+  tint: tint,
+);

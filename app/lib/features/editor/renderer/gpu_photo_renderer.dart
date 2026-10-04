@@ -21,7 +21,7 @@ final _log = Logger('GpuPhotoRenderer');
 
 /// Fragment-shader renderer (interactive). Falls back to [CpuPhotoRenderer]
 /// when shaders cannot load on this device.
-class GpuPhotoRenderer implements PhotoRenderer {
+class GpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
   GpuPhotoRenderer({required this.assetId, this.previewLongEdge = 2560});
 
   final String assetId;
@@ -103,6 +103,29 @@ class GpuPhotoRenderer implements PhotoRenderer {
     } finally {
       EngineImages.dispose(img);
     }
+  }
+
+  /// Long edge of the mask overlay tint (it is stretched over the frame).
+  static const int _overlayLongEdge = 1024;
+
+  @override
+  Future<ui.Image?> renderMaskOverlay(
+    DevelopSettings settings,
+    int index, {
+    MaskTint tint = kDefaultMaskTint,
+  }) async {
+    final fb = _fallback;
+    if (fb != null) return fb.renderMaskOverlay(settings, index, tint: tint);
+    final graph = _graph;
+    if (graph == null || index < 0 || index >= settings.masks.length) {
+      return null;
+    }
+    final full = graph.outputSize(settings, 1);
+    final scale = math.min(
+      1.0,
+      _overlayLongEdge / math.max(full.width, full.height),
+    );
+    return graph.renderMaskOverlay(settings, index, scale: scale, tint: tint);
   }
 
   @override

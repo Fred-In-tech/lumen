@@ -7,7 +7,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 /// Portrait, handles for Masks, a brush for Remove).
 enum EditorModule {
   adjust('Adjust', LucideIcons.slidersHorizontal),
-  portrait('Portrait', LucideIcons.scanFace);
+  portrait('Portrait', LucideIcons.scanFace),
+  masks('Masks', LucideIcons.squareDashed);
 
   const EditorModule(this.label, this.icon);
 

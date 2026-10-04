@@ -31,3 +31,17 @@ abstract interface class PhotoRenderer {
 
   void dispose();
 }
+
+/// Optional renderer capability: one mask's coverage as a premultiplied
+/// tint in the same geometry as [PhotoRenderer.output] (the Masks "Show
+/// overlay"). Check with `renderer is MaskOverlayRenderer`; renderers
+/// without it simply show no tint.
+abstract interface class MaskOverlayRenderer {
+  /// Renders the tint of `settings.masks[index]`, or null when the photo is
+  /// not open. The caller owns the returned image.
+  Future<ui.Image?> renderMaskOverlay(
+    DevelopSettings settings,
+    int index, {
+    MaskTint tint = kDefaultMaskTint,
+  });
+}

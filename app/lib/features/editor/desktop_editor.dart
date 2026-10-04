@@ -12,8 +12,10 @@ import 'package:lumen/features/crop/crop_overlay.dart';
 import 'package:lumen/features/crop/crop_panel.dart';
 import 'package:lumen/features/develop/develop_panel.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
+import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/features/editor/filmstrip.dart';
+import 'package:lumen/features/editor/module_overlay.dart';
 import 'package:lumen/features/editor/photo_canvas.dart';
 import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/presets/presets_panel.dart';
@@ -56,6 +58,7 @@ class _DesktopEditorState extends ConsumerState<DesktopEditor> {
         ? Layout.developPanelWide
         : Layout.developPanel;
     final cropMode = state?.cropMode ?? false;
+    final module = ref.watch(editorModuleProvider(id));
     final entry = widget.session.entry;
     final imageAspect = entry == null || entry.height == 0
         ? 1.5
@@ -143,7 +146,7 @@ class _DesktopEditorState extends ConsumerState<DesktopEditor> {
               padding: Sp.s6,
               overlay: cropMode
                   ? CropOverlay(assetId: id, imageAspect: imageAspect)
-                  : null,
+                  : ModuleOverlay.forModule(module, session: widget.session),
             ),
           ),
         ),
@@ -184,8 +187,19 @@ class _DesktopEditorState extends ConsumerState<DesktopEditor> {
               _Rail(
                 active: cropMode ? null : _flyout,
                 cropMode: cropMode,
+                masksActive: !cropMode && module == EditorModule.masks,
                 onAi: () => _toggle(_Flyout.ai),
                 onPresets: () => _toggle(_Flyout.presets),
+                onMasks: () {
+                  ref.read(editorProvider(id).notifier).setCropMode(false);
+                  ref
+                      .read(editorModuleProvider(id).notifier)
+                      .select(
+                        module == EditorModule.masks && !cropMode
+                            ? EditorModule.adjust
+                            : EditorModule.masks,
+                      );
+                },
                 onCrop: () => ref
                     .read(editorProvider(id).notifier)
                     .setCropMode(!cropMode),
@@ -236,16 +250,20 @@ class _Rail extends StatelessWidget {
   const _Rail({
     required this.active,
     required this.cropMode,
+    required this.masksActive,
     required this.onAi,
     required this.onPresets,
+    required this.onMasks,
     required this.onCrop,
     required this.onLibrary,
   });
 
   final _Flyout? active;
   final bool cropMode;
+  final bool masksActive;
   final VoidCallback onAi;
   final VoidCallback onPresets;
+  final VoidCallback onMasks;
   final VoidCallback onCrop;
   final VoidCallback onLibrary;
 
@@ -312,6 +330,12 @@ class _Rail extends StatelessWidget {
             'Presets',
             active == _Flyout.presets,
             onPresets,
+          ),
+          item(
+            ic(EditorModule.masks.icon, masksActive),
+            'Masks  M',
+            masksActive,
+            onMasks,
           ),
           item(
             ic(LucideIcons.crop, cropMode),

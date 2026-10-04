@@ -135,6 +135,8 @@ class StylesGrid extends ConsumerWidget {
                 const SizedBox(height: Sp.s1_5),
                 Text(
                   style.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: LumenType.label().copyWith(
                     color: selected ? t.textPrimary : t.textSecondary,
                   ),

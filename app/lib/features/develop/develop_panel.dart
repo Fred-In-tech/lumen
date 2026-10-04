@@ -10,6 +10,8 @@ import 'package:lumen/features/develop/sections.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/editor_session.dart';
+import 'package:lumen/features/editor/module_overlay.dart';
+import 'package:lumen/features/masks/masks_panel.dart';
 import 'package:lumen/features/portrait/portrait_panel.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 import 'package:lumen/widgets/buttons.dart';
@@ -84,6 +86,9 @@ class DevelopPanel extends ConsumerWidget {
                     DevelopSections(assetId: id),
                   ],
                   EditorModule.portrait => [PortraitPanel(assetId: id)],
+                  EditorModule.masks => [
+                    MasksPanel(assetId: id, sourceSize: sourceSizeOf(session)),
+                  ],
                 },
                 const SizedBox(height: Sp.s6),
               ],
@@ -107,19 +112,25 @@ class DevelopPanel extends ConsumerWidget {
                   kind: ButtonKind.ghost,
                   onPressed: () => pasteSettingsInto(context, ref, id),
                 ),
-                const Spacer(),
-                LumenButton(
-                  label: 'Reset all',
-                  onPressed: () {
-                    ref.read(editorProvider(id).notifier).resetAll();
-                    showToast(
-                      context,
-                      'Reset all edits.',
-                      actionLabel: 'Undo',
-                      onAction: () =>
-                          ref.read(editorProvider(id).notifier).undo(),
-                    );
-                  },
+                // Takes the rest of the row; the label ellipsizes rather
+                // than overflow when the panel is at its narrowest.
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: LumenButton(
+                      label: 'Reset all',
+                      onPressed: () {
+                        ref.read(editorProvider(id).notifier).resetAll();
+                        showToast(
+                          context,
+                          'Reset all edits.',
+                          actionLabel: 'Undo',
+                          onAction: () =>
+                              ref.read(editorProvider(id).notifier).undo(),
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ],
             ),

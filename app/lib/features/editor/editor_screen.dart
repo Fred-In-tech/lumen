@@ -12,6 +12,7 @@ import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/features/editor/phone_editor.dart';
 import 'package:lumen/features/editor/renderer/renderer_factory.dart';
 import 'package:lumen/features/export/export_dialog.dart';
+import 'package:lumen/features/masks/mask_shortcuts.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 
 /// Editor route. Owns the [EditorSession] for the current photo and swaps it
@@ -169,7 +170,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
         _close();
       }
     } else {
-      return KeyEventResult.ignored;
+      // Module keys: M (Masks), O (overlay), Delete (selected mask).
+      return handleMaskShortcut(ref.read, _assetId, k, context: context);
     }
     return KeyEventResult.handled;
   }

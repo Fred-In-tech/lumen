@@ -14,8 +14,10 @@ import 'package:lumen/features/develop/sections.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/editor_session.dart';
+import 'package:lumen/features/editor/module_overlay.dart';
 import 'package:lumen/features/editor/photo_canvas.dart';
 import 'package:lumen/features/export/export_dialog.dart';
+import 'package:lumen/features/masks/masks_panel.dart';
 import 'package:lumen/features/presets/presets_panel.dart';
 import 'package:lumen/features/portrait/portrait_panel.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
@@ -31,6 +33,7 @@ enum _Tab {
   effects,
   detail,
   crop,
+  masks,
   presets,
 }
 
@@ -64,17 +67,20 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
     _Tab.effects: ('Effects', LucideIcons.sparkle),
     _Tab.detail: ('Detail', LucideIcons.scanSearch),
     _Tab.crop: ('Crop', LucideIcons.crop),
+    _Tab.masks: ('Masks', LucideIcons.squareDashed),
     _Tab.presets: ('Presets', LucideIcons.swatchBook),
   };
 
   void _select(_Tab tab) {
     final ctl = ref.read(editorProvider(widget.session.assetId).notifier);
     ctl.setCropMode(tab == _Tab.crop);
-    ref
-        .read(editorModuleProvider(widget.session.assetId).notifier)
-        .select(
-          tab == _Tab.portrait ? EditorModule.portrait : EditorModule.adjust,
-        );
+    ref.read(editorModuleProvider(widget.session.assetId).notifier).select(
+      switch (tab) {
+        _Tab.portrait => EditorModule.portrait,
+        _Tab.masks => EditorModule.masks,
+        _ => EditorModule.adjust,
+      },
+    );
     setState(() => _tab = tab);
   }
 
@@ -127,6 +133,11 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
         only: ParamGroup.detail,
       ),
       _Tab.crop => CropPanel(assetId: id, imageAspect: aspect, touch: true),
+      _Tab.masks => MasksPanel(
+        assetId: id,
+        sourceSize: sourceSizeOf(widget.session),
+        touch: true,
+      ),
       _Tab.presets => PresetsPanel(assetId: id),
     };
   }
@@ -142,6 +153,17 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
     final aspect = entry == null || entry.height == 0
         ? 1.5
         : entry.width / entry.height;
+    final module = ref.watch(editorModuleProvider(id));
+    // Keep the tab in step when the module changes elsewhere (the M key).
+    ref.listen(editorModuleProvider(id), (_, m) {
+      final tab = switch (m) {
+        EditorModule.masks => _Tab.masks,
+        EditorModule.portrait => _Tab.portrait,
+        EditorModule.adjust =>
+          _tab == _Tab.masks || _tab == _Tab.portrait ? _Tab.light : _tab,
+      };
+      if (tab != _tab) setState(() => _tab = tab);
+    });
     ref.listen(editorProvider(id).select((s) => s.value?.cropMode ?? false), (
       _,
       crop,
@@ -211,12 +233,15 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
               children: [
                 Positioned.fill(
                   child: GestureDetector(
-                    onHorizontalDragEnd: (d) {
-                      final v = d.primaryVelocity ?? 0;
-                      if (v.abs() > 600 && !(state?.cropMode ?? false)) {
-                        widget.onStep(v < 0 ? 1 : -1);
-                      }
-                    },
+                    // Canvas tools (masks) own horizontal drags: no swipe.
+                    onHorizontalDragEnd: ModuleOverlay.hasTools(module)
+                        ? null
+                        : (d) {
+                            final v = d.primaryVelocity ?? 0;
+                            if (v.abs() > 600 && !(state?.cropMode ?? false)) {
+                              widget.onStep(v < 0 ? 1 : -1);
+                            }
+                          },
                     child: PhotoCanvas(
                       after: widget.session.renderer.output,
                       before: widget.session.renderer.before,
@@ -226,7 +251,11 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
                       padding: Sp.s2,
                       overlay: (state?.cropMode ?? false)
                           ? CropOverlay(assetId: id, imageAspect: aspect)
-                          : null,
+                          : ModuleOverlay.forModule(
+                              module,
+                              session: widget.session,
+                              touch: true,
+                            ),
                     ),
                   ),
                 ),

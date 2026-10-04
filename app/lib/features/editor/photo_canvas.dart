@@ -30,7 +30,9 @@ class PhotoCanvas extends StatefulWidget {
   final ValueChanged<bool> onHoldBefore;
   final double padding;
 
-  /// Drawn on top of the photo in photo coordinates (e.g. the crop frame).
+  /// Drawn on top of the photo in photo coordinates (e.g. the crop frame,
+  /// `ModuleOverlay`). While set it owns pointer input: no zoom/pan and no
+  /// hold-to-compare (`\` still compares).
   final Widget? overlay;
 
   @override
@@ -185,9 +187,16 @@ class _PhotoCanvasState extends State<PhotoCanvas> {
               ),
             ),
           );
+          // An overlay (crop frame, module tools) owns pointer input: a
+          // press-and-hold on a handle must not flip to "before".
+          final holdToCompare = widget.overlay == null;
           return GestureDetector(
-            onLongPressStart: (_) => widget.onHoldBefore(true),
-            onLongPressEnd: (_) => widget.onHoldBefore(false),
+            onLongPressStart: holdToCompare
+                ? (_) => widget.onHoldBefore(true)
+                : null,
+            onLongPressEnd: holdToCompare
+                ? (_) => widget.onHoldBefore(false)
+                : null,
             child: InteractiveViewer(
               transformationController: _zoom,
               minScale: 1,
