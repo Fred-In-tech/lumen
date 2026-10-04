@@ -88,6 +88,7 @@ abstract final class PortraitIds {
   static const eyeWhites = 'eyes.whites';
   static const iris = 'eyes.iris';
   static const redVein = 'eyes.redVein';
+  static const redEye = 'eyes.redEye';
   static const glare = 'eyes.glare';
   static const teethBrightness = 'teeth.brightness';
   static const teethDesaturate = 'teeth.desaturate';
@@ -132,6 +133,7 @@ abstract final class PortraitRegistry {
     _P(PortraitIds.eyeWhites, 'Eye whites', _S.eyes),
     _P(PortraitIds.iris, 'Iris brightness', _S.eyes),
     _P(PortraitIds.redVein, 'Red veins', _S.eyes),
+    _P(PortraitIds.redEye, 'Red-eye fix', _S.eyes),
     _P(PortraitIds.glare, 'Glasses glare', _S.eyes),
     _P(PortraitIds.teethBrightness, 'Teeth brightness', _S.teeth),
     _P(PortraitIds.teethDesaturate, 'Teeth whitening', _S.teeth),
