@@ -11,6 +11,7 @@ import 'package:lumen/features/batch/batch_auto_edit.dart';
 import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/library/library_actions.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
+import 'package:lumen/features/portrait/retouch_build.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
@@ -133,6 +134,7 @@ class BatchBar extends ConsumerWidget {
                     doc.settings,
                     patches: () => ref.read(patchStoreProvider.future),
                     maskLoader: ref.read(aiMaskRasterLoaderProvider),
+                    retouch: ref.read(storedRetouchLoaderProvider).load,
                   );
                 }
                 if (context.mounted) {

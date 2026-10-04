@@ -167,8 +167,11 @@ final healedSourceProvider = Provider.family<HealedSourceCache, String>((
   ref,
   assetId,
 ) {
-  final store = ref.watch(patchStoreProvider.future);
-  return HealedSourceCache((patch) async => (await store).load(assetId, patch));
+  // Opened lazily: photos without heal ops never touch the store.
+  return HealedSourceCache(
+    (patch) async =>
+        (await ref.read(patchStoreProvider.future)).load(assetId, patch),
+  );
 });
 
 /// Full-resolution [source] with [ops] composited, for export and batch:

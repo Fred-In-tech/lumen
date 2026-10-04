@@ -6,7 +6,8 @@
 ///   `RenderScheduler` drives any `FrameRenderer` (tests use fakes).
 /// * `RenderGraph(shaders:, source:, aux:, assetId:, originalSize:)`:
 ///   borrows `source` and `aux` (the caller keeps owning them), owns its LUT
-///   texture and denoise cache. Each `render` returns a new image owned by
+///   texture and denoise cache. `replaceSource(image, aux:)` swaps in a
+///   same-size source (the healed preview) and drops derived caches. Each `render` returns a new image owned by
 ///   the caller. `outputSize(settings, scale)` gives the frame size.
 /// * Masks: `settings.masks` are rendered automatically. Coverage atlases
 ///   come from the graph's `maskCache` (rebuilt only when coverage changes;
@@ -50,11 +51,16 @@ abstract interface class FrameRenderer {
 class RenderGraph implements FrameRenderer {
   RenderGraph({
     required this.shaders,
-    required this.source,
-    required this.aux,
+    required ui.Image source,
+    required AuxTextures aux,
     this.assetId = '',
     ({int width, int height})? originalSize,
-  }) : originalSize =
+  }) : _source = source,
+       // The public name `aux` stays the named parameter (a private field
+       // cannot be an initializing formal of a named parameter).
+       // ignore: prefer_initializing_formals
+       _aux = aux,
+       originalSize =
            originalSize ?? (width: source.width, height: source.height),
        maskCache = MaskAtlasCache(
          sourceWidth: source.width,
@@ -63,11 +69,13 @@ class RenderGraph implements FrameRenderer {
 
   final ShaderLibrary shaders;
 
-  /// Preview-resolution source (borrowed).
-  final ui.Image source;
+  /// Preview-resolution source (borrowed). Swap with [replaceSource].
+  ui.Image get source => _source;
+  ui.Image _source;
 
-  /// Aux textures of this photo (borrowed).
-  final AuxTextures aux;
+  /// Aux textures of this photo (borrowed). Swap with [replaceSource].
+  AuxTextures get aux => _aux;
+  AuxTextures _aux;
 
   /// Seeds the grain so it is stable across renders and export.
   final String assetId;
@@ -102,6 +110,25 @@ class RenderGraph implements FrameRenderer {
   /// The face analysis the [retouchMaps] were built from.
   FaceAnalysis? faceAnalysis;
   bool _disposed = false;
+
+  /// Swaps the source for a same-size image (e.g. the preview with heal
+  /// patches drawn in) and, when given, its aux textures. Both stay
+  /// borrowed. Drops the denoise and retouch caches derived from the old
+  /// source; mask atlases only depend on the size and are kept.
+  void replaceSource(ui.Image next, {AuxTextures? aux}) {
+    if (next.width != _source.width || next.height != _source.height) {
+      throw ArgumentError(
+        'replacement source is ${next.width}×${next.height}, '
+        'expected ${_source.width}×${_source.height}',
+      );
+    }
+    _source = next;
+    if (aux != null) _aux = aux;
+    EngineImages.dispose(_denoised);
+    _denoised = null;
+    _denoiseKey = null;
+    _releaseRetouched();
+  }
 
   /// Output size for [settings] at [scale].
   ({int width, int height}) outputSize(DevelopSettings settings, double scale) {

@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/app/providers.dart';
+import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/features/editor/desktop_editor.dart';
@@ -16,8 +20,13 @@ import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/masks/ai_mask_rasters.dart';
 import 'package:lumen/features/masks/mask_shortcuts.dart';
 import 'package:lumen/features/portrait/retouch_inputs.dart';
+import 'package:lumen/features/remove/healed_source.dart';
+import 'package:lumen/features/remove/remove_providers.dart';
+import 'package:lumen/features/remove/remove_service.dart';
 import 'package:lumen/features/remove/remove_shortcuts.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
+
+final _log = Logger('EditorScreen');
 
 /// Editor route. Owns the [EditorSession] for the current photo and swaps it
 /// when the user moves through the filmstrip.
@@ -40,6 +49,17 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
   late String _assetId = widget.initialAssetId;
   EditorSession? _session;
   Object? _openError;
+  ProviderContainer? _container;
+
+  /// Photos opened here that may own heal patches (their documents had
+  /// patch refs, or the store was opened): cleaned up when they close.
+  final Set<String> _healed = {};
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _container = ProviderScope.containerOf(context, listen: false);
+  }
 
   @override
   void initState() {
@@ -71,6 +91,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
     try {
       await session.open();
       final s = await ref.read(editorProvider(_assetId).future);
+      if (referencedPatchRefs(s.doc).isNotEmpty) _healed.add(_assetId);
+      _pushHealer(session, ref.read(healedSourceProvider(_assetId)));
       _pushMaskRasters(
         session,
         ref.read(aiMaskRastersProvider(_assetId)).value,
@@ -80,6 +102,31 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
     } on Exception catch (e) {
       if (mounted) setState(() => _openError = e);
     }
+  }
+
+  /// Hands the photo's heal compositor to the renderer.
+  static void _pushHealer(EditorSession? session, HealedSourceCache healer) {
+    if (session?.renderer case final HealSink sink) sink.setHealer(healer);
+  }
+
+  /// Deletes unreferenced heal patches of [assetId] and frees its healed
+  /// previews. Only for photos that may have patches, so the patch store is
+  /// never opened for the others.
+  void _closeHeals(String assetId) {
+    final c = _container;
+    if (c == null) return;
+    if (_healed.remove(assetId) || c.exists(patchStoreProvider)) {
+      unawaited(
+        c
+            .read(removeServiceProvider)
+            .collectGarbage(assetId)
+            .then<void>(
+              (_) {},
+              onError: (Object e) => _log.fine('patch cleanup skipped: $e'),
+            ),
+      );
+    }
+    c.invalidate(healedSourceProvider(assetId));
   }
 
   /// Hands AI mask rasters to the renderer (it re-renders with them).
@@ -114,6 +161,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
   Future<void> _goTo(String id) async {
     if (id == _assetId) return;
     await ref.read(editorProvider(_assetId).notifier).flush();
+    _closeHeals(_assetId);
     setState(() => _assetId = id);
     await _openSession();
   }
@@ -133,6 +181,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _session?.dispose();
+    _closeHeals(_assetId);
     super.dispose();
   }
 

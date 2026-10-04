@@ -9,11 +9,17 @@ import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
+import 'package:lumen/features/remove/healed_source.dart';
 import 'package:lumen/import/photo_decoder.dart';
 
 /// Reference-pipeline renderer: correct everywhere, slower than the GPU path.
 class CpuPhotoRenderer
-    implements PhotoRenderer, MaskOverlayRenderer, MaskRasterSink, RetouchSink {
+    implements
+        PhotoRenderer,
+        MaskOverlayRenderer,
+        MaskRasterSink,
+        RetouchSink,
+        HealSink {
   CpuPhotoRenderer({
     this.previewLongEdge = 1280,
     this.interactiveLongEdge = 640,
@@ -34,6 +40,7 @@ class CpuPhotoRenderer
   Map<String, MaskRaster> _rasters = const {};
   RetouchMaps? _retouchMaps;
   FaceAnalysis? _faces;
+  HealedSourceCache? _healer;
   DevelopSettings? _last;
 
   @override
@@ -81,8 +88,10 @@ class CpuPhotoRenderer
     _pending = null;
     _busy = true;
     try {
+      final healed = await _healed(src, settings.heal);
+      if (_disposed) return;
       final out = await _renderInBackground(
-        src,
+        healed,
         settings,
         _rasters,
         _retouchMaps,
@@ -110,7 +119,7 @@ class CpuPhotoRenderer
     final buf = await rgbaFromImage(small);
     small.dispose();
     final out = await _renderInBackground(
-      buf,
+      await _healed(buf, settings.heal, once: true),
       settings,
       _rasters,
       _retouchMaps,
@@ -158,6 +167,29 @@ class CpuPhotoRenderer
     _faces = faces;
     final last = _last;
     if (last != null) update(last);
+  }
+
+  @override
+  void setHealer(HealedSourceCache? healer) {
+    _healer = healer;
+    final last = _last;
+    if (last != null) update(last);
+  }
+
+  /// [src] with [ops] drawn in ([once]: a one-off buffer, not cached).
+  Future<RgbaBuffer> _healed(
+    RgbaBuffer src,
+    List<HealOp> ops, {
+    bool once = false,
+  }) async {
+    final healer = _healer;
+    if (healer == null || ops.isEmpty) return src;
+    final hit = healer.peek(src, ops);
+    if (hit != null) return hit.buffer;
+    final h = once
+        ? await healer.composeOnce(src, ops)
+        : await healer.compose(src, ops);
+    return h.buffer;
   }
 
   @override

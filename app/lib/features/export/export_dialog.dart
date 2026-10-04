@@ -11,6 +11,7 @@ import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/export/export_service.dart';
 import 'package:lumen/features/export/export_targets.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
+import 'package:lumen/features/portrait/retouch_build.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/widgets/buttons.dart';
 import 'package:lumen/widgets/lumen_slider.dart';
@@ -30,6 +31,8 @@ final exportServiceProvider = Provider<ExportService>(
     renderer: ref.watch(fullResRendererProvider),
     patches: () => ref.read(patchStoreProvider.future),
     maskLoader: ref.watch(aiMaskRasterLoaderProvider),
+    retouch: ref.watch(storedRetouchLoaderProvider).load,
+    sourceRenderer: const GpuSourceRenderer(),
   ),
 );
 
@@ -127,9 +130,17 @@ class _ExportDialogState extends ConsumerState<_ExportDialog> {
     if (!mounted) return;
     Navigator.of(context).pop();
     final n = files.length;
-    final msg = failed == 0
+    final notes = [for (final f in files) ?f.note];
+    final base = failed == 0
         ? '$n ${n == 1 ? 'photo' : 'photos'} exported${folder != null ? ' to $folder' : ''}.'
         : '$n of ${widget.assetIds.length} exported. $failed failed.';
+    final msg = switch (notes.length) {
+      0 => base,
+      1 => '$base ${notes.single}',
+      final k =>
+        '$base Portrait retouch was skipped on $k photos: face '
+            'analysis is unavailable here.',
+    };
     showToast(
       context,
       msg,

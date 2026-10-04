@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:lumen_core/lumen_core.dart';
 
+import 'package:lumen/features/remove/healed_source.dart';
+
 /// Renders one photo for the editor canvas.
 ///
 /// Implementations: `GpuPhotoRenderer` (fragment shaders, interactive) and
@@ -63,6 +65,16 @@ abstract interface class MaskRasterSink {
 abstract interface class RetouchSink {
   /// Replaces the retouch inputs and re-renders the last settings.
   void setRetouch(RetouchMaps? maps, FaceAnalysis? faces);
+}
+
+/// Optional renderer capability: the photo's heal compositor. The renderer
+/// develops the preview (and thumbnails) with `settings.heal` drawn in; the
+/// [PhotoRenderer.before] image stays the unhealed source, and settings
+/// without heal ops (e.g. the "before" render) show the unhealed photo.
+/// Null stops drawing heals. Check with `renderer is HealSink`.
+abstract interface class HealSink {
+  /// Replaces the compositor and re-renders the last settings.
+  void setHealer(HealedSourceCache? healer);
 }
 
 /// [src] with the portrait retouch of [settings] applied (CPU reference),

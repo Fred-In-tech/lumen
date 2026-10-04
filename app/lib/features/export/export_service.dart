@@ -10,7 +10,9 @@ import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/masks/ai_mask_rasters.dart' show aiMaskRefsKey;
+import 'package:lumen/features/export/source_render.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
+import 'package:lumen/features/portrait/retouch_build.dart';
 import 'package:lumen/features/remove/healed_source.dart';
 import 'package:lumen/import/photo_decoder.dart';
 
@@ -38,48 +40,39 @@ class ExportedFile {
     required this.bytes,
     required this.width,
     required this.height,
+    this.note,
   });
   final String fileName;
   final Uint8List bytes;
   final int width;
   final int height;
+
+  /// Something the export had to leave out (e.g. portrait retouch when face
+  /// analysis is unavailable). The file is still complete.
+  final String? note;
 }
 
 /// Full-resolution render function: original bytes + settings → pixels.
+/// [assetId] seeds film grain so exports match the editor preview.
 typedef FullResRenderer = Future<RgbaBuffer> Function(
   Uint8List original,
   DevelopSettings settings,
-  int? longEdge,
-);
+  int? longEdge, {
+  String assetId,
+});
 
 /// Reference-pipeline full-res render (CPU, isolate). Correct on every platform.
 Future<RgbaBuffer> cpuFullResRender(
   Uint8List original,
   DevelopSettings settings,
-  int? longEdge,
-) async {
+  int? longEdge, {
+  String assetId = '',
+}) async {
   final decoded = await decodePhoto(original, maxLongEdge: longEdge);
   final src = await rgbaFromImage(decoded);
   decoded.dispose();
   return runInBackground(() => renderReference(src, settings));
 }
-
-/// Develops already-decoded source pixels (a healed source) with
-/// [settings], drawing AI masks from [maskRasters] (`maskRef` → raster).
-typedef SourceRenderer = Future<RgbaBuffer> Function(
-  RgbaBuffer source,
-  DevelopSettings settings,
-  Map<String, MaskRaster> maskRasters,
-);
-
-/// Reference-pipeline render of decoded pixels (CPU, isolate).
-Future<RgbaBuffer> cpuSourceRender(
-  RgbaBuffer source,
-  DevelopSettings settings,
-  Map<String, MaskRaster> maskRasters,
-) => runInBackground(
-  () => renderReference(source, settings, maskRasters: maskRasters),
-);
 
 /// Decoded rasters of [masks]' AI masks for stored photo [assetId], by
 /// `maskRef` (a raster that cannot be produced is left out: that mask then
@@ -105,19 +98,21 @@ Future<Map<String, MaskRaster>> loadAiMaskRasters(
 
 /// Renders and encodes catalog photos for export.
 ///
-/// Photos with visible heal ops or AI masks are decoded, healed from
-/// [patches] (the patch PNGs) and developed by [sourceRenderer] with their
-/// AI mask rasters (from [maskLoader]); the rest go through [renderer]
-/// straight from the original bytes.
+/// Photos with visible heal ops, AI masks or portrait retouch are decoded,
+/// healed from [patches] (the patch PNGs), then retouched and developed by
+/// [sourceRenderer] with their AI mask rasters (from [maskLoader]) and
+/// retouch inputs (from [retouch]); the rest go through [renderer] straight
+/// from the original bytes.
 class ExportService {
   ExportService(
     this._catalog, {
     FullResRenderer? renderer,
     this.patches,
     this.maskLoader,
+    this.retouch,
     SourceRenderer? sourceRenderer,
   }) : _render = renderer ?? cpuFullResRender,
-       _renderSource = sourceRenderer ?? cpuSourceRender;
+       _renderSource = sourceRenderer ?? const CpuSourceRenderer();
 
   final CatalogRepository _catalog;
   final FullResRenderer _render;
@@ -127,6 +122,9 @@ class ExportService {
 
   /// Loads AI mask rasters (null: AI masks cover nothing, as before).
   final AiMaskRasterLoader? maskLoader;
+
+  /// Loads portrait retouch inputs (null: portrait edits are not applied).
+  final RetouchLoader? retouch;
   final SourceRenderer _renderSource;
 
   Future<ExportedFile> exportOne(String assetId, ExportOptions o) async {
@@ -134,25 +132,32 @@ class ExportService {
     if (entry == null) throw const CatalogException('Photo not found');
     final original = await _catalog.readOriginal(assetId);
     final doc = await _catalog.loadEdit(assetId);
+    final settings = doc.settings;
     final rasters = await loadAiMaskRasters(
       maskLoader,
       assetId,
-      doc.settings.masks,
+      settings.masks,
     );
-    final heal = patches != null && hasVisibleHeals(doc.settings);
-    final pixels = heal || rasters.isNotEmpty
-        ? await _renderSource(
-            await decodeHealedSource(
-              original,
-              assetId: assetId,
-              ops: doc.settings.heal,
-              patches: patches,
-              maxLongEdge: o.longEdge,
-            ),
-            doc.settings,
-            rasters,
-          )
-        : await _render(original, doc.settings, o.longEdge);
+    final faces = await (retouch?.call(assetId, settings) ?? kNoRetouchFuture);
+    final heal = patches != null && hasVisibleHeals(settings);
+    final RgbaBuffer pixels;
+    if (heal || rasters.isNotEmpty || faces.maps != null) {
+      final source = await decodeHealedSource(
+        original,
+        assetId: assetId,
+        ops: settings.heal,
+        patches: patches,
+        maxLongEdge: _renderSource.decodeLongEdge(o.longEdge),
+      );
+      pixels = await _renderSource.render(source, settings, (
+        assetId: assetId,
+        maskRasters: rasters,
+        retouchMaps: faces.maps,
+        faces: faces.faces,
+      ), longEdge: o.longEdge);
+    } else {
+      pixels = await _render(original, settings, o.longEdge, assetId: assetId);
+    }
     final bytes = await encodeExport(
       pixels,
       format: o.format,
@@ -165,6 +170,7 @@ class ExportService {
       bytes: bytes,
       width: pixels.width,
       height: pixels.height,
+      note: faces.note,
     );
   }
 }

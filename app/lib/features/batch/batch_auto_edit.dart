@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:lumen/platform/background.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:lumen_core/lumen_core.dart';
@@ -15,8 +13,10 @@ import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/export/export_service.dart'
     show loadAiMaskRasters;
+import 'package:lumen/features/export/source_render.dart';
 import 'package:lumen/features/library/library_tile.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
+import 'package:lumen/features/portrait/retouch_build.dart';
 import 'package:lumen/features/remove/healed_source.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/import/photo_decoder.dart';
@@ -82,6 +82,7 @@ Future<bool> autoEditStoredAsset({
   AiStyle style = AiStyle.natural,
   PatchStoreGetter? patches,
   AiMaskRasterLoader? maskLoader,
+  RetouchLoader? retouch,
 }) async {
   try {
     final entry = await repo.get(assetId);
@@ -121,10 +122,13 @@ Future<bool> autoEditStoredAsset({
       ),
     );
     final thumbSrc = await source(384);
-    final rendered = await _developInBackground(
+    final faces = await (retouch?.call(assetId, next) ?? kNoRetouchFuture);
+    final rendered = await developInBackground(
       thumbSrc,
       next,
       await loadAiMaskRasters(maskLoader, assetId, next.masks),
+      faces.maps,
+      faces.faces,
     );
     final out = await imageFromRgba(rendered);
     final png = await encodePng(out);
@@ -161,6 +165,7 @@ Future<(int, int)> batchAutoEdit(
   final service = ref.read(autoEditServiceProvider);
   Future<PatchStore> patches() => ref.read(patchStoreProvider.future);
   final maskLoader = ref.read(aiMaskRasterLoaderProvider);
+  final retouch = ref.read(storedRetouchLoaderProvider).load;
   final batch = ref.read(batchProvider.notifier)
     ..start('Auto-editing', assetIds.length);
   final busy = ref.read(busyAssetsProvider.notifier)..add(assetIds);
@@ -175,6 +180,7 @@ Future<(int, int)> batchAutoEdit(
         style: style,
         patches: patches,
         maskLoader: maskLoader,
+        retouch: retouch,
       );
       success ? ok++ : failed++;
       busy.remove(id);
@@ -221,6 +227,7 @@ Future<int> applyPresetToAssets(
       next,
       patches: () => ref.read(patchStoreProvider.future),
       maskLoader: ref.read(aiMaskRasterLoaderProvider),
+      retouch: ref.read(storedRetouchLoaderProvider).load,
     );
     n++;
   }
@@ -234,6 +241,7 @@ Future<void> refreshThumbnail(
   DevelopSettings settings, {
   PatchStoreGetter? patches,
   AiMaskRasterLoader? maskLoader,
+  RetouchLoader? retouch,
 }) async {
   try {
     final original = await repo.readOriginal(assetId);
@@ -244,10 +252,13 @@ Future<void> refreshThumbnail(
       patches: patches,
       maxLongEdge: 384,
     );
-    final rendered = await _developInBackground(
+    final faces = await (retouch?.call(assetId, settings) ?? kNoRetouchFuture);
+    final rendered = await developInBackground(
       src,
       settings,
       await loadAiMaskRasters(maskLoader, assetId, settings.masks),
+      faces.maps,
+      faces.faces,
     );
     final out = await imageFromRgba(rendered);
     final png = await encodePng(out);
@@ -267,13 +278,3 @@ Future<void> refreshThumbnail(
     _log.warning('thumbnail $assetId failed: $e');
   }
 }
-
-/// Top-level so the isolate closure captures only its arguments (closures
-/// inside the callers would also capture their other locals, such as the
-/// patch-store getter and its `ref`).
-Future<RgbaBuffer> _developInBackground(
-  RgbaBuffer src,
-  DevelopSettings settings,
-  Map<String, MaskRaster> rasters,
-) =>
-    runInBackground(() => renderReference(src, settings, maskRasters: rasters));
