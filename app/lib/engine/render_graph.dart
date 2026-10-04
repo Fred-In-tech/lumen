@@ -12,6 +12,12 @@
 ///   come from the graph's `maskCache` (rebuilt only when coverage changes;
 ///   adjustments are uniforms). Set `maskRasters` (`maskRef` → decoded
 ///   `MaskRaster`) for AI masks; missing rasters cover nothing.
+/// * Portrait retouch (pass R, between denoise and develop): set
+///   `retouchMaps` (from `computeRetouchMaps`) and `faceAnalysis` (the same
+///   analysis the maps were built from). Uniforms come from
+///   `settings.portrait` on every render; the R output is cached by
+///   `RetouchUniforms.key` + maps identity + denoise state, so non-portrait
+///   edits do not re-run it. Identity settings skip R (bit-exact source).
 /// * `renderMaskOverlay(settings, index, {scale, tint})`: one mask's
 ///   coverage as a premultiplied tint (default 50 % red), same size and
 ///   geometry as `render` (draw it over the frame for "show overlay").
@@ -26,6 +32,7 @@ import 'aux_cache.dart';
 import 'gpu_pass.dart';
 import 'lut_texture.dart';
 import 'mask_atlas_cache.dart';
+import 'retouch_textures.dart';
 import 'shader_library.dart';
 
 abstract interface class FrameRenderer {
@@ -79,6 +86,21 @@ class RenderGraph implements FrameRenderer {
   LutTexture? _lut;
   ui.Image? _denoised;
   (double, double)? _denoiseKey;
+  ui.Image? _retouched;
+  String? _retouchKey;
+  int _retouchRuns = 0;
+
+  /// Number of times pass R actually ran (cache diagnostics, tests).
+  int get retouchRuns => _retouchRuns;
+
+  /// Uploaded retouch maps (owned by the graph).
+  final RetouchMapsCache retouchCache = RetouchMapsCache();
+
+  /// Retouch maps of this photo, or null (no portrait retouch).
+  RetouchMaps? retouchMaps;
+
+  /// The face analysis the [retouchMaps] were built from.
+  FaceAnalysis? faceAnalysis;
   bool _disposed = false;
 
   /// Output size for [settings] at [scale].
@@ -99,8 +121,9 @@ class RenderGraph implements FrameRenderer {
     if (_disposed) throw StateError('RenderGraph disposed');
     final lut = await _lutFor(settings);
     final masks = await maskCache.obtain(settings.masks);
+    final retouch = await retouchCache.obtain(retouchMaps);
     if (_disposed) throw StateError('RenderGraph disposed');
-    final src = _sourceFor(settings);
+    final src = _retouchedFor(settings, _sourceFor(settings), retouch);
     final size = outputSize(settings, scale);
     final developed = runDevelop(
       shaders,
@@ -199,6 +222,46 @@ class RenderGraph implements FrameRenderer {
     return fresh;
   }
 
+  /// Pass R over [denoised] (cached), or [denoised] when inactive.
+  ui.Image _retouchedFor(
+    DevelopSettings s,
+    ui.Image denoised,
+    RetouchTextures? textures,
+  ) {
+    final analysis = faceAnalysis;
+    final u = textures == null || analysis == null
+        ? null
+        : RetouchUniforms.fromSettings(s.portrait, analysis);
+    if (textures == null ||
+        u == null ||
+        !RetouchPassUniforms.isActive(textures.maps, u)) {
+      _releaseRetouched();
+      return denoised;
+    }
+    final key =
+        '${u.key}|${identityHashCode(textures)}|'
+        '${identical(denoised, source) ? 'src' : _denoiseKey}';
+    final cached = _retouched;
+    if (cached != null && _retouchKey == key) return cached;
+    _releaseRetouched();
+    final out = runRetouchPass(
+      shaders,
+      source: denoised,
+      textures: textures,
+      uniforms: u,
+    );
+    if (out == null) return denoised;
+    _retouchRuns++;
+    _retouchKey = key;
+    return _retouched = out;
+  }
+
+  void _releaseRetouched() {
+    EngineImages.dispose(_retouched);
+    _retouched = null;
+    _retouchKey = null;
+  }
+
   ui.Image _sourceFor(DevelopSettings s) {
     if (DenoiseUniforms.isIdentity(s)) return source;
     final key = (s.value(P.noiseLuminance), s.value(P.noiseColor));
@@ -224,6 +287,8 @@ class RenderGraph implements FrameRenderer {
     _disposed = true;
     _releaseLut();
     maskCache.dispose();
+    retouchCache.dispose();
+    _releaseRetouched();
     EngineImages.dispose(_denoised);
     _denoised = null;
   }

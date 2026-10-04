@@ -17,6 +17,10 @@
 /// * Masks: pass the preview's `MaskAtlasTextures` as `masks` (resolution
 ///   independent, source-uv space) or let them be rasterized from
 ///   `settings.masks` (with `maskRasters` for AI masks).
+/// * Portrait retouch: pass `faceAnalysis` plus `retouchMaps` (or the
+///   preview's uploaded `retouchTextures`; maps are source-uv, so the same
+///   maps serve any resolution). Pass R runs over the full-res source in
+///   `tileSize` tiles before develop; identity settings skip it.
 /// * Encode the result with `encodeImage(EncodeRequest(...))`.
 library;
 
@@ -30,6 +34,7 @@ import 'aux_cache.dart';
 import 'gpu_pass.dart';
 import 'lut_texture.dart';
 import 'mask_atlas_cache.dart';
+import 'retouch_textures.dart';
 import 'shader_library.dart';
 
 /// Default cap for the export long edge (Android/Windows/web); Apple
@@ -115,6 +120,9 @@ class ExportRenderer {
     CancelToken? cancel,
     MaskAtlasTextures? masks,
     Map<String, MaskRaster> maskRasters = const {},
+    FaceAnalysis? faceAnalysis,
+    RetouchMaps? retouchMaps,
+    RetouchTextures? retouchTextures,
   }) async {
     final full = outputSizeFor(source.width, source.height, settings.geometry);
     final size = exportSize(
@@ -137,13 +145,21 @@ class ExportRenderer {
           ),
         );
     final lut = await LutTexture.upload(ToneLut.bake(settings));
-    final src = DenoiseUniforms.isIdentity(settings)
-        ? source
-        : runDenoise(
-            shaders,
-            floats: DenoiseUniforms.pack(settings, source.width, source.height),
-            image: source,
-          );
+    final ui.Image src;
+    try {
+      src = await _preparedSource(
+        source,
+        settings,
+        tileSize,
+        faceAnalysis,
+        retouchTextures?.maps ?? retouchMaps,
+        retouchTextures,
+      );
+    } on Object {
+      lut.dispose();
+      if (ownMasks) atlases.dispose();
+      rethrow;
+    }
     final frame = Uint8List(size.width * size.height * 4);
     final tilesX = (size.width / tileSize).ceil();
     final tilesY = (size.height / tileSize).ceil();
@@ -225,6 +241,49 @@ class ExportRenderer {
       if (!identical(src, source)) EngineImages.dispose(src);
     }
     return ExportPixels(size.width, size.height, frame);
+  }
+
+  /// Denoise (N) then retouch (R) over the full source; returns [source]
+  /// itself when neither is active.
+  Future<ui.Image> _preparedSource(
+    ui.Image source,
+    DevelopSettings settings,
+    int tileSize,
+    FaceAnalysis? analysis,
+    RetouchMaps? maps,
+    RetouchTextures? given,
+  ) async {
+    final u = analysis == null
+        ? null
+        : RetouchUniforms.fromSettings(settings.portrait, analysis);
+    final textures =
+        u == null || maps == null || !RetouchPassUniforms.isActive(maps, u)
+        ? null
+        : (given ?? await RetouchTextures.upload(maps));
+    var src = DenoiseUniforms.isIdentity(settings)
+        ? source
+        : runDenoise(
+            shaders,
+            floats: DenoiseUniforms.pack(settings, source.width, source.height),
+            image: source,
+          );
+    if (textures == null || u == null) return src;
+    try {
+      final retouched = runRetouchPass(
+        shaders,
+        source: src,
+        textures: textures,
+        uniforms: u,
+        tileSize: tileSize,
+      );
+      if (retouched != null) {
+        if (!identical(src, source)) EngineImages.dispose(src);
+        src = retouched;
+      }
+    } finally {
+      if (!identical(textures, given)) textures.dispose();
+    }
+    return src;
   }
 
   /// Copies the apron-free [tile] region of a tile image into [frame].

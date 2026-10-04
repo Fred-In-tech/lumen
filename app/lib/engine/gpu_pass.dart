@@ -9,6 +9,7 @@
 /// * `runDevelop`, `runFinish`, `runDenoise`, `runMaskOverlay`: one pass
 ///   each, given packed uniforms from `lumen_core`. The caller owns (and
 ///   disposes) the result.
+/// * `runRetouch`: one tile of the portrait retouch pass R (source space).
 /// * `emptyMaskAtlas`: a shared 1×1 transparent image bound when no mask
 ///   atlas is in use (never disposed, not in the ledger).
 /// * `EngineImages`: debug counter of live engine-created images.
@@ -179,4 +180,25 @@ ui.Image runDenoise(
   [(image, ui.FilterQuality.none)],
   image.width,
   image.height,
+);
+
+/// One tile of retouch pass R over [source] (all samplers nearest; manual
+/// bilinear in the shader). [floats] from `RetouchPassUniforms.pack`;
+/// [maps] = B1, B2, B3, Bh, regionA, regionB images.
+ui.Image runRetouch(
+  ShaderLibrary shaders, {
+  required Float32List floats,
+  required ui.Image source,
+  required List<ui.Image> maps,
+  required int width,
+  required int height,
+}) => _run(
+  shaders.retouch,
+  floats,
+  [
+    (source, ui.FilterQuality.none),
+    for (final m in maps) (m, ui.FilterQuality.none),
+  ],
+  width,
+  height,
 );

@@ -10,3 +10,4 @@ export 'geometry_mapping.dart';
 export 'mask_rasterizer.dart';
 export 'local_adjust.dart' show LocalIndex, localTone;
 export 'mask_overlay.dart';
+export 'retouch_pass.dart';
