@@ -89,6 +89,9 @@ const Map<String, List<String>> kControlSynonyms = {
   PortraitIds.bgUnify: ['backdrop', 'background', 'falloff', 'even light'],
   PortraitIds.bgUnifyLuminance: ['backdrop', 'brighter background'],
   PortraitIds.strayHairs: ['flyaway', 'flyaways', 'frizz', 'hair'],
+  PortraitIds.glare: ['glasses', 'reflection', 'lens', 'spectacles'],
+  PortraitIds.clothesWrinkles: ['clothes', 'shirt', 'creases', 'iron'],
+  PortraitIds.clothesLint: ['clothes', 'fluff', 'dust', 'specks'],
 };
 
 /// Every control the editor can reveal, in panel order.

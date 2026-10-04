@@ -216,3 +216,26 @@ class _AutoRetouchState extends ConsumerState<AutoRetouchButton> {
     onPressed: _busy ? null : _run,
   );
 }
+
+/// Clothing works on the whole photo through the clothes mask: says so, plus
+/// why it is off when no clothes were found.
+class ClothesNote extends ConsumerWidget {
+  const ClothesNote({super.key, required this.assetId});
+
+  final String assetId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    final reason = ref.watch(clothesStatusProvider(assetId))?.reason;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Sp.s2),
+      child: Text(
+        reason ?? 'Smooths fabric folds and removes lint on every outfit.',
+        style: LumenType.caption().copyWith(
+          color: reason == null ? t.textTertiary : t.warning,
+        ),
+      ),
+    );
+  }
+}

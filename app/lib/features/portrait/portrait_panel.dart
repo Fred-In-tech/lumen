@@ -53,6 +53,7 @@ const List<PortraitSection> kPortraitSections = [
       PortraitIds.iris,
       PortraitIds.redVein,
       PortraitIds.redEye,
+      PortraitIds.glare,
     ],
   ),
   (
@@ -79,6 +80,10 @@ const List<PortraitSection> kPortraitSections = [
       PortraitIds.bgUnifyLuminance,
       PortraitIds.strayHairs,
     ],
+  ),
+  (
+    title: 'Clothing',
+    ids: [PortraitIds.clothesWrinkles, PortraitIds.clothesLint],
   ),
 ];
 
@@ -152,6 +157,7 @@ class PortraitPanel extends ConsumerWidget {
               children: [
                 if (section.title == 'Background')
                   BackdropNote(assetId: assetId),
+                if (section.title == 'Clothing') ClothesNote(assetId: assetId),
                 if (section.title == 'Skin')
                   SkinPenRow(assetId: assetId, ui: ui, portrait: portrait),
                 if (section.title == 'Blemishes')
