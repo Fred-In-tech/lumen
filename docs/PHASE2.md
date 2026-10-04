@@ -37,13 +37,14 @@ original ──► RETOUCH STAGE (pixel layer, cached) ──► DEVELOP (GPU ub
 | W1 | Masks engine: model, rasterizer, shader + CPU local adjustments, atlases, overlay | ✅ done (`b20cbcb`), parity max 1/255 |
 | W2 | Research: Evoto teardown (06) | ✅ done |
 | W3 | Research: portrait-retouch tech + licenses (07) | ✅ done |
-| W4 | On-device inference: LiteRT backend, ModelStore (SHA-256, resume, disk guard, LRU), FaceAnalyzer, face cache | 🔨 in progress (runtime + models + contracts ✅ `9c36bb8`) |
-| W5 | Retouch core: face regions, skin parser, RetouchMaps, blemish heal, CPU kernel, uniforms | 🔨 in progress |
-| W6 | Object removal core: push-pull, Telea, PatchMatch, crop/feather/detail pipeline, heal ops | 🔨 in progress |
-| W7a | Portrait module UI: group tabs, Individual, sections, Auto Retouch | ✅ scaffold (`b4a9af2`); face boxes and render wiring pending W4/W5 |
-| W7b | Masks module UI + canvas tools (linear/radial/brush, overlay) | 🔨 in progress |
-| W7c | Remove tool UI + heal brush | planned after W6 |
-| W8 | GPU `retouch.frag` pass mirroring the W5 CPU kernel + render-graph integration | planned after W5 |
-| W9 | AI masks (Subject/Person/Background/Face skin) from Selfie Multiclass | planned after W4 |
+| W4 | On-device inference: LiteRT backend, ModelStore (SHA-256, resume, disk guard, LRU), FaceAnalyzer, face cache | ✅ done (`5797750`), faces wired to Portrait (`3bf39dc`) |
+| W5 | Retouch core: face regions, skin parser, RetouchMaps, blemish heal, CPU kernel, uniforms | ✅ v1 done (`381adb0`); wrinkles, lips and blush in progress |
+| W6 | Object removal core: push-pull, Telea, PatchMatch, crop/feather/detail pipeline, heal ops | ✅ done (`1e70950`), app plumbing (`e3f76b6`) |
+| W7a | Portrait module UI: group tabs, Individual, sections, Auto Retouch, face boxes, tags | ✅ done; live retouch (`d502a61`) |
+| W7b | Masks module UI + canvas tools (linear/radial/brush, overlay) | ✅ done (`8661617`) |
+| W7c | Remove tool UI + heal/clone brushes + MI-GAN adapter + export/paste of heal ops | 🔨 in progress |
+| W8 | GPU `retouch.frag` pass mirroring the W5 CPU kernel + render-graph integration | ✅ done (`102aca0`), parity max 1/255 |
+| W9 | AI masks (Subject, Background, Face skin, Hair, Clothing) from Selfie Multiclass | ✅ done (`d7f6a91`, `585fd33`); Sky needs a cloud model |
 | W10 | Face reshape (MLS warp field in `develop`), backdrop clean, extras | later |
+| X1 | Export and batch honour retouch maps and AI mask rasters (heal ops via W7c) | planned next |
 | P1 | **Privacy hardening before launch:** keep face caches and models out of OS backups. Move `cache/` under one excluded root. iOS: `NSURLIsExcludedFromBackupKey`. Android: `dataExtractionRules` + `fullBackupContent`. macOS: the backup-exclude xattr. Legal review of BIPA for on-device face geometry. | planned |
