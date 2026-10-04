@@ -300,4 +300,36 @@ void main() {
     expect(off.groups.containsKey(FaceGroup.child), isFalse);
     expect(identical(p.withoutParams({}), p), isTrue);
   });
+
+  test('skin pen strokes are image-specific like spots', () {
+    const add = BrushStroke(points: [(0.4, 0.4), (0.45, 0.42)], radius: 0.02);
+    const erase = BrushStroke(points: [(0.5, 0.3)], radius: 0.01, erase: true);
+    final p = PortraitSettings.empty
+        .withGroupValue(FaceGroup.all, PortraitIds.skinSoftening, 40)
+        .withSkinPen([add, erase]);
+    expect(p.isDefault, isFalse);
+    expect(PortraitSettings.fromJson(p.toJson()), p);
+    expect(p.transferable.skinPen, isEmpty);
+    final s = DevelopSettings.defaults.copyWith(portrait: p);
+    final preset = Preset.fromSettings(
+      id: 'x',
+      name: 'x',
+      settings: s,
+      groups: {SettingsGroup.portrait},
+    );
+    expect(preset.portrait!.skinPen, isEmpty);
+    final target = DevelopSettings.defaults.copyWith(
+      portrait: PortraitSettings.empty.withSkinPen([erase]),
+    );
+    final pasted = pasteSettings(
+      source: s,
+      target: target,
+      groups: {SettingsGroup.portrait},
+    );
+    expect(pasted.portrait.skinPen, [erase]);
+    expect(
+      pasted.portrait.valueFor(PortraitIds.skinSoftening, group: FaceGroup.all),
+      40,
+    );
+  });
 }

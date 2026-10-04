@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 
+import 'mask_shapes.dart';
 import 'spot_anchor.dart';
 
 /// Retouch profile a detected face uses (Evoto-style groups). These are
@@ -215,6 +216,7 @@ class PortraitSettings {
     this.individuals = const {},
     this.image = const {},
     this.spots = PortraitSpots.none,
+    this.skinPen = const [],
   });
 
   factory PortraitSettings.fromJson(Object? json) {
@@ -243,6 +245,7 @@ class PortraitSettings {
       individuals: Map.unmodifiable(individuals),
       image: _readValues(json['image'], dropDefaults: true),
       spots: PortraitSpots.fromJson(json['spots']),
+      skinPen: _readStrokes(json['skinPen']),
     );
   }
 
@@ -255,8 +258,17 @@ class PortraitSettings {
   /// Per-photo spot keep/remove decisions (image-specific).
   final PortraitSpots spots;
 
+  /// Manual Tuning Pen for skin retouch (image-specific): paint adds skin
+  /// where the AI missed it, erase strokes take it away (hair, beard,
+  /// jewellery). Source-uv strokes, applied to the skin weight.
+  final List<BrushStroke> skinPen;
+
   bool get isDefault =>
-      groups.isEmpty && individuals.isEmpty && image.isEmpty && spots.isEmpty;
+      groups.isEmpty &&
+      individuals.isEmpty &&
+      image.isEmpty &&
+      spots.isEmpty &&
+      skinPen.isEmpty;
 
   /// True when any face-scope value is set (face retouch must run).
   bool get hasFaceEdits =>
@@ -326,9 +338,14 @@ class PortraitSettings {
 
   /// Without per-person values and spot decisions: what a preset may carry
   /// (both are tied to one photo's faces).
-  PortraitSettings get transferable => individuals.isEmpty && spots.isEmpty
+  PortraitSettings get transferable =>
+      individuals.isEmpty && spots.isEmpty && skinPen.isEmpty
       ? this
-      : _copy(individuals: const {}, spots: PortraitSpots.none);
+      : _copy(
+          individuals: const {},
+          spots: PortraitSpots.none,
+          skinPen: const [],
+        );
 
   /// Without [ids] anywhere (all groups, people and image scope): what the
   /// photo looks like with those retouch params off (hold-to-compare).
@@ -350,6 +367,15 @@ class PortraitSettings {
 
   /// Replaces the spot decisions.
   PortraitSettings withSpots(PortraitSpots spots) => _copy(spots: spots);
+
+  /// Replaces the Manual Tuning Pen strokes.
+  PortraitSettings withSkinPen(List<BrushStroke> strokes) =>
+      _copy(skinPen: List.unmodifiable(strokes));
+
+  /// The image-specific parts of [other] (spots, pen) on these values: what
+  /// paste/sync keeps from the target photo.
+  PortraitSettings withImageSpecificFrom(PortraitSettings other) =>
+      _copy(spots: other.spots, skinPen: other.skinPen);
 
   /// Interpolates from [from] toward [to] by [t] (0..1) for preset Amount.
   /// Per-person values come from [from]; group overrides present on either
@@ -373,6 +399,7 @@ class PortraitSettings {
       groups: Map.unmodifiable(groups),
       individuals: from.individuals,
       spots: from.spots,
+      skinPen: from.skinPen,
       image: _clean({
         for (final id in {...from.image.keys, ...to.image.keys})
           id: mix(from.imageValue(id), to.imageValue(id)),
@@ -385,11 +412,13 @@ class PortraitSettings {
     Map<String, Map<String, double>>? individuals,
     Map<String, double>? image,
     PortraitSpots? spots,
+    List<BrushStroke>? skinPen,
   }) => PortraitSettings(
     groups: groups ?? this.groups,
     individuals: individuals ?? this.individuals,
     image: image ?? this.image,
     spots: spots ?? this.spots,
+    skinPen: skinPen ?? this.skinPen,
   );
 
   static Map<K, Map<String, double>> _put<K>(
@@ -420,6 +449,7 @@ class PortraitSettings {
     },
     'image': Map.of(image),
     if (!spots.isEmpty) 'spots': spots.toJson(),
+    if (skinPen.isNotEmpty) 'skinPen': [for (final st in skinPen) st.toJson()],
   };
 
   static const _eq = DeepCollectionEquality();
@@ -430,7 +460,8 @@ class PortraitSettings {
       _eq.equals(other.groups, groups) &&
       _eq.equals(other.individuals, individuals) &&
       _eq.equals(other.image, image) &&
-      other.spots == spots;
+      other.spots == spots &&
+      const ListEquality<BrushStroke>().equals(other.skinPen, skinPen);
 
   @override
   int get hashCode => Object.hash(
@@ -438,5 +469,14 @@ class PortraitSettings {
     _eq.hash(individuals),
     _eq.hash(image),
     spots,
+    const ListEquality<BrushStroke>().hash(skinPen),
   );
 }
+
+List<BrushStroke> _readStrokes(Object? json) => json is List
+    ? List.unmodifiable(
+        json.whereType<Map<Object?, Object?>>().map(
+          (m) => BrushStroke.fromJson(m.cast()),
+        ),
+      )
+    : const [];
