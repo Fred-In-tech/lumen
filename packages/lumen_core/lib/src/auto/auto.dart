@@ -8,4 +8,6 @@ export 'guards.dart';
 export 'lexicon.dart';
 export 'local_auto_tone.dart';
 export 'local_provider.dart';
+export 'portrait_locks.dart';
 export 'reasons.dart';
+export 'retouch_needs.dart';

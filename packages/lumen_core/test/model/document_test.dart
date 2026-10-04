@@ -170,9 +170,9 @@ void main() {
       expect(back.values, p.values);
     });
 
-    test('12 built-ins use only valid ids and differ from defaults', () {
-      expect(kBuiltinPresets.length, 12);
-      expect(kBuiltinPresets.map((p) => p.id).toSet().length, 12);
+    test('18 built-ins use only valid ids and differ from defaults', () {
+      expect(kBuiltinPresets.length, 18);
+      expect(kBuiltinPresets.map((p) => p.id).toSet().length, 18);
       for (final p in kBuiltinPresets) {
         for (final id in p.values.keys) {
           expect(ParamRegistry.contains(id), isTrue, reason: '${p.name}: $id');

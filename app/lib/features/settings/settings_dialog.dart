@@ -23,6 +23,8 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
   late final TextEditingController _url;
   late final TextEditingController _token;
   bool _auto = true;
+  bool _retouch = true;
+  bool _remeasure = true;
   String _style = 'natural';
 
   @override
@@ -34,6 +36,8 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
     );
     _token = TextEditingController(text: s?.gatewayToken ?? '');
     _auto = s?.autoEditOnImport ?? true;
+    _retouch = s?.retouchFacesAutomatically ?? true;
+    _remeasure = s?.remeasureRetouchOnSync ?? true;
     _style = s?.defaultStyle ?? 'natural';
   }
 
@@ -52,6 +56,8 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
             gatewayUrl: _url.text.trim(),
             gatewayToken: _token.text.trim(),
             autoEditOnImport: _auto,
+            retouchFacesAutomatically: _retouch,
+            remeasureRetouchOnSync: _remeasure,
             defaultStyle: _style,
           ),
         );
@@ -147,6 +153,31 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                   style: LumenType.body().copyWith(color: t.textPrimary),
                 ),
                 onChanged: (v) => setState(() => _auto = v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _retouch,
+                activeThumbColor: t.accent,
+                title: Text(
+                  'Retouch faces automatically',
+                  style: LumenType.body().copyWith(color: t.textPrimary),
+                ),
+                subtitle: Text(
+                  'Auto-edit also cleans skin, eyes and teeth, scaled to '
+                  'what each face needs.',
+                  style: LumenType.caption().copyWith(color: t.textTertiary),
+                ),
+                onChanged: (v) => setState(() => _retouch = v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _remeasure,
+                activeThumbColor: t.accent,
+                title: Text(
+                  'Re-measure retouch per photo when syncing',
+                  style: LumenType.body().copyWith(color: t.textPrimary),
+                ),
+                onChanged: (v) => setState(() => _remeasure = v),
               ),
               Row(
                 children: [

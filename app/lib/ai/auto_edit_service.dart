@@ -8,8 +8,13 @@ import 'package:logging/logging.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/ai/gateway_client.dart';
+import 'package:lumen/ai/vision_provider.dart';
 
 final _log = Logger('AutoEditService');
+
+/// What auto retouch gives a photo: the portrait settings to apply (null:
+/// leave portrait alone) and a note for the user.
+typedef RetouchPlan = ({PortraitSettings? portrait, String? note});
 
 /// What the editor needs to run an AI edit on one photo.
 class AiPhotoContext {
@@ -20,6 +25,7 @@ class AiPhotoContext {
     this.locked = const {},
     this.visionJpeg,
     this.cachedStats,
+    this.retouch,
   });
 
   /// 512 px unedited analysis proxy.
@@ -31,6 +37,21 @@ class AiPhotoContext {
   /// Lazily produces the 1024 px metadata-free JPEG for the vision engine.
   final Future<Uint8List> Function()? visionJpeg;
   final ImageStats? cachedStats;
+
+  /// Plans need-scaled Auto Retouch for the photo (null: colour only). It
+  /// starts with the colour edit and both land as one AI step.
+  final Future<RetouchPlan> Function()? retouch;
+
+  AiPhotoContext copyWith({Future<RetouchPlan> Function()? retouch}) =>
+      AiPhotoContext(
+        proxy: proxy,
+        current: current,
+        exif: exif,
+        locked: locked,
+        visionJpeg: visionJpeg,
+        cachedStats: cachedStats,
+        retouch: retouch ?? this.retouch,
+      );
 }
 
 /// Final AI result plus the record that powers Explain and AI Amount.
@@ -39,6 +60,7 @@ class AiRunResult {
     required this.outcome,
     required this.record,
     required this.label,
+    this.note,
   });
 
   final AutoEditOutcome outcome;
@@ -46,6 +68,9 @@ class AiRunResult {
 
   /// History label, e.g. "AI Auto · Moody".
   final String label;
+
+  /// Something the user should know (e.g. faces could not be retouched).
+  final String? note;
 }
 
 /// Orchestrates local → vision (PLAN.md §1.8). Never throws for AI failures:
@@ -77,6 +102,8 @@ class AutoEditService {
     AiStyle style = AiStyle.natural,
     void Function(AutoEditOutcome local)? onLocal,
   }) async {
+    // Faces are measured while the colour edit runs (never throws).
+    final retouchPlan = _awaitPlan(ctx.retouch?.call());
     final stats = ctx.cachedStats ?? await computeStats(ctx.proxy);
     final input = AutoEditInput(
       stats: stats,
@@ -118,6 +145,14 @@ class AutoEditService {
         degraded = 'timeout';
       }
     }
+    final retouch = await retouchPlan;
+    final portrait = retouch?.portrait;
+    if (portrait != null) {
+      outcome = _withPortrait(
+        outcome,
+        PortraitPresets.withDeltas(portrait, visionPortraitDeltas(outcome)),
+      );
+    }
     final record = AiRecord(
       engine: outcome.engineUsed.name,
       style: style.id,
@@ -137,9 +172,37 @@ class AutoEditService {
     return AiRunResult(
       outcome: outcome,
       record: record,
-      label: 'AI Auto · ${style.label}${basic ? ' (basic)' : ''}',
+      label:
+          'AI Auto · ${style.label}${basic ? ' (basic)' : ''}'
+          '${portrait != null ? ' + Retouch' : ''}',
+      note: retouch?.note,
     );
   }
+
+  static Future<RetouchPlan?> _awaitPlan(Future<RetouchPlan>? plan) async {
+    if (plan == null) return null;
+    try {
+      return await plan;
+    } on Exception catch (e) {
+      _log.warning('auto retouch failed, colour only: $e');
+      return null;
+    }
+  }
+
+  static AutoEditOutcome _withPortrait(
+    AutoEditOutcome o,
+    PortraitSettings portrait,
+  ) => AutoEditOutcome(
+    settings: o.settings.copyWith(portrait: portrait),
+    changes: o.changes,
+    engineUsed: o.engineUsed,
+    intent: o.intent,
+    scene: o.scene,
+    degraded: o.degraded,
+    degradedReason: o.degradedReason,
+    confidence: o.confidence,
+    suggestions: o.suggestions,
+  );
 
   Future<AiRunResult> instruct(
     AiPhotoContext ctx,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueChanged;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:lumen_core/lumen_core.dart';
@@ -13,6 +14,7 @@ import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/export/export_service.dart'
     show loadAiMaskRasters;
+import 'package:lumen/features/ai/auto_retouch.dart';
 import 'package:lumen/features/export/source_render.dart';
 import 'package:lumen/features/library/library_tile.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
@@ -75,6 +77,9 @@ final batchProvider = NotifierProvider<BatchNotifier, BatchProgress?>(
 ///
 /// Heal ops are drawn into the analysis proxy and the thumbnail (from
 /// [patches]), so removed objects neither steer the edit nor reappear.
+/// With [retouchPlanner], faces also get need-scaled Auto Retouch in the
+/// same AI history entry; a photo whose faces cannot be analyzed keeps its
+/// colour edit and reports [onNote] (non-fatal).
 Future<bool> autoEditStoredAsset({
   required CatalogRepository repo,
   required AutoEditService service,
@@ -83,6 +88,8 @@ Future<bool> autoEditStoredAsset({
   PatchStoreGetter? patches,
   AiMaskRasterLoader? maskLoader,
   RetouchLoader? retouch,
+  AutoRetouchPlanner? retouchPlanner,
+  ValueChanged<String>? onNote,
 }) async {
   try {
     final entry = await repo.get(assetId);
@@ -103,9 +110,13 @@ Future<bool> autoEditStoredAsset({
         current: doc.settings,
         exif: entry.exif,
         visionJpeg: () async => encodeJpegNoMetadata(await source(1024)),
+        retouch: retouchPlanner == null
+            ? null
+            : () => retouchPlanner.plan(assetId, doc),
       ),
       style: style,
     );
+    if (result.note case final note?) onNote?.call(note);
     final next = result.outcome.settings;
     final hist = HistoryEntry.tryDiff(
       label: result.label,
@@ -154,11 +165,15 @@ Future<bool> autoEditStoredAsset({
 }
 
 /// Auto-edits [assetIds] with bounded concurrency; returns (ok, failed).
+/// Faces are retouched too when [retouchFaces] (default: the "Retouch faces
+/// automatically" setting); [onNote] gets per-photo non-fatal notes.
 Future<(int, int)> batchAutoEdit(
   WidgetRef ref,
   List<String> assetIds, {
   AiStyle style = AiStyle.natural,
   int concurrency = 2,
+  bool? retouchFaces,
+  void Function(String assetId, String note)? onNote,
 }) async {
   if (assetIds.isEmpty) return (0, 0);
   final repo = ref.read(catalogRepositoryProvider);
@@ -166,8 +181,13 @@ Future<(int, int)> batchAutoEdit(
   Future<PatchStore> patches() => ref.read(patchStoreProvider.future);
   final maskLoader = ref.read(aiMaskRasterLoaderProvider);
   final retouch = ref.read(storedRetouchLoaderProvider).load;
+  final faces =
+      retouchFaces ??
+      ref.read(settingsProvider).value?.retouchFacesAutomatically ??
+      true;
+  final planner = faces ? ref.read(autoRetouchPlannerProvider) : null;
   final batch = ref.read(batchProvider.notifier)
-    ..start('Auto-editing', assetIds.length);
+    ..start(faces ? 'Editing + retouching' : 'Auto-editing', assetIds.length);
   final busy = ref.read(busyAssetsProvider.notifier)..add(assetIds);
   var ok = 0, failed = 0, next = 0;
   Future<void> worker() async {
@@ -181,6 +201,8 @@ Future<(int, int)> batchAutoEdit(
         patches: patches,
         maskLoader: maskLoader,
         retouch: retouch,
+        retouchPlanner: planner,
+        onNote: onNote == null ? null : (note) => onNote(id, note),
       );
       success ? ok++ : failed++;
       busy.remove(id);

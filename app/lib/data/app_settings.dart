@@ -4,6 +4,8 @@ class AppSettings {
     this.gatewayUrl,
     this.gatewayToken,
     this.autoEditOnImport = true,
+    this.retouchFacesAutomatically = true,
+    this.remeasureRetouchOnSync = true,
     this.defaultStyle = 'natural',
     this.exportFormat = 'jpeg',
     this.exportQuality = 90,
@@ -19,6 +21,8 @@ class AppSettings {
       gatewayUrl: json['gatewayUrl'] as String?,
       gatewayToken: json['gatewayToken'] as String?,
       autoEditOnImport: json['autoEditOnImport'] != false,
+      retouchFacesAutomatically: json['retouchFacesAutomatically'] != false,
+      remeasureRetouchOnSync: json['remeasureRetouchOnSync'] != false,
       defaultStyle: json['defaultStyle'] as String? ?? 'natural',
       exportFormat: json['exportFormat'] == 'png' ? 'png' : 'jpeg',
       exportQuality: ((json['exportQuality'] as num?) ?? 90).toInt().clamp(
@@ -36,6 +40,14 @@ class AppSettings {
   final String? gatewayUrl;
   final String? gatewayToken;
   final bool autoEditOnImport;
+
+  /// AI auto-edit (single, batch, on import) also retouches faces with
+  /// need-scaled Auto Retouch.
+  final bool retouchFacesAutomatically;
+
+  /// Syncing portrait retouch re-measures each photo's needs instead of
+  /// copying fixed numbers.
+  final bool remeasureRetouchOnSync;
   final String defaultStyle;
   final String exportFormat;
   final int exportQuality;
@@ -50,6 +62,8 @@ class AppSettings {
     String? gatewayUrl,
     String? gatewayToken,
     bool? autoEditOnImport,
+    bool? retouchFacesAutomatically,
+    bool? remeasureRetouchOnSync,
     String? defaultStyle,
     String? exportFormat,
     int? exportQuality,
@@ -62,6 +76,10 @@ class AppSettings {
     gatewayUrl: gatewayUrl ?? this.gatewayUrl,
     gatewayToken: gatewayToken ?? this.gatewayToken,
     autoEditOnImport: autoEditOnImport ?? this.autoEditOnImport,
+    retouchFacesAutomatically:
+        retouchFacesAutomatically ?? this.retouchFacesAutomatically,
+    remeasureRetouchOnSync:
+        remeasureRetouchOnSync ?? this.remeasureRetouchOnSync,
     defaultStyle: defaultStyle ?? this.defaultStyle,
     exportFormat: exportFormat ?? this.exportFormat,
     exportQuality: exportQuality ?? this.exportQuality,
@@ -77,6 +95,8 @@ class AppSettings {
     'gatewayUrl': gatewayUrl,
     'gatewayToken': gatewayToken,
     'autoEditOnImport': autoEditOnImport,
+    'retouchFacesAutomatically': retouchFacesAutomatically,
+    'remeasureRetouchOnSync': remeasureRetouchOnSync,
     'defaultStyle': defaultStyle,
     'exportFormat': exportFormat,
     'exportQuality': exportQuality,

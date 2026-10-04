@@ -7,7 +7,9 @@ import 'package:lumen/ai/ai_providers.dart';
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/ai/auto_retouch.dart';
 import 'package:lumen/features/batch/batch_auto_edit.dart';
+import 'package:lumen/features/batch/remeasure_sync.dart';
 import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/library/library_actions.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
@@ -87,13 +89,23 @@ class BatchBar extends ConsumerWidget {
             icon: const AiGlyph(size: 14, neutral: true),
             kind: vision ? ButtonKind.ai : ButtonKind.secondary,
             onPressed: () async {
-              final (ok, failed) = await batchAutoEdit(ref, ids);
+              final noted = <String>{};
+              final (ok, failed) = await batchAutoEdit(
+                ref,
+                ids,
+                onNote: (id, _) => noted.add(id),
+              );
               if (context.mounted) {
+                final base = failed == 0
+                    ? '$ok photos auto-edited. Every change is a slider.'
+                    : '$ok edited, $failed failed.';
                 showToast(
                   context,
-                  failed == 0
-                      ? '$ok photos auto-edited. Every change is a slider.'
-                      : '$ok edited, $failed failed.',
+                  noted.isEmpty
+                      ? base
+                      : '$base Faces on ${noted.length} '
+                            '${noted.length == 1 ? 'photo' : 'photos'} were '
+                            'not retouched (face analysis unavailable).',
                   kind: vision ? ToastKind.ai : ToastKind.success,
                 );
               }
@@ -105,7 +117,9 @@ class BatchBar extends ConsumerWidget {
             LumenButton(
               label: 'Sync',
               kind: ButtonKind.ghost,
-              tooltip: 'Paste copied settings onto the selection',
+              tooltip:
+                  'Paste copied settings onto the selection (portrait '
+                  'retouch is re-measured per photo; see Settings)',
               onPressed: () async {
                 final clip = ref.read(settingsClipboardProvider);
                 if (clip == null) {
@@ -124,6 +138,22 @@ class BatchBar extends ConsumerWidget {
                   sourceAssetId: clip.sourceAssetId,
                   onHealsSkipped: (k) => skipped = k,
                 );
+                final source = clip.sourceAssetId;
+                final remeasure =
+                    ref.read(settingsProvider).value?.remeasureRetouchOnSync ??
+                    true;
+                if (remeasure &&
+                    source != null &&
+                    clip.groups.contains(SettingsGroup.portrait) &&
+                    clip.settings.portrait.hasFaceEdits) {
+                  await remeasureSyncedRetouch(
+                    repo: ref.read(catalogRepositoryProvider),
+                    planner: ref.read(autoRetouchPlannerProvider),
+                    sourceAssetId: source,
+                    sourceSettings: clip.settings,
+                    targets: ids,
+                  );
+                }
                 for (final id in ids) {
                   final doc = await ref
                       .read(catalogRepositoryProvider)

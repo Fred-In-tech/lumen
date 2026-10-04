@@ -10,6 +10,8 @@ import 'package:lumen/ai/ai_providers.dart';
 import 'package:lumen/ai/auto_edit_service.dart';
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/memory_catalog_repository.dart';
+import 'package:lumen/data/preference_repositories.dart';
+import 'package:lumen/features/ai/auto_retouch.dart';
 import 'package:lumen/features/batch/batch_auto_edit.dart';
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/export/export_service.dart';
@@ -56,6 +58,12 @@ Future<(WidgetRef, MemoryCatalogRepository)> _harness(
         autoEditServiceProvider.overrideWithValue(
           AutoEditService(local: const LocalAutoEditProvider()),
         ),
+        settingsRepositoryProvider.overrideWithValue(
+          MemorySettingsRepository(),
+        ),
+        // The scenes have no faces (face analysis itself is covered by the
+        // auto-retouch tests).
+        autoRetouchPlannerProvider.overrideWithValue(_NoFaces()),
       ],
       child: Consumer(
         builder: (context, ref, _) {
@@ -85,6 +93,16 @@ Future<List<String>> _import(MemoryCatalogRepository repo, int n) async {
     for (final r in results)
       if (r is Imported) r.entry.assetId,
   ];
+}
+
+class _NoFaces implements AutoRetouchPlanner {
+  @override
+  Future<RetouchMeasure> measure(String assetId, DevelopSettings settings) =>
+      Future.value((needs: RetouchNeeds.none, note: null));
+
+  @override
+  Future<RetouchPlan> plan(String assetId, EditDocument doc) =>
+      Future.value((portrait: null, note: null));
 }
 
 void main() {

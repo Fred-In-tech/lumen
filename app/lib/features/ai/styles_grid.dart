@@ -7,6 +7,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen/ai/ai_providers.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/ai/ai_auto_run.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
@@ -66,7 +67,7 @@ class StylesGrid extends ConsumerWidget {
         selected: selected,
         label: '${style.label} style',
         child: GestureDetector(
-          onTap: busy ? null : () => runAutoEdit(ref, session, style: style),
+          onTap: busy ? null : () => runAiAuto(ref, session, style: style),
           child: MouseRegion(
             cursor: busy
                 ? SystemMouseCursors.forbidden

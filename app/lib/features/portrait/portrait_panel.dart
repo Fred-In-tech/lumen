@@ -7,6 +7,7 @@ import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/features/develop/develop_group.dart';
 import 'package:lumen/features/editor/compare_suppress.dart';
+import 'package:lumen/features/ai/auto_retouch.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/portrait/portrait_slider.dart';
 import 'package:lumen/features/portrait/portrait_state.dart';
@@ -272,29 +273,69 @@ class _TargetTabs extends ConsumerWidget {
   }
 }
 
-class _AutoRetouchButton extends ConsumerWidget {
+class _AutoRetouchButton extends ConsumerStatefulWidget {
   const _AutoRetouchButton({required this.assetId});
 
   final String assetId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => LumenButton(
-    label: 'Auto Retouch',
-    kind: ButtonKind.ai,
-    expand: true,
-    icon: const AiGlyph(size: 14, neutral: true),
-    tooltip: 'Natural skin, eyes and teeth retouch for every face',
-    onPressed: () {
-      final s = ref.read(editorProvider(assetId)).value?.settings;
-      if (s == null) return;
+  ConsumerState<_AutoRetouchButton> createState() => _AutoRetouchState();
+}
+
+/// Need-scaled Auto Retouch: measures every face (skin, blemishes, eyes,
+/// teeth, lines) and sets values to match, never touching values set by
+/// hand. Falls back to the static natural recipe when faces cannot be
+/// measured.
+class _AutoRetouchState extends ConsumerState<_AutoRetouchButton> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    final id = widget.assetId;
+    final doc = ref.read(editorProvider(id)).value?.doc;
+    if (doc == null) return;
+    // Measure only once faces are known (the panel's analysis found them);
+    // otherwise the static recipe applies right away.
+    final faces = ref.read(portraitFacesProvider(id));
+    setState(() => _busy = true);
+    try {
+      final RetouchNeeds? needs;
+      if (faces == null || faces.faces.isEmpty) {
+        needs = null;
+      } else {
+        needs =
+            (await ref
+                    .read(autoRetouchPlannerProvider)
+                    .measure(id, doc.settings))
+                .needs;
+      }
+      final now = ref.read(editorProvider(id)).value;
+      if (now == null) return;
       ref
-          .read(editorProvider(assetId).notifier)
+          .read(editorProvider(id).notifier)
           .commit(
-            s.copyWith(portrait: PortraitPresets.autoRetouch(s.portrait)),
+            now.settings.copyWith(
+              portrait: PortraitPresets.autoRetouchFor(
+                now.settings.portrait,
+                needs,
+                locked: manualPortraitLocks(now.doc.history),
+              ),
+            ),
             label: 'Auto Retouch',
             kind: HistoryKind.preset,
           );
-    },
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => LumenButton(
+    label: _busy ? 'Measuring faces…' : 'Auto Retouch',
+    kind: ButtonKind.ai,
+    expand: true,
+    icon: const AiGlyph(size: 14, neutral: true),
+    tooltip: 'Skin, eyes and teeth retouch scaled to what each face needs',
+    onPressed: _busy ? null : _run,
   );
 }
 

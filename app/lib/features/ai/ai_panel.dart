@@ -6,6 +6,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen/ai/ai_providers.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/ai/ai_auto_run.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
@@ -33,10 +34,14 @@ class _AiPanelState extends ConsumerState<AiPanel> {
       _amount = 100;
       _explainOpen = true;
     });
-    final r = await runAutoEdit(ref, widget.session, style: style);
+    final r = await runAiAuto(ref, widget.session, style: style);
     if (!mounted || r == null) return;
     final n = r.outcome.changes.length;
-    if (n == 0) {
+    final note = r.note;
+    if (note != null) {
+      showToast(context, note);
+    } else if (n == 0 &&
+        r.outcome.settings.portrait == r.record.preAi.portrait) {
       showToast(
         context,
         'This photo already looks balanced. Nothing to change.',
@@ -128,7 +133,11 @@ class _AiPanelState extends ConsumerState<AiPanel> {
               ref
                   .read(editorProvider(id).notifier)
                   .preview(
-                    applyAiAmount(pre: ai.preAi, ai: ai.postAi!, percent: v),
+                    applyAiAmountWithRetouch(
+                      pre: ai.preAi,
+                      ai: ai.postAi!,
+                      percent: v,
+                    ),
                   );
             },
             onChangeEnd: () => ref
@@ -142,7 +151,11 @@ class _AiPanelState extends ConsumerState<AiPanel> {
               ref
                   .read(editorProvider(id).notifier)
                   .commit(
-                    applyAiAmount(pre: ai.preAi, ai: ai.postAi!, percent: v),
+                    applyAiAmountWithRetouch(
+                      pre: ai.preAi,
+                      ai: ai.postAi!,
+                      percent: v,
+                    ),
                     label: 'AI amount ${v.round()}%',
                     kind: HistoryKind.ai,
                   );

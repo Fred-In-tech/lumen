@@ -130,3 +130,10 @@ class VisionAutoEditProvider implements AutoEditProvider {
     );
   }
 }
+
+/// Seam for vision-suggested portrait retouch: `retouch.*` slider deltas the
+/// vision engine proposes for [outcome], added on top of the need-scaled
+/// Auto Retouch (capped). The gateway contract has no such field yet; when
+/// it gains one, parse it from the response into the outcome and return it
+/// here.
+Map<String, double> visionPortraitDeltas(AutoEditOutcome outcome) => const {};
