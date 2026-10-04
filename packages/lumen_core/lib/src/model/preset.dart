@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 
 import 'develop_settings.dart';
 import 'param_registry.dart';
+import 'portrait.dart';
 import 'settings_subset.dart';
 import 'tone_curve.dart';
 import 'treatment.dart';
@@ -17,6 +18,7 @@ class Preset {
     required Map<ParamId, double> values,
     this.curves,
     this.treatment,
+    this.portrait,
     this.createdAt,
   }) : values = Map.unmodifiable({
          for (final e in values.entries)
@@ -49,6 +51,11 @@ class Preset {
               settings.treatment != Treatment.color
           ? settings.treatment
           : null,
+      portrait:
+          groups.contains(SettingsGroup.portrait) &&
+              !settings.portrait.withoutIndividuals.isDefault
+          ? settings.portrait.withoutIndividuals
+          : null,
       createdAt: createdAt ?? DateTime.now().toUtc(),
     );
   }
@@ -67,6 +74,9 @@ class Preset {
     treatment: json['treatment'] == null
         ? null
         : Treatment.fromJson(json['treatment']),
+    portrait: json['portrait'] == null
+        ? null
+        : PortraitSettings.fromJson(json['portrait']).withoutIndividuals,
     createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
   );
 
@@ -77,16 +87,26 @@ class Preset {
   final Map<ParamId, double> values;
   final CurveSet? curves;
   final Treatment? treatment;
+
+  /// Group and backdrop retouch values (never per-person).
+  final PortraitSettings? portrait;
   final DateTime? createdAt;
 
   /// Applies this preset at [amount] (0..1), interpolating numeric values from current.
-  /// Curves and treatment apply when amount ≥ 0.5.
+  /// Portrait values interpolate too. Curves and treatment apply when amount ≥ 0.5.
   DevelopSettings apply(DevelopSettings current, {double amount = 1}) {
     final a = amount.clamp(0, 1).toDouble();
-    final next = current.withValues({
-      for (final e in values.entries)
-        e.key: current.value(e.key) + (e.value - current.value(e.key)) * a,
-    });
+    final p = portrait;
+    final next = current
+        .withValues({
+          for (final e in values.entries)
+            e.key: current.value(e.key) + (e.value - current.value(e.key)) * a,
+        })
+        .copyWith(
+          portrait: p == null
+              ? null
+              : PortraitSettings.lerp(current.portrait, p, a),
+        );
     if (a < 0.5) return next;
     return next.copyWith(curves: curves, treatment: treatment);
   }
@@ -99,6 +119,7 @@ class Preset {
     values: values,
     curves: curves,
     treatment: treatment,
+    portrait: portrait,
     createdAt: createdAt,
   );
 
@@ -112,6 +133,7 @@ class Preset {
     'values': Map<String, double>.of(values),
     'curves': curves?.toJson(),
     'treatment': treatment?.name,
+    if (portrait != null) 'portrait': portrait!.toJson(),
     'createdAt': createdAt?.toIso8601String(),
   };
 
@@ -122,7 +144,8 @@ class Preset {
       other.name == name &&
       const MapEquality<ParamId, double>().equals(other.values, values) &&
       other.curves == curves &&
-      other.treatment == treatment;
+      other.treatment == treatment &&
+      other.portrait == portrait;
 
   @override
   int get hashCode =>

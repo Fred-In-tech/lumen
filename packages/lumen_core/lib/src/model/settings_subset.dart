@@ -13,11 +13,13 @@ enum SettingsGroup {
   detail,
   effects,
   geometry,
-  masks;
+  masks,
+  portrait;
 
   /// Default selection of the copy dialog: everything except geometry and masks.
   static const Set<SettingsGroup> defaultCopy = {
     light, color, presence, hsl, bw, curve, grading, detail, effects, //
+    portrait,
   };
 
   static SettingsGroup forParam(ParamId id) =>
@@ -47,6 +49,7 @@ enum SettingsGroup {
     effects => 'Effects',
     geometry => 'Crop & geometry',
     masks => 'Masks',
+    portrait => 'Portrait retouch',
   };
 }
 
@@ -70,5 +73,8 @@ DevelopSettings pasteSettings({
             ? source.geometry
             : null,
         masks: groups.contains(SettingsGroup.masks) ? source.masks : null,
+        portrait: groups.contains(SettingsGroup.portrait)
+            ? source.portrait
+            : null,
       );
 }

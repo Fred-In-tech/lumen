@@ -2,6 +2,7 @@ import '../model/develop_settings.dart';
 import 'geometry.dart';
 import 'mask.dart';
 import 'param_registry.dart';
+import 'portrait.dart';
 import 'tone_curve.dart';
 import 'treatment.dart';
 
@@ -19,7 +20,8 @@ enum HistoryKind {
 
 /// One reversible change: [path] goes from [from] to [to] (JSON values).
 ///
-/// Paths: `values.<paramId>`, `curves.<channel>`, `treatment`, `geometry`, `masks`.
+/// Paths: `values.<paramId>`, `curves.<channel>`, `treatment`, `geometry`,
+/// `masks`, `portrait`.
 class HistoryOp {
   const HistoryOp(this.path, this.from, this.to);
 
@@ -61,6 +63,7 @@ DevelopSettings _apply(DevelopSettings s, String path, Object? v) {
                 .toList()
           : [],
     ),
+    'portrait' => s.copyWith(portrait: PortraitSettings.fromJson(v)),
     _ => s,
   };
 }
@@ -91,6 +94,9 @@ List<HistoryOp> _diffOps(DevelopSettings a, DevelopSettings b) {
   }
   if (a.masks.length != b.masks.length || !_listEq(a.masks, b.masks)) {
     ops.add(HistoryOp('masks', a.toJson()['masks'], b.toJson()['masks']));
+  }
+  if (a.portrait != b.portrait) {
+    ops.add(HistoryOp('portrait', a.portrait.toJson(), b.portrait.toJson()));
   }
   return ops;
 }
