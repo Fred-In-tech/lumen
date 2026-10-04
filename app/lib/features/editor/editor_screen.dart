@@ -10,6 +10,7 @@ import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/ai/ai_auto_run.dart';
 import 'package:lumen/features/editor/compare_suppress.dart';
 import 'package:lumen/features/editor/desktop_editor.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
@@ -240,7 +241,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
       showControlSearch(context, ref, _assetId, session: _session);
     } else if (k == LogicalKeyboardKey.keyA) {
       final session = _session;
-      if (session != null) runAutoEdit(ref, session);
+      if (session != null) runAiAuto(ref, session);
     } else if (k == LogicalKeyboardKey.arrowRight && keys.isAltPressed) {
       _step(1);
     } else if (k == LogicalKeyboardKey.arrowLeft && keys.isAltPressed) {
@@ -290,6 +291,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
       aiMaskRastersProvider(_assetId),
       (_, next) => _pushMaskRasters(session, next.value),
     );
+    // Face shape sliders warp as soon as faces are known.
+    ref.listen<FaceAnalysis?>(warpFacesProvider(_assetId), (_, faces) {
+      if (session?.renderer case final WarpSink sink) sink.setWarpFaces(faces);
+    });
     // Portrait retouch maps are built once per face analysis.
     ref.listen<AsyncValue<RetouchInputs?>>(
       retouchInputsProvider(_assetId),

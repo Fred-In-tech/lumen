@@ -10,6 +10,7 @@ import 'package:lumen/design/type.dart';
 import 'package:lumen/features/ai/auto_retouch.dart';
 import 'package:lumen/features/batch/batch_auto_edit.dart';
 import 'package:lumen/features/batch/remeasure_sync.dart';
+import 'package:lumen/features/crop/headshot.dart';
 import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/library/library_actions.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
@@ -179,6 +180,7 @@ class BatchBar extends ConsumerWidget {
                 }
               },
             ),
+          _HeadshotMenu(ids: ids),
           LumenButton(
             label: 'Export',
             kind: ButtonKind.ghost,
@@ -279,6 +281,53 @@ class _PresetMenu extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: Sp.s3, vertical: Sp.s2),
         child: Text(
           'Apply preset',
+          style: LumenType.button().copyWith(color: t.textSecondary),
+        ),
+      ),
+    );
+  }
+}
+
+/// Headshot crop for the whole selection (faces framed at 4:5, 1:1 or 2:3).
+class _HeadshotMenu extends ConsumerWidget {
+  const _HeadshotMenu({required this.ids});
+
+  final List<String> ids;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    return PopupMenuButton<HeadshotRatio>(
+      tooltip: 'Crop the selection as headshots',
+      color: t.surface3,
+      onSelected: (ratio) async {
+        final r = await headshotCropAssets(ref, ids, ratio);
+        if (!context.mounted) return;
+        final parts = [
+          '${r.cropped} cropped to ${ratio.id}',
+          if (r.noFace > 0) '${r.noFace} without a face left as is',
+          if (r.failed > 0) '${r.failed} failed',
+        ];
+        showToast(
+          context,
+          '${parts.join(' · ')}.',
+          kind: r.failed == 0 ? ToastKind.success : ToastKind.error,
+        );
+      },
+      itemBuilder: (_) => [
+        for (final ratio in HeadshotRatio.values)
+          PopupMenuItem(
+            value: ratio,
+            child: Text(
+              'Headshot ${ratio.id}',
+              style: LumenType.body().copyWith(color: t.textPrimary),
+            ),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Sp.s3, vertical: Sp.s2),
+        child: Text(
+          'Headshot',
           style: LumenType.button().copyWith(color: t.textSecondary),
         ),
       ),

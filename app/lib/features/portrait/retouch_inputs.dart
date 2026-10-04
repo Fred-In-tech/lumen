@@ -98,3 +98,19 @@ final backdropStatusProvider = Provider.family<BackdropState?, String>(
   (ref, assetId) =>
       ref.watch(retouchInputsProvider(assetId)).value?.maps.backdrop.state,
 );
+
+/// Faces the face-shape warp needs, as soon as they are known: when the photo
+/// has face edits or Portrait is open (null otherwise, nothing runs).
+final warpFacesProvider = Provider.family<FaceAnalysis?, String>((
+  ref,
+  assetId,
+) {
+  final hasEdits = ref.watch(
+    editorProvider(assetId)
+        .select((s) => s.value?.settings.portrait.hasFaceEdits ?? false),
+  );
+  final portraitOpen =
+      ref.watch(editorModuleProvider(assetId)) == EditorModule.portrait;
+  if (!hasEdits && !portraitOpen) return null;
+  return ref.watch(faceAnalysisProvider(assetId)).value?.analysis;
+});

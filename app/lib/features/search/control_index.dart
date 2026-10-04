@@ -79,6 +79,16 @@ const Map<String, List<String>> kControlSynonyms = {
   PortraitIds.teethDesaturate: ['whiten', 'yellow teeth', 'stains'],
   PortraitIds.lips: ['lipstick', 'mouth'],
   PortraitIds.blush: ['cheeks', 'rosy'],
+  PortraitIds.faceWidth: ['slim', 'thin face', 'reshape', 'face shape'],
+  PortraitIds.vShape: ['jawline', 'v line', 'slim', 'contour'],
+  PortraitIds.chin: ['jaw', 'chin length'],
+  PortraitIds.eyeSize: ['bigger eyes', 'enlarge eyes'],
+  PortraitIds.noseWidth: ['nose', 'slim nose'],
+  PortraitIds.mouthSize: ['mouth', 'lips size'],
+  PortraitIds.bgClean: ['backdrop', 'background', 'dust', 'seamless'],
+  PortraitIds.bgUnify: ['backdrop', 'background', 'falloff', 'even light'],
+  PortraitIds.bgUnifyLuminance: ['backdrop', 'brighter background'],
+  PortraitIds.strayHairs: ['flyaway', 'flyaways', 'frizz', 'hair'],
 };
 
 /// Every control the editor can reveal, in panel order.

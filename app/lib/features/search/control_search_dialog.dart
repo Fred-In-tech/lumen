@@ -7,6 +7,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/ai/ai_auto_run.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/features/editor/module_overlay.dart';
 import 'package:lumen/features/search/control_index.dart';
@@ -30,9 +31,7 @@ Future<void> showControlSearch(
     assetId,
     picked,
     sourceSize: session == null ? const Size(1, 1) : sourceSizeOf(session),
-    runAuto: session == null
-        ? null
-        : () => unawaited(runAutoEdit(ref, session)),
+    runAuto: session == null ? null : () => unawaited(runAiAuto(ref, session)),
   );
 }
 

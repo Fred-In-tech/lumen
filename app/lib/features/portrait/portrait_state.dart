@@ -25,35 +25,72 @@ class PortraitTarget {
   int get hashCode => Object.hash(group, personId);
 }
 
+/// What a pointer on the Portrait canvas does.
+enum PortraitCanvasTool { faces, spots, liquify, pen }
+
 /// Per-photo Portrait UI state (not part of the edit document).
 class PortraitUiState {
   const PortraitUiState({
     this.target = const PortraitTarget.group(FaceGroup.all),
     this.selectedFaceId,
     this.showFaces = true,
-    this.spotEdit = false,
+    this.tool = PortraitCanvasTool.faces,
+    this.liquifyTool = LiquifyTool.push,
+    this.liquifyRadius = 0.06,
+    this.liquifyStrength = 0.5,
+    this.penErase = false,
+    this.penRadius = 0.025,
+    this.penHardness = 0.5,
+    this.penFlow = 1,
   });
 
   final PortraitTarget target;
   final String? selectedFaceId;
   final bool showFaces;
 
+  final PortraitCanvasTool tool;
+
   /// The canvas shows detected spots to keep or remove (instead of faces).
-  final bool spotEdit;
+  bool get spotEdit => tool == PortraitCanvasTool.spots;
+
+  /// Liquify brush: tool, radius (fraction of the long edge), strength 0..1.
+  final LiquifyTool liquifyTool;
+  final double liquifyRadius;
+  final double liquifyStrength;
+
+  /// Skin pen brush (Manual Tuning Pen).
+  final bool penErase;
+  final double penRadius;
+  final double penHardness;
+  final double penFlow;
 
   PortraitUiState copyWith({
     PortraitTarget? target,
     String? selectedFaceId,
     bool clearSelection = false,
     bool? showFaces,
-    bool? spotEdit,
+    PortraitCanvasTool? tool,
+    LiquifyTool? liquifyTool,
+    double? liquifyRadius,
+    double? liquifyStrength,
+    bool? penErase,
+    double? penRadius,
+    double? penHardness,
+    double? penFlow,
   }) => PortraitUiState(
     target: target ?? this.target,
     selectedFaceId: clearSelection
         ? null
         : (selectedFaceId ?? this.selectedFaceId),
     showFaces: showFaces ?? this.showFaces,
-    spotEdit: spotEdit ?? this.spotEdit,
+    tool: tool ?? this.tool,
+    liquifyTool: liquifyTool ?? this.liquifyTool,
+    liquifyRadius: liquifyRadius ?? this.liquifyRadius,
+    liquifyStrength: liquifyStrength ?? this.liquifyStrength,
+    penErase: penErase ?? this.penErase,
+    penRadius: penRadius ?? this.penRadius,
+    penHardness: penHardness ?? this.penHardness,
+    penFlow: penFlow ?? this.penFlow,
   );
 }
 
@@ -83,7 +120,29 @@ class PortraitUiNotifier extends Notifier<PortraitUiState> {
 
   void setShowFaces(bool v) => state = state.copyWith(showFaces: v);
 
-  void setSpotEdit(bool v) => state = state.copyWith(spotEdit: v);
+  void setSpotEdit(bool v) =>
+      setTool(v ? PortraitCanvasTool.spots : PortraitCanvasTool.faces);
+
+  void setTool(PortraitCanvasTool t) => state = state.copyWith(tool: t);
+
+  /// Turns [t] on, or back to face selection when it is already active.
+  void toggleTool(PortraitCanvasTool t) =>
+      setTool(state.tool == t ? PortraitCanvasTool.faces : t);
+
+  void setLiquify({LiquifyTool? tool, double? radius, double? strength}) =>
+      state = state.copyWith(
+        liquifyTool: tool,
+        liquifyRadius: radius,
+        liquifyStrength: strength,
+      );
+
+  void setPen({bool? erase, double? radius, double? hardness, double? flow}) =>
+      state = state.copyWith(
+        penErase: erase,
+        penRadius: radius,
+        penHardness: hardness,
+        penFlow: flow,
+      );
 }
 
 final portraitUiProvider =

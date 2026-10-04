@@ -7,15 +7,14 @@ import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/features/develop/develop_group.dart';
 import 'package:lumen/features/editor/compare_suppress.dart';
-import 'package:lumen/features/ai/auto_retouch.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/portrait/portrait_slider.dart';
+import 'package:lumen/features/portrait/portrait_header.dart';
 import 'package:lumen/features/portrait/portrait_state.dart';
+import 'package:lumen/features/portrait/portrait_tools.dart';
 import 'package:lumen/features/search/reveal.dart';
 import 'package:lumen/features/search/reveal_target.dart';
-import 'package:lumen/widgets/ai_glyph.dart';
 import 'package:lumen/widgets/buttons.dart';
-import 'package:lumen/widgets/segmented.dart';
 
 typedef PortraitSection = ({String title, List<String> ids});
 
@@ -53,6 +52,7 @@ const List<PortraitSection> kPortraitSections = [
       PortraitIds.eyeWhites,
       PortraitIds.iris,
       PortraitIds.redVein,
+      PortraitIds.redEye,
     ],
   ),
   (
@@ -60,9 +60,27 @@ const List<PortraitSection> kPortraitSections = [
     ids: [PortraitIds.teethBrightness, PortraitIds.teethDesaturate],
   ),
   (title: 'Makeup', ids: [PortraitIds.lips, PortraitIds.blush]),
+  (
+    title: 'Face shape',
+    ids: [
+      PortraitIds.faceWidth,
+      PortraitIds.vShape,
+      PortraitIds.chin,
+      PortraitIds.eyeSize,
+      PortraitIds.noseWidth,
+      PortraitIds.mouthSize,
+    ],
+  ),
+  (
+    title: 'Background',
+    ids: [
+      PortraitIds.bgClean,
+      PortraitIds.bgUnify,
+      PortraitIds.bgUnifyLuminance,
+      PortraitIds.strayHairs,
+    ],
+  ),
 ];
-
-const _individualKey = 'individual';
 
 /// Evoto-style Portrait module: face status, group tabs (All · Female · Male ·
 /// Child · Senior · Individual), one-click Auto Retouch and retouch sections.
@@ -91,27 +109,29 @@ class PortraitPanel extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _FaceStatus(
+              PortraitFaceStatus(
                 assetId: assetId,
                 status: status,
                 showFaces: ui.showFaces,
               ),
               if (selected != null) ...[
                 const SizedBox(height: Sp.s3),
-                _TagRow(assetId: assetId, face: selected),
+                FaceTagRow(assetId: assetId, face: selected),
               ],
               const SizedBox(height: Sp.s3),
-              _TargetTabs(assetId: assetId, ui: ui),
+              PortraitTargetTabs(assetId: assetId, ui: ui),
               const SizedBox(height: Sp.s3),
               RevealTarget(
                 assetId: assetId,
                 id: 'autoRetouch',
-                child: _AutoRetouchButton(assetId: assetId),
+                child: AutoRetouchButton(assetId: assetId),
               ),
             ],
           ),
         ),
-        for (final section in kPortraitSections)
+        for (final section in kPortraitSections) ...[
+          if (section.title == 'Background')
+            LiquifyGroup(assetId: assetId, ui: ui),
           DevelopGroup(
             key: ValueKey('portrait-${section.title}'),
             title: section.title,
@@ -128,6 +148,10 @@ class PortraitPanel extends ConsumerWidget {
             },
             child: Column(
               children: [
+                if (section.title == 'Background')
+                  BackdropNote(assetId: assetId),
+                if (section.title == 'Skin')
+                  SkinPenRow(assetId: assetId, ui: ui, portrait: portrait),
                 if (section.title == 'Blemishes')
                   RevealTarget(
                     assetId: assetId,
@@ -154,6 +178,7 @@ class PortraitPanel extends ConsumerWidget {
               ],
             ),
           ),
+        ],
       ],
     );
   }
@@ -180,6 +205,11 @@ class PortraitPanel extends ConsumerWidget {
     if (s == null) return;
     var p = s.portrait;
     for (final id in section.ids) {
+      final spec = PortraitRegistry.byId(id);
+      if (spec.scope == PortraitScope.image) {
+        p = p.withImageValue(id, spec.defaultValue);
+        continue;
+      }
       final person = t.personId;
       if (person != null) {
         p = p.clearIndividualValue(person, id);
@@ -197,180 +227,6 @@ class PortraitPanel extends ConsumerWidget {
       s.copyWith(portrait: p),
       label: 'Reset ${section.title} · ${t.label}',
       kind: HistoryKind.reset,
-    );
-  }
-}
-
-class _FaceStatus extends ConsumerWidget {
-  const _FaceStatus({
-    required this.assetId,
-    required this.status,
-    required this.showFaces,
-  });
-
-  final String assetId;
-  final AsyncValue<FaceAnalysis?> status;
-  final bool showFaces;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = context.tokens;
-    final count = status.value?.faces.length;
-    final text = switch (count) {
-      null when status.hasError => 'Face detection isn’t available here. Masks and manual tools still work.',
-      null => 'Detecting faces…',
-      0 => 'No faces found. Retouch applies when a face is visible.',
-      1 => '1 face. Click it to edit this person only.',
-      _ => '$count faces. Click a face to edit one person.',
-    };
-    return Row(
-      children: [
-        Icon(LucideIcons.scanFace, size: 16, color: t.textSecondary),
-        const SizedBox(width: Sp.s2),
-        Expanded(
-          child: Text(
-            text,
-            style: LumenType.body().copyWith(color: t.textSecondary),
-          ),
-        ),
-        if ((count ?? 0) > 0)
-          LumenIconButton(
-            icon: showFaces ? LucideIcons.eye : LucideIcons.eyeOff,
-            tooltip: showFaces ? 'Hide face boxes' : 'Show face boxes',
-            onPressed: () => ref
-                .read(portraitUiProvider(assetId).notifier)
-                .setShowFaces(!showFaces),
-          ),
-      ],
-    );
-  }
-}
-
-class _TargetTabs extends ConsumerWidget {
-  const _TargetTabs({required this.assetId, required this.ui});
-
-  final String assetId;
-  final PortraitUiState ui;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(portraitUiProvider(assetId).notifier);
-    final options = <String, String>{
-      for (final g in FaceGroup.values) g.name: g.label,
-      if (ui.selectedFaceId != null) _individualKey: 'Individual',
-    };
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Segmented<String>(
-        value: ui.target.isPerson ? _individualKey : ui.target.group.name,
-        options: options,
-        onChanged: (key) {
-          if (key == _individualKey) return;
-          notifier.selectGroup(FaceGroup.fromName(key));
-        },
-      ),
-    );
-  }
-}
-
-class _AutoRetouchButton extends ConsumerStatefulWidget {
-  const _AutoRetouchButton({required this.assetId});
-
-  final String assetId;
-
-  @override
-  ConsumerState<_AutoRetouchButton> createState() => _AutoRetouchState();
-}
-
-/// Need-scaled Auto Retouch: measures every face (skin, blemishes, eyes,
-/// teeth, lines) and sets values to match, never touching values set by
-/// hand. Falls back to the static natural recipe when faces cannot be
-/// measured.
-class _AutoRetouchState extends ConsumerState<_AutoRetouchButton> {
-  bool _busy = false;
-
-  Future<void> _run() async {
-    final id = widget.assetId;
-    final doc = ref.read(editorProvider(id)).value?.doc;
-    if (doc == null) return;
-    // Measure only once faces are known (the panel's analysis found them);
-    // otherwise the static recipe applies right away.
-    final faces = ref.read(portraitFacesProvider(id));
-    setState(() => _busy = true);
-    try {
-      final RetouchNeeds? needs;
-      if (faces == null || faces.faces.isEmpty) {
-        needs = null;
-      } else {
-        needs =
-            (await ref
-                    .read(autoRetouchPlannerProvider)
-                    .measure(id, doc.settings))
-                .needs;
-      }
-      final now = ref.read(editorProvider(id)).value;
-      if (now == null) return;
-      ref
-          .read(editorProvider(id).notifier)
-          .commit(
-            now.settings.copyWith(
-              portrait: PortraitPresets.autoRetouchFor(
-                now.settings.portrait,
-                needs,
-                locked: manualPortraitLocks(now.doc.history),
-              ),
-            ),
-            label: 'Auto Retouch',
-            kind: HistoryKind.preset,
-          );
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => LumenButton(
-    label: _busy ? 'Measuring faces…' : 'Auto Retouch',
-    kind: ButtonKind.ai,
-    expand: true,
-    icon: const AiGlyph(size: 14, neutral: true),
-    tooltip: 'Skin, eyes and teeth retouch scaled to what each face needs',
-    onPressed: _busy ? null : _run,
-  );
-}
-
-/// Lets the user correct the selected face's retouch group (Evoto's gender /
-/// age chips). Stored in the local face cache only.
-class _TagRow extends ConsumerWidget {
-  const _TagRow({required this.assetId, required this.face});
-
-  final String assetId;
-  final DetectedFace face;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = context.tokens;
-    return Row(
-      children: [
-        Text(
-          'Tag as',
-          style: LumenType.caption().copyWith(color: t.textTertiary),
-        ),
-        const SizedBox(width: Sp.s2),
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Segmented<FaceGroup>(
-              value: face.group,
-              options: {
-                for (final g in FaceGroup.values)
-                  g: g == FaceGroup.all ? 'None' : g.label,
-              },
-              onChanged: (g) => tagFace(ref, assetId, face, g),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
