@@ -206,4 +206,70 @@ void main() {
       }
     });
   });
+
+  group('PortraitSpots', () {
+    const a = SpotAnchor(0.41, 0.31, 0.03);
+    const b = SpotAnchor(0.52, 0.40, 0.02);
+
+    test('keep/remove are exclusive; json round trip; lenient parse', () {
+      final s = PortraitSpots.none.withRemove(a).withKeep(b).withKeep(a);
+      expect(s.keep, [b, a]);
+      expect(s.remove, isEmpty);
+      expect(PortraitSpots.fromJson(s.toJson()), s);
+      final bad = PortraitSpots.fromJson({
+        'keep': [
+          {'u': 'x'},
+          a.toJson(),
+          null,
+        ],
+        'remove': 7,
+      });
+      expect(bad.keep.single, a);
+      expect(bad.remove, isEmpty);
+    });
+
+    test('spots are image-specific: kept out of presets and paste', () {
+      final p = PortraitSettings.empty
+          .withGroupValue(FaceGroup.all, PortraitIds.acne, 60)
+          .withSpots(PortraitSpots.none.withRemove(a));
+      expect(p.hasFaceEdits, isTrue);
+      expect(
+        PortraitSettings.empty
+            .withSpots(PortraitSpots.none.withRemove(a))
+            .hasFaceEdits,
+        isTrue,
+      );
+      expect(PortraitSettings.fromJson(p.toJson()), p);
+      final s = DevelopSettings.defaults.copyWith(portrait: p);
+      final preset = Preset.fromSettings(
+        id: 'x',
+        name: 'x',
+        settings: s,
+        groups: {SettingsGroup.portrait},
+      );
+      expect(preset.portrait!.spots.isEmpty, isTrue);
+      final target = DevelopSettings.defaults.copyWith(
+        portrait: PortraitSettings.empty.withSpots(
+          PortraitSpots.none.withKeep(b),
+        ),
+      );
+      final pasted = pasteSettings(
+        source: s,
+        target: target,
+        groups: {SettingsGroup.portrait},
+      );
+      expect(pasted.portrait.spots, target.portrait.spots);
+      expect(
+        pasted.portrait.valueFor(PortraitIds.acne, group: FaceGroup.all),
+        60,
+      );
+      final e = HistoryEntry.diff(
+        label: 'Spot',
+        kind: HistoryKind.slider,
+        before: DevelopSettings.defaults,
+        after: s,
+      );
+      expect(e.applyBackward(s), DevelopSettings.defaults);
+    });
+  });
 }

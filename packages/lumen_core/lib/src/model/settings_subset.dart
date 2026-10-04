@@ -77,7 +77,7 @@ DevelopSettings pasteSettings({
             : null,
         masks: groups.contains(SettingsGroup.masks) ? source.masks : null,
         portrait: groups.contains(SettingsGroup.portrait)
-            ? source.portrait
+            ? source.portrait.withSpots(target.portrait.spots)
             : null,
         heal: groups.contains(SettingsGroup.heal) ? source.heal : null,
       );

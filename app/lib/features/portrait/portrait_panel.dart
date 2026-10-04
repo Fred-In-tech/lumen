@@ -31,6 +31,16 @@ const List<PortraitSection> kPortraitSections = [
     ids: [PortraitIds.acne, PortraitIds.freckle, PortraitIds.mole],
   ),
   (
+    title: 'Wrinkles',
+    ids: [
+      PortraitIds.wrinkleForehead,
+      PortraitIds.wrinkleFrown,
+      PortraitIds.wrinkleCrowsFeet,
+      PortraitIds.wrinkleSmile,
+      PortraitIds.wrinkleMarionette,
+    ],
+  ),
+  (
     title: 'Eyes',
     ids: [
       PortraitIds.darkCircles,
@@ -45,6 +55,7 @@ const List<PortraitSection> kPortraitSections = [
     title: 'Teeth',
     ids: [PortraitIds.teethBrightness, PortraitIds.teethDesaturate],
   ),
+  (title: 'Makeup', ids: [PortraitIds.lips, PortraitIds.blush]),
 ];
 
 const _individualKey = 'individual';
@@ -100,6 +111,8 @@ class PortraitPanel extends ConsumerWidget {
             onReset: () => _resetSection(ref, section, target),
             child: Column(
               children: [
+                if (section.title == 'Blemishes')
+                  _SpotEditRow(assetId: assetId, ui: ui, portrait: portrait),
                 for (final id in section.ids)
                   if (_visible(portrait, id, target))
                     PortraitSlider(
@@ -289,6 +302,68 @@ class _TagRow extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Blemishes: toggle the on-canvas spot editor, with the decision counts and
+/// a reset (spots are per photo; they never sync or go into presets).
+class _SpotEditRow extends ConsumerWidget {
+  const _SpotEditRow({
+    required this.assetId,
+    required this.ui,
+    required this.portrait,
+  });
+
+  final String assetId;
+  final PortraitUiState ui;
+  final PortraitSettings portrait;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    final spots = portrait.spots;
+    final counts = spots.isEmpty
+        ? 'Click spots on the photo to keep or remove them.'
+        : '${spots.remove.length} removed · ${spots.keep.length} kept by hand';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Sp.s2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              counts,
+              style: LumenType.caption().copyWith(color: t.textTertiary),
+            ),
+          ),
+          if (!spots.isEmpty)
+            LumenIconButton(
+              icon: LucideIcons.rotateCcw,
+              tooltip: 'Reset spot choices',
+              onPressed: () {
+                final s = ref.read(editorProvider(assetId)).value?.settings;
+                if (s == null) return;
+                ref
+                    .read(editorProvider(assetId).notifier)
+                    .commit(
+                      s.copyWith(
+                        portrait: s.portrait.withSpots(PortraitSpots.none),
+                      ),
+                      label: 'Reset spot choices',
+                      kind: HistoryKind.reset,
+                    );
+              },
+            ),
+          LumenButton(
+            label: ui.spotEdit ? 'Done' : 'Edit spots',
+            kind: ui.spotEdit ? ButtonKind.primary : ButtonKind.secondary,
+            height: 28,
+            onPressed: () => ref
+                .read(portraitUiProvider(assetId).notifier)
+                .setSpotEdit(!ui.spotEdit),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -18,7 +18,11 @@ RgbaBuffer retouchImage(
   BlemishOverrides overrides = BlemishOverrides.none,
 }) {
   final uniforms = RetouchUniforms.fromSettings(settings, analysis);
-  if (uniforms.isIdentity) return src;
+  if (uniforms.isIdentity &&
+      overrides.remove.isEmpty &&
+      overrides.removeAt.isEmpty) {
+    return src;
+  }
   final maps = computeRetouchMaps(
     src,
     analysis,

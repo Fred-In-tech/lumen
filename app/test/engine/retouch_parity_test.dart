@@ -100,6 +100,22 @@ void main() {
     }
   });
 
+  test('a user-forced spot removal heals with every slider at 0', () async {
+    final acne = maps.blemishes.firstWhere((b) => b.kind == BlemishKind.acne);
+    final forced = computeRetouchMaps(
+      p.image,
+      p.analysis,
+      overrides: BlemishOverrides(removeAt: [acne.anchor]),
+    );
+    expect(forced.hasForcedSpots, isTrue);
+    final r = await check(
+      'forced removal only',
+      PortraitSettings.empty,
+      using: forced,
+    );
+    expect(r.changed, greaterThan(0));
+  });
+
   test('blemish slider levels', () async {
     var last = -1;
     for (final v in [10.0, 35.0, 60.0, 90.0]) {

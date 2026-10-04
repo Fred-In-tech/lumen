@@ -10,6 +10,11 @@ abstract final class PortraitPresets {
     PortraitIds.skinEven: 30,
     PortraitIds.skinShine: 30,
     PortraitIds.acne: 80,
+    PortraitIds.wrinkleForehead: 30,
+    PortraitIds.wrinkleFrown: 30,
+    PortraitIds.wrinkleCrowsFeet: 25,
+    PortraitIds.wrinkleSmile: 20,
+    PortraitIds.wrinkleMarionette: 20,
     PortraitIds.darkCircles: 40,
     PortraitIds.eyeBags: 35,
     PortraitIds.eyeWhites: 35,
@@ -26,7 +31,13 @@ abstract final class PortraitPresets {
       PortraitIds.acne: 40,
       PortraitIds.eyeBags: 0,
     },
-    FaceGroup.senior: {PortraitIds.skinSoftening: 30, PortraitIds.eyeBags: 25},
+    FaceGroup.senior: {
+      PortraitIds.skinSoftening: 30,
+      PortraitIds.eyeBags: 25,
+      PortraitIds.wrinkleForehead: 15,
+      PortraitIds.wrinkleCrowsFeet: 10,
+      PortraitIds.wrinkleSmile: 10,
+    },
   };
 
   /// Applies [natural] to the All group (plus group overrides), keeping any

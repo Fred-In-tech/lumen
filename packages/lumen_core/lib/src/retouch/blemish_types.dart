@@ -5,6 +5,10 @@
 /// a per-pixel spot code, so dragging a blemish slider is uniform-only.
 library;
 
+import '../model/spot_anchor.dart';
+
+export '../model/spot_anchor.dart';
+
 /// Spot class. Each class has its own slider (`blemish.acne`,
 /// `blemish.freckle`, `blemish.mole`); freckles and moles stay unless their
 /// slider asks otherwise.
@@ -124,45 +128,9 @@ class BlemishCandidate {
       'z=${score.toStringAsFixed(1)})';
 }
 
-/// A persisted spot decision: where the spot was (normalized source uv)
-/// and how big (IOD units). Candidate ids are *not* stable across
-/// re-analysis at another `Rres` (their centres snap to a different crop
-/// grid), so documents store anchors and [BlemishOverrides] matches them
-/// to the current candidates by position.
-class SpotAnchor {
-  const SpotAnchor(this.u, this.v, this.radiusIod);
-
-  factory SpotAnchor.of(BlemishCandidate c) =>
-      SpotAnchor(c.u, c.v, c.radiusIod);
-
-  factory SpotAnchor.fromJson(Map<String, Object?> json) => SpotAnchor(
-    (json['u']! as num).toDouble(),
-    (json['v']! as num).toDouble(),
-    (json['r']! as num).toDouble(),
-  );
-
-  final double u;
-  final double v;
-  final double radiusIod;
-
-  /// Rounded to 1e-5 of the image side and 1e-3 IOD.
-  Map<String, Object?> toJson() => {
-    'u': _round(u, 1e5),
-    'v': _round(v, 1e5),
-    'r': _round(radiusIod, 1e3),
-  };
-
-  static double _round(double x, double scale) => (x * scale).round() / scale;
-
-  @override
-  bool operator ==(Object other) =>
-      other is SpotAnchor &&
-      other.u == u &&
-      other.v == v &&
-      other.radiusIod == radiusIod;
-
-  @override
-  int get hashCode => Object.hash(u, v, radiusIod);
+/// The persisted anchor of a detected candidate.
+extension BlemishCandidateAnchor on BlemishCandidate {
+  SpotAnchor get anchor => SpotAnchor(u, v, radiusIod);
 }
 
 /// An anchor matches a candidate within this distance (IOD units) plus

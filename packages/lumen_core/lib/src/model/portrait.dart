@@ -1,5 +1,7 @@
 import 'package:collection/collection.dart';
 
+import 'spot_anchor.dart';
+
 /// Retouch profile a detected face uses (Evoto-style groups). These are
 /// user-chosen retouch profiles, not identity claims; [all] is the base
 /// every face inherits from.
@@ -210,6 +212,7 @@ class PortraitSettings {
     this.groups = const {},
     this.individuals = const {},
     this.image = const {},
+    this.spots = PortraitSpots.none,
   });
 
   factory PortraitSettings.fromJson(Object? json) {
@@ -237,6 +240,7 @@ class PortraitSettings {
       groups: Map.unmodifiable(groups),
       individuals: Map.unmodifiable(individuals),
       image: _readValues(json['image'], dropDefaults: true),
+      spots: PortraitSpots.fromJson(json['spots']),
     );
   }
 
@@ -246,10 +250,15 @@ class PortraitSettings {
   final Map<String, Map<String, double>> individuals;
   final Map<String, double> image;
 
-  bool get isDefault => groups.isEmpty && individuals.isEmpty && image.isEmpty;
+  /// Per-photo spot keep/remove decisions (image-specific).
+  final PortraitSpots spots;
+
+  bool get isDefault =>
+      groups.isEmpty && individuals.isEmpty && image.isEmpty && spots.isEmpty;
 
   /// True when any face-scope value is set (face retouch must run).
-  bool get hasFaceEdits => groups.isNotEmpty || individuals.isNotEmpty;
+  bool get hasFaceEdits =>
+      groups.isNotEmpty || individuals.isNotEmpty || spots.remove.isNotEmpty;
 
   /// Effective face-scope value for a face in [group], optionally a person.
   double valueFor(String id, {required FaceGroup group, String? personId}) {
@@ -313,9 +322,14 @@ class PortraitSettings {
     return _copy(image: _clean({...image, id: v}, dropDefaults: true));
   }
 
-  /// Without per-person values (presets are not tied to people).
-  PortraitSettings get withoutIndividuals =>
-      individuals.isEmpty ? this : _copy(individuals: const {});
+  /// Without per-person values and spot decisions: what a preset may carry
+  /// (both are tied to one photo's faces).
+  PortraitSettings get transferable => individuals.isEmpty && spots.isEmpty
+      ? this
+      : _copy(individuals: const {}, spots: PortraitSpots.none);
+
+  /// Replaces the spot decisions.
+  PortraitSettings withSpots(PortraitSpots spots) => _copy(spots: spots);
 
   /// Interpolates from [from] toward [to] by [t] (0..1) for preset Amount.
   /// Per-person values come from [from]; group overrides present on either
@@ -338,6 +352,7 @@ class PortraitSettings {
     return PortraitSettings(
       groups: Map.unmodifiable(groups),
       individuals: from.individuals,
+      spots: from.spots,
       image: _clean({
         for (final id in {...from.image.keys, ...to.image.keys})
           id: mix(from.imageValue(id), to.imageValue(id)),
@@ -349,10 +364,12 @@ class PortraitSettings {
     Map<FaceGroup, Map<String, double>>? groups,
     Map<String, Map<String, double>>? individuals,
     Map<String, double>? image,
+    PortraitSpots? spots,
   }) => PortraitSettings(
     groups: groups ?? this.groups,
     individuals: individuals ?? this.individuals,
     image: image ?? this.image,
+    spots: spots ?? this.spots,
   );
 
   static Map<K, Map<String, double>> _put<K>(
@@ -382,6 +399,7 @@ class PortraitSettings {
       for (final e in individuals.entries) e.key: Map.of(e.value),
     },
     'image': Map.of(image),
+    if (!spots.isEmpty) 'spots': spots.toJson(),
   };
 
   static const _eq = DeepCollectionEquality();
@@ -391,9 +409,14 @@ class PortraitSettings {
       other is PortraitSettings &&
       _eq.equals(other.groups, groups) &&
       _eq.equals(other.individuals, individuals) &&
-      _eq.equals(other.image, image);
+      _eq.equals(other.image, image) &&
+      other.spots == spots;
 
   @override
-  int get hashCode =>
-      Object.hash(_eq.hash(groups), _eq.hash(individuals), _eq.hash(image));
+  int get hashCode => Object.hash(
+    _eq.hash(groups),
+    _eq.hash(individuals),
+    _eq.hash(image),
+    spots,
+  );
 }

@@ -53,8 +53,8 @@ class Preset {
           : null,
       portrait:
           groups.contains(SettingsGroup.portrait) &&
-              !settings.portrait.withoutIndividuals.isDefault
-          ? settings.portrait.withoutIndividuals
+              !settings.portrait.transferable.isDefault
+          ? settings.portrait.transferable
           : null,
       createdAt: createdAt ?? DateTime.now().toUtc(),
     );
@@ -76,7 +76,7 @@ class Preset {
         : Treatment.fromJson(json['treatment']),
     portrait: json['portrait'] == null
         ? null
-        : PortraitSettings.fromJson(json['portrait']).withoutIndividuals,
+        : PortraitSettings.fromJson(json['portrait']).transferable,
     createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
   );
 

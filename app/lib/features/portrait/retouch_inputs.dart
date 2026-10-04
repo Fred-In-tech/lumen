@@ -14,12 +14,21 @@ typedef RetouchInputs = ({RetouchMaps maps, FaceAnalysis faces});
 
 /// Builds the maps off the UI isolate. Top-level so the isolate closure only
 /// captures plain data.
-Future<RetouchMaps> _computeMaps(RgbaBuffer pixels, FaceAnalysis faces) =>
-    runInBackground(() => computeRetouchMaps(pixels, faces));
+Future<RetouchMaps> _computeMaps(
+  RgbaBuffer pixels,
+  FaceAnalysis faces,
+  PortraitSpots spots,
+) => runInBackground(
+  () => computeRetouchMaps(
+    pixels,
+    faces,
+    overrides: BlemishOverrides(keepAt: spots.keep, removeAt: spots.remove),
+  ),
+);
 
 /// Retouch maps for one photo, built once per face analysis (slider drags
-/// never rebuild them; they only change shader uniforms). Null when the photo
-/// has no usable faces.
+/// never rebuild them; they only change shader uniforms) and rebuilt when the
+/// user keeps or removes a spot. Null when the photo has no usable faces.
 final retouchMapsBuildProvider = FutureProvider.family<RetouchInputs?, String>((
   ref,
   assetId,
@@ -27,11 +36,15 @@ final retouchMapsBuildProvider = FutureProvider.family<RetouchInputs?, String>((
   final faces = (await ref.watch(faceAnalysisProvider(assetId).future))
       .analysis;
   if (faces.faces.isEmpty) return null;
+  final spots = ref.watch(
+    editorProvider(assetId)
+        .select((s) => s.value?.settings.portrait.spots ?? PortraitSpots.none),
+  );
   final decoded = await loadAnalysisPixels(
     ref.watch(catalogRepositoryProvider),
     assetId,
   );
-  final maps = await _computeMaps(decoded.pixels, faces);
+  final maps = await _computeMaps(decoded.pixels, faces, spots);
   return maps.hasFaces ? (maps: maps, faces: faces) : null;
 });
 

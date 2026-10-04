@@ -128,6 +128,7 @@ RetouchMaps _assemble(
           lipShiftL: p.regions.makeup.lipShiftL,
           blushA: p.regions.makeup.blushA,
           blushB: p.regions.makeup.blushB,
+          hasForcedSpots: p.hasForcedSpots,
         ),
     ],
     blemishes: List.unmodifiable([for (final p in planes) ...p.blemishes]),

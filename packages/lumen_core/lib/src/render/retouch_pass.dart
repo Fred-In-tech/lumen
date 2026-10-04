@@ -40,11 +40,13 @@ abstract final class RetouchPassIndex {
 abstract final class RetouchPassUniforms {
   /// True when face [slot] has maps and a non-identity row.
   static bool slotActive(RetouchMaps maps, RetouchUniforms u, int slot) =>
-      !u.row(slot).isIdentity && maps.faceInSlot(slot) != null;
+      retouchSlotActive(maps, u, slot);
 
   /// True when the pass changes at least one pixel (otherwise skip it).
   static bool isActive(RetouchMaps maps, RetouchUniforms u) {
-    if (u.isIdentity || !maps.hasFaces) return false;
+    if (!maps.hasFaces || (u.isIdentity && !maps.hasForcedSpots)) {
+      return false;
+    }
     for (var k = 0; k < kMaxRetouchFaces; k++) {
       if (slotActive(maps, u, k)) return true;
     }

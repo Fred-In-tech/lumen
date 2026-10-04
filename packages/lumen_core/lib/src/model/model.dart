@@ -7,5 +7,6 @@ export 'face_analysis.dart';
 export 'migrations.dart';
 export 'portrait.dart';
 export 'portrait_presets.dart';
+export 'spot_anchor.dart';
 export 'preset.dart';
 export 'settings_subset.dart';

@@ -31,23 +31,29 @@ class PortraitUiState {
     this.target = const PortraitTarget.group(FaceGroup.all),
     this.selectedFaceId,
     this.showFaces = true,
+    this.spotEdit = false,
   });
 
   final PortraitTarget target;
   final String? selectedFaceId;
   final bool showFaces;
 
+  /// The canvas shows detected spots to keep or remove (instead of faces).
+  final bool spotEdit;
+
   PortraitUiState copyWith({
     PortraitTarget? target,
     String? selectedFaceId,
     bool clearSelection = false,
     bool? showFaces,
+    bool? spotEdit,
   }) => PortraitUiState(
     target: target ?? this.target,
     selectedFaceId: clearSelection
         ? null
         : (selectedFaceId ?? this.selectedFaceId),
     showFaces: showFaces ?? this.showFaces,
+    spotEdit: spotEdit ?? this.spotEdit,
   );
 }
 
@@ -76,6 +82,8 @@ class PortraitUiNotifier extends Notifier<PortraitUiState> {
   );
 
   void setShowFaces(bool v) => state = state.copyWith(showFaces: v);
+
+  void setSpotEdit(bool v) => state = state.copyWith(spotEdit: v);
 }
 
 final portraitUiProvider =

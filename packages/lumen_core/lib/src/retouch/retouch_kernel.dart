@@ -20,7 +20,7 @@ class RetouchKernel {
   RetouchKernel(this.maps, this.uniforms)
     : _active = List.generate(
         kMaxRetouchFaces,
-        (k) => !uniforms.row(k).isIdentity && maps.faceInSlot(k) != null,
+        (k) => retouchSlotActive(maps, uniforms, k),
       ),
       _info = List.generate(kMaxRetouchFaces, maps.faceInSlot);
 
@@ -235,7 +235,7 @@ class RetouchKernel {
 /// identity or there are no faces; otherwise a new buffer in which only
 /// pixels touched by an effect differ.
 RgbaBuffer applyRetouch(RgbaBuffer src, RetouchMaps maps, RetouchUniforms u) {
-  if (u.isIdentity || !maps.hasFaces) return src;
+  if (!maps.hasFaces || (u.isIdentity && !maps.hasForcedSpots)) return src;
   final kernel = RetouchKernel(maps, u);
   final out = src.copy();
   final w = src.width, h = src.height, d = src.data;

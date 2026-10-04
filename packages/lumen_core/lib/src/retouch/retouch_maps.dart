@@ -32,6 +32,7 @@ import 'dart:typed_data';
 
 import 'blemish_types.dart';
 import 'map_rect.dart';
+import 'retouch_uniforms.dart';
 
 /// Faces with their own uniform row (more faces are not retouched).
 const int kMaxRetouchFaces = 8;
@@ -98,6 +99,7 @@ class RetouchFaceInfo {
     this.lipShiftL = 0,
     this.blushA = 0,
     this.blushB = 0,
+    this.hasForcedSpots = false,
   });
 
   final int slot;
@@ -108,6 +110,9 @@ class RetouchFaceInfo {
 
   /// IOD in map pixels.
   final double iod;
+
+  /// User-forced spot removals exist on this face (active at identity).
+  final bool hasForcedSpots;
 
   /// Sclera P90 OkLab L (teeth cap, §3.6).
   final double teethCapL;
@@ -273,4 +278,16 @@ class RetouchMaps {
     }
     return out;
   }
+}
+
+/// True when face [slot] has maps and something to do: a non-identity
+/// slider row or user-forced spot removals.
+bool retouchSlotActive(RetouchMaps maps, RetouchUniforms u, int slot) {
+  final face = maps.faceInSlot(slot);
+  return face != null && (!u.row(slot).isIdentity || face.hasForcedSpots);
+}
+
+extension RetouchMapsForced on RetouchMaps {
+  /// Any face carries user-forced spot removals.
+  bool get hasForcedSpots => faces.any((f) => f.hasForcedSpots);
 }

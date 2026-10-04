@@ -25,6 +25,8 @@ BlemishCandidate _near(RetouchMaps m, SynthSpot s, SynthFace f, int size) {
   });
 }
 
+SpotAnchor _anchor(BlemishCandidate c) => c.anchor;
+
 void main() {
   test('anchors round-trip through JSON (rounded)', () {
     const a = SpotAnchor(0.4183219, 0.3120934, 0.0261234);
@@ -50,7 +52,7 @@ void main() {
       final same = mSmall.blemishes.where((b) => ids.contains(b.id)).length;
       expect(same, lessThan(mSmall.blemishes.length ~/ 2));
       for (final s in kDefaultSpots) {
-        final a = SpotAnchor.of(_near(mSmall, s, small.faces.first, 512));
+        final a = _anchor(_near(mSmall, s, small.faces.first, 512));
         final b = _near(mLarge, s, large.faces.first, 640);
         final d = math.sqrt(
           math.pow((a.u - b.u) * 640, 2) + math.pow((a.v - b.v) * 640, 2),
@@ -66,10 +68,8 @@ void main() {
       final f = large.faces.first;
       final acne = kAcneSpots.first, freckle = kFreckleSpots.first;
       final o = BlemishOverrides(
-        keepAt: [SpotAnchor.of(_near(mSmall, acne, small.faces.first, 512))],
-        removeAt: [
-          SpotAnchor.of(_near(mSmall, freckle, small.faces.first, 512)),
-        ],
+        keepAt: [_anchor(_near(mSmall, acne, small.faces.first, 512))],
+        removeAt: [_anchor(_near(mSmall, freckle, small.faces.first, 512))],
       );
       final m = computeRetouchMaps(large.image, large.analysis, overrides: o);
       final out = labOf(
@@ -118,5 +118,35 @@ void main() {
     expect(manual, hasLength(1));
     final code = m.nearest(RetouchChannel.spotCode, spot.x / 512, spot.y / 512);
     expect(spotSelection(code, 0, 0, 0), 1, reason: 'forced');
+  });
+
+  test('a remove anchor alone heals even with every slider at 0', () {
+    final p = _render(512);
+    final maps = computeRetouchMaps(p.image, p.analysis);
+    final acne = maps.blemishes.firstWhere((b) => b.kind == BlemishKind.acne);
+    final identity = RetouchUniforms.fromSettings(
+      PortraitSettings.empty,
+      p.analysis,
+    );
+    expect(identity.isIdentity, isTrue);
+    expect(identical(applyRetouch(p.image, maps, identity), p.image), isTrue);
+
+    final forced = computeRetouchMaps(
+      p.image,
+      p.analysis,
+      overrides: BlemishOverrides(removeAt: [_anchor(acne)]),
+    );
+    expect(forced.hasForcedSpots, isTrue);
+    expect(RetouchPassUniforms.isActive(forced, identity), isTrue);
+    final out = applyRetouch(p.image, forced, identity);
+    expect(identical(out, p.image), isFalse);
+    expect(out.data, isNot(equals(p.image.data)));
+    final viaImage = retouchImage(
+      p.image,
+      p.analysis,
+      PortraitSettings.empty,
+      overrides: BlemishOverrides(removeAt: [_anchor(acne)]),
+    );
+    expect(viaImage.data, out.data);
   });
 }

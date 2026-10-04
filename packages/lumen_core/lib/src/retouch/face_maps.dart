@@ -36,10 +36,15 @@ class FaceMapPlanes {
     required this.b3,
     required this.blemishes,
     required this.wrinkles,
+    this.hasForcedSpots = false,
   });
 
   final FaceFrame frame;
   final FaceRegionPlanes regions;
+
+  /// True when the user forced at least one spot removal on this face (it
+  /// heals even with every slider at 0).
+  final bool hasForcedSpots;
   final HealPlanes heal;
   final LabPlanes b1;
   final LabPlanes b2;
@@ -137,6 +142,11 @@ FaceMapPlanes computeFaceMaps(
     b2: LabPlanes(rect, g[0], g[1], g[2]),
     b3: _skinReference(healed, regions.skin, f.iod),
     blemishes: spots,
+    hasForcedSpots: spots.any(
+      (s) =>
+          resolved.overrides.remove.contains(s.id) &&
+          !resolved.overrides.keep.contains(s.id),
+    ),
     wrinkles: wrinkles,
   );
 }
