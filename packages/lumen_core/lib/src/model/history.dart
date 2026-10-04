@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 
 import '../inpaint/heal_op.dart';
+import 'liquify.dart';
 import '../model/develop_settings.dart';
 import 'geometry.dart';
 import 'mask.dart';
@@ -19,12 +20,13 @@ enum HistoryKind {
   reset,
   instruction,
   import,
+  liquify,
 }
 
 /// One reversible change: [path] goes from [from] to [to] (JSON values).
 ///
 /// Paths: `values.<paramId>`, `curves.<channel>`, `treatment`, `geometry`,
-/// `masks`, `portrait`, `heal`.
+/// `masks`, `portrait`, `heal`, `liquify`.
 class HistoryOp {
   const HistoryOp(this.path, this.from, this.to);
 
@@ -68,6 +70,7 @@ DevelopSettings _apply(DevelopSettings s, String path, Object? v) {
     ),
     'portrait' => s.copyWith(portrait: PortraitSettings.fromJson(v)),
     'heal' => s.copyWith(heal: parseHealOps(v)),
+    'liquify' => s.copyWith(liquify: parseLiquify(v)),
     _ => s,
   };
 }
@@ -108,6 +111,15 @@ List<HistoryOp> _diffOps(DevelopSettings a, DevelopSettings b) {
         'heal',
         [for (final h in a.heal) h.toJson()],
         [for (final h in b.heal) h.toJson()],
+      ),
+    );
+  }
+  if (!const ListEquality<LiquifyStroke>().equals(a.liquify, b.liquify)) {
+    ops.add(
+      HistoryOp(
+        'liquify',
+        [for (final l in a.liquify) l.toJson()],
+        [for (final l in b.liquify) l.toJson()],
       ),
     );
   }

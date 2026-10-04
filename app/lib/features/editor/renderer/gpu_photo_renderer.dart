@@ -13,6 +13,7 @@ import 'package:lumen/engine/gpu_pass.dart';
 import 'package:lumen/engine/render_graph.dart';
 import 'package:lumen/engine/render_scheduler.dart';
 import 'package:lumen/engine/shader_library.dart';
+import 'package:lumen/engine/warp_service.dart';
 import 'package:lumen/features/editor/renderer/cpu_photo_renderer.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
@@ -30,7 +31,8 @@ class GpuPhotoRenderer
         MaskOverlayRenderer,
         MaskRasterSink,
         RetouchSink,
-        HealSink {
+        HealSink,
+        WarpSink {
   GpuPhotoRenderer({required this.assetId, this.previewLongEdge = 2560});
 
   final String assetId;
@@ -44,6 +46,8 @@ class GpuPhotoRenderer
   CpuPhotoRenderer? _fallback;
   Map<String, MaskRaster> _rasters = const {};
   RetouchMaps? _retouchMaps;
+  FaceAnalysis? _warpFaces;
+  WarpFieldService? _warp;
   FaceAnalysis? _faces;
   DevelopSettings? _last;
 
@@ -82,7 +86,8 @@ class GpuPhotoRenderer
       final cpu = _fallback = CpuPhotoRenderer()
         ..setMaskRasters(_rasters)
         ..setRetouch(_retouchMaps, _faces)
-        ..setHealer(_healer);
+        ..setHealer(_healer)
+        ..setWarpFaces(_warpFaces);
       await cpu.open(original);
       return;
     }
@@ -103,6 +108,16 @@ class GpuPhotoRenderer
           ..maskRasters = _rasters
           ..retouchMaps = _retouchMaps
           ..faceAnalysis = _faces;
+    _warp = WarpFieldService(
+      sourceWidth: source.width,
+      sourceHeight: source.height,
+      onField: (field) {
+        if (_disposed) return;
+        graph.warpField = field;
+        final last = _last;
+        if (last != null) _scheduler?.update(last);
+      },
+    )..faces = _warpFaces ?? _faces;
     final scheduler = _scheduler = RenderScheduler(graph);
     scheduler.frame.addListener(() => _output.value = scheduler.frame.value);
     scheduler.errors.listen((e) => _log.warning('render failed: $e'));
@@ -117,6 +132,7 @@ class GpuPhotoRenderer
     final fb = _fallback;
     if (fb != null) return fb.update(settings, interactive: interactive);
     _requestHeals(settings.heal);
+    _warp?.update(settings);
     _scheduler?.update(settings, interactive: interactive);
   }
 
@@ -229,8 +245,17 @@ class GpuPhotoRenderer
     _graph
       ?..retouchMaps = maps
       ..faceAnalysis = faces;
+    _warp?.faces = _warpFaces ?? faces;
     final last = _last;
     if (last != null) _scheduler?.update(last);
+  }
+
+  @override
+  void setWarpFaces(FaceAnalysis? faces) {
+    _warpFaces = faces;
+    final fb = _fallback;
+    if (fb != null) return fb.setWarpFaces(faces);
+    _warp?.faces = faces ?? _faces;
   }
 
   @override
@@ -246,7 +271,8 @@ class GpuPhotoRenderer
     await _ensureHeals(settings.heal);
     final full = graph.outputSize(settings, 1);
     final scale = math.min(1.0, longEdge / math.max(full.width, full.height));
-    final img = await graph.render(settings, scale: scale);
+    final warp = await _warp?.fieldFor(settings);
+    final img = await graph.render(settings, scale: scale, warp: warp);
     try {
       return await encodePng(img);
     } finally {
@@ -281,6 +307,7 @@ class GpuPhotoRenderer
   void dispose() {
     _disposed = true;
     _fallback?.dispose();
+    _warp?.dispose();
     _scheduler?.dispose();
     _releaseHealed();
     _aux?.dispose();

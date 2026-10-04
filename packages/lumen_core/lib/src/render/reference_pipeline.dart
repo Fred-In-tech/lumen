@@ -6,6 +6,9 @@ import 'aux_maps.dart';
 import 'develop_kernel.dart';
 import 'geometry_mapping.dart';
 import 'mask_rasterizer.dart';
+import '../model/face_analysis.dart';
+import '../warp/warp_builder.dart';
+import '../warp/warp_field.dart';
 import 'rgba_buffer.dart';
 import 'tone_lut.dart';
 import 'uniform_layout.dart';
@@ -33,6 +36,11 @@ bool needsAuxMaps(DevelopSettings s) {
 /// Masks: pass precomputed [masks] (`MaskRasterizer.build`) to reuse them,
 /// or let them be rasterized from `settings.masks`; AI masks read their
 /// decoded coverage from [maskRasters] by `ai.maskRef`.
+///
+/// Warp: pass a prebuilt [warp] field, or let it be built from
+/// `settings.liquify` and the face-shape sliders (which need [faces], the
+/// analysis of this photo). Source, aux and masks are all sampled at the
+/// warped uv.
 RgbaBuffer renderReference(
   RgbaBuffer source,
   DevelopSettings settings, {
@@ -40,7 +48,22 @@ RgbaBuffer renderReference(
   bool showClipping = false,
   MaskAtlases? masks,
   Map<String, MaskRaster> maskRasters = const {},
+  WarpField? warp,
+  FaceAnalysis? faces,
 }) {
+  final field =
+      warp ??
+      (hasWarpEdits(settings, faces)
+          ? buildWarpField(
+              WarpRequest.fromSettings(
+                settings,
+                faces,
+                sourceWidth: source.width,
+                sourceHeight: source.height,
+              ),
+            )
+          : null);
+  final warpOn = field != null && !field.isIdentity;
   final maps =
       aux ??
       (needsAuxMaps(settings)
@@ -70,6 +93,9 @@ RgbaBuffer renderReference(
       showClipping: showClipping,
       maskWidth: coverage.width,
       maskHeight: coverage.height,
+      warpWidth: warpOn ? field.width : 1,
+      warpHeight: warpOn ? field.height : 1,
+      warpRange: warpOn ? field.range : 0,
     ),
   );
   final kernel = DevelopKernel(
@@ -78,6 +104,7 @@ RgbaBuffer renderReference(
     ToneLut.bake(settings),
     maps,
     coverage,
+    warpOn ? field : null,
   );
   final out = RgbaBuffer(size.width, size.height);
   final px = Float64List(4);

@@ -19,17 +19,21 @@ Future<RgbaBuffer> gpuRender(
   bool showClipping = false,
   String assetId = 'test',
   Map<String, MaskRaster> maskRasters = const {},
+  WarpField? warp,
 }) async {
   final shaders = await ShaderLibrary.load();
   final maps = aux ?? AuxMaps.compute(AuxMaps.proxy(src));
   final textures = await AuxTextures.fromMaps(maps);
   final image = await imageFromBuffer(src);
-  final graph = RenderGraph(
-    shaders: shaders,
-    source: image,
-    aux: textures,
-    assetId: assetId,
-  )..maskRasters = maskRasters;
+  final graph =
+      RenderGraph(
+          shaders: shaders,
+          source: image,
+          aux: textures,
+          assetId: assetId,
+        )
+        ..maskRasters = maskRasters
+        ..warpField = warp;
   try {
     final out = await graph.render(s, scale: scale, showClipping: showClipping);
     final buf = await bufferFromImage(out);

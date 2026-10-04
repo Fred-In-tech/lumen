@@ -26,6 +26,9 @@ class DevelopContext {
     this.showClipping = false,
     this.maskWidth = 1,
     this.maskHeight = 1,
+    this.warpWidth = 1,
+    this.warpHeight = 1,
+    this.warpRange = 0,
   });
 
   /// Size of the image this pass renders (a tile during export).
@@ -56,6 +59,11 @@ class DevelopContext {
   /// Mask grid size (one atlas tile, see `MaskAtlases`).
   final int maskWidth;
   final int maskHeight;
+
+  /// Warp field grid and packing range; range 0 = no warp (skipped).
+  final int warpWidth;
+  final int warpHeight;
+  final double warpRange;
 }
 
 /// One uniform of `develop.frag`, in declaration order.
@@ -92,6 +100,9 @@ abstract final class DevelopIndex {
   static const masks = 98;
 
   static int mask(int i) => masks + 12 * i;
+
+  /// `vec4 uWarpInfo`: warp grid w, h, range (uv), enabled (0/1).
+  static const warpInfo = 194;
 }
 
 /// Packs [DevelopSettings] into the `develop.frag` float uniforms.
@@ -130,6 +141,7 @@ abstract final class DevelopUniforms {
       (name: 'uMask${i}B', index: 102 + 12 * i, length: 4),
       (name: 'uMask${i}C', index: 106 + 12 * i, length: 4),
     ],
+    (name: 'uWarpInfo', index: 194, length: 4),
   ]);
 
   static Float32List pack(DevelopSettings s, DevelopContext ctx) {
@@ -240,6 +252,11 @@ abstract final class DevelopUniforms {
       0,
     ]);
     _packMasks(f, s.masks, ctx);
+    f
+      ..[DevelopIndex.warpInfo] = ctx.warpWidth.toDouble()
+      ..[DevelopIndex.warpInfo + 1] = ctx.warpHeight.toDouble()
+      ..[DevelopIndex.warpInfo + 2] = ctx.warpRange
+      ..[DevelopIndex.warpInfo + 3] = ctx.warpRange > 0 ? 1 : 0;
     return f;
   }
 

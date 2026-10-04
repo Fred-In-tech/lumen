@@ -19,6 +19,11 @@
 ///   `settings.portrait` on every render; the R output is cached by
 ///   `RetouchUniforms.key` + maps identity + denoise state, so non-portrait
 ///   edits do not re-run it. Identity settings skip R (bit-exact source).
+/// * Warp (face reshape + liquify): set `warpField` (from
+///   `buildWarpField`, or the renderer's `WarpFieldService`). Develop and
+///   the mask overlay sample source, aux, retouch output and masks at the
+///   warped uv; null or identity fields skip the warp (bit-exact). The
+///   field is uploaded once per instance by `warpCache`.
 /// * `renderMaskOverlay(settings, index, {scale, tint})`: one mask's
 ///   coverage as a premultiplied tint (default 50 % red), same size and
 ///   geometry as `render` (draw it over the frame for "show overlay").
@@ -35,6 +40,7 @@ import 'lut_texture.dart';
 import 'mask_atlas_cache.dart';
 import 'retouch_textures.dart';
 import 'shader_library.dart';
+import 'warp_textures.dart';
 
 abstract interface class FrameRenderer {
   /// Renders [settings] at [scale] × the preview size. The caller owns the
@@ -109,6 +115,12 @@ class RenderGraph implements FrameRenderer {
 
   /// The face analysis the [retouchMaps] were built from.
   FaceAnalysis? faceAnalysis;
+
+  /// Warp field of the current edit (null = no warp).
+  WarpField? warpField;
+
+  /// Uploaded warp field (owned by the graph).
+  final WarpFieldCache warpCache = WarpFieldCache();
   bool _disposed = false;
 
   /// Swaps the source for a same-size image (e.g. the preview with heal
@@ -139,17 +151,30 @@ class RenderGraph implements FrameRenderer {
     );
   }
 
+  /// [warp] overrides [warpField] for this render (thumbnails of other
+  /// settings); pass `WarpField.identity()` for no warp.
   @override
   Future<ui.Image> render(
     DevelopSettings settings, {
     double scale = 1,
     bool showClipping = false,
+    WarpField? warp,
   }) async {
     if (_disposed) throw StateError('RenderGraph disposed');
     final lut = await _lutFor(settings);
     final masks = await maskCache.obtain(settings.masks);
     final retouch = await retouchCache.obtain(retouchMaps);
-    if (_disposed) throw StateError('RenderGraph disposed');
+    final ownWarp =
+        warp != null && !identical(warp, warpField) && !warp.isIdentity;
+    final warpTex = ownWarp
+        ? await WarpTexture.upload(warp)
+        : (warp != null && warp.isIdentity
+              ? null
+              : await warpCache.obtain(warpField));
+    if (_disposed) {
+      if (ownWarp) warpTex?.dispose();
+      throw StateError('RenderGraph disposed');
+    }
     final src = _retouchedFor(settings, _sourceFor(settings), retouch);
     final size = outputSize(settings, scale);
     final developed = runDevelop(
@@ -167,6 +192,9 @@ class RenderGraph implements FrameRenderer {
           showClipping: showClipping,
           maskWidth: masks.width,
           maskHeight: masks.height,
+          warpWidth: warpTex?.field.width ?? 1,
+          warpHeight: warpTex?.field.height ?? 1,
+          warpRange: warpTex?.field.range ?? 0,
         ),
       ),
       source: src,
@@ -177,7 +205,10 @@ class RenderGraph implements FrameRenderer {
       height: size.height,
       masks0: masks.atlas0,
       masks1: masks.atlas1,
+      warp: warpTex?.image,
     );
+    // Recorded frames keep the texture alive; release a one-off upload.
+    if (ownWarp) warpTex?.dispose();
     if (FinishUniforms.isIdentity(settings)) return developed;
     final full = outputSizeFor(
       originalSize.width,
@@ -209,6 +240,7 @@ class RenderGraph implements FrameRenderer {
   }) async {
     if (_disposed) throw StateError('RenderGraph disposed');
     final masks = await maskCache.obtain(settings.masks);
+    final warp = await warpCache.obtain(warpField);
     if (_disposed) throw StateError('RenderGraph disposed');
     if (index < 0 || index >= masks.count) {
       throw RangeError.range(index, 0, masks.count - 1, 'index');
@@ -225,6 +257,9 @@ class RenderGraph implements FrameRenderer {
           sourceHeight: source.height,
           auxWidth: aux.width,
           auxHeight: aux.height,
+          warpWidth: warp?.field.width ?? 1,
+          warpHeight: warp?.field.height ?? 1,
+          warpRange: warp?.field.range ?? 0,
         ),
         masks.atlases,
         index,
@@ -233,6 +268,7 @@ class RenderGraph implements FrameRenderer {
       atlas: masks.atlasFor(index),
       width: size.width,
       height: size.height,
+      warp: warp?.image,
     );
   }
 
@@ -315,6 +351,7 @@ class RenderGraph implements FrameRenderer {
     _releaseLut();
     maskCache.dispose();
     retouchCache.dispose();
+    warpCache.dispose();
     _releaseRetouched();
     EngineImages.dispose(_denoised);
     _denoised = null;

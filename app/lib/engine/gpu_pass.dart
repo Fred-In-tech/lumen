@@ -113,7 +113,8 @@ ui.Image get emptyMaskAtlas {
 }
 
 /// Develop uber pass. [floats] from `DevelopUniforms.pack`; [masks0] and
-/// [masks1] are the mask atlases (default: [emptyMaskAtlas]).
+/// [masks1] are the mask atlases, [warp] the warp field atlas (default for
+/// each: [emptyMaskAtlas]).
 ui.Image runDevelop(
   ShaderLibrary shaders, {
   required Float32List floats,
@@ -125,6 +126,7 @@ ui.Image runDevelop(
   required int height,
   ui.Image? masks0,
   ui.Image? masks1,
+  ui.Image? warp,
 }) => _run(
   shaders.develop,
   floats,
@@ -135,6 +137,7 @@ ui.Image runDevelop(
     (lut, ui.FilterQuality.none),
     (masks0 ?? emptyMaskAtlas, ui.FilterQuality.none),
     (masks1 ?? emptyMaskAtlas, ui.FilterQuality.none),
+    (warp ?? emptyMaskAtlas, ui.FilterQuality.none),
   ],
   width,
   height,
@@ -148,10 +151,14 @@ ui.Image runMaskOverlay(
   required ui.Image atlas,
   required int width,
   required int height,
+  ui.Image? warp,
 }) => _run(
   shaders.maskOverlay,
   floats,
-  [(atlas, ui.FilterQuality.none)],
+  [
+    (atlas, ui.FilterQuality.none),
+    (warp ?? emptyMaskAtlas, ui.FilterQuality.none),
+  ],
   width,
   height,
 );

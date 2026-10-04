@@ -18,19 +18,29 @@ import 'mask_rasterizer.dart';
 import 'rgba_buffer.dart';
 import 'tone_lut.dart';
 import 'uniform_layout.dart';
+import '../warp/warp_field.dart';
 
 class DevelopKernel {
-  DevelopKernel(this.src, this.f, this.lut, this.aux, [MaskAtlases? masks])
-    : masks = masks ?? MaskAtlases.empty(),
-      _colorActive = colorOpsActive(f),
-      _toneIdentity = _isIdentityRow(lut),
-      _hasLocal = activeMaskCount(f) > 0;
+  DevelopKernel(
+    this.src,
+    this.f,
+    this.lut,
+    this.aux, [
+    MaskAtlases? masks,
+    this.warp,
+  ]) : masks = masks ?? MaskAtlases.empty(),
+       _colorActive = colorOpsActive(f),
+       _toneIdentity = _isIdentityRow(lut),
+       _hasLocal = activeMaskCount(f) > 0;
 
   final RgbaBuffer src;
   final Float32List f;
   final ToneLut lut;
   final AuxMaps aux;
   final MaskAtlases masks;
+
+  /// Backward warp field, sampled when `uWarpInfo.w` is set.
+  final WarpField? warp;
   final bool _colorActive;
   final bool _hasLocal;
   final Float64List _cov = Float64List(kMaxRenderedMasks);
@@ -97,7 +107,13 @@ class DevelopKernel {
     // 1. Output pixel → output uv → source uv.
     final u = (x + 0.5 + f[t]) / f[t + 2];
     final v = (y + 0.5 + f[t + 1]) / f[t + 3];
-    final (su, sv) = sourceUvFor(u, v, f);
+    var (su, sv) = sourceUvFor(u, v, f);
+    final w = warp;
+    if (w != null && f[DevelopIndex.warpInfo + 3] > 0.5) {
+      final (du, dv) = w.sample(su, sv);
+      su += du;
+      sv += dv;
+    }
     if (su < 0 || su > 1 || sv < 0 || sv > 1) {
       out.fillRange(0, 4, 0);
       return;

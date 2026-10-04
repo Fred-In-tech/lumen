@@ -27,3 +27,4 @@ export 'src/retouch/retouch.dart';
 export 'src/inpaint/inpaint.dart';
 export 'src/vision/vision.dart';
 export 'src/testing/testing.dart';
+export 'src/warp/warp.dart';

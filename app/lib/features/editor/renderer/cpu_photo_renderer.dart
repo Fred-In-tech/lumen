@@ -19,7 +19,8 @@ class CpuPhotoRenderer
         MaskOverlayRenderer,
         MaskRasterSink,
         RetouchSink,
-        HealSink {
+        HealSink,
+        WarpSink {
   CpuPhotoRenderer({
     this.previewLongEdge = 1280,
     this.interactiveLongEdge = 640,
@@ -40,6 +41,7 @@ class CpuPhotoRenderer
   Map<String, MaskRaster> _rasters = const {};
   RetouchMaps? _retouchMaps;
   FaceAnalysis? _faces;
+  FaceAnalysis? _warpFaces;
   HealedSourceCache? _healer;
   DevelopSettings? _last;
 
@@ -96,6 +98,7 @@ class CpuPhotoRenderer
         _rasters,
         _retouchMaps,
         _faces,
+        _warpFaces ?? _faces,
       );
       if (_disposed) return;
       final img = await imageFromRgba(out);
@@ -124,6 +127,7 @@ class CpuPhotoRenderer
       _rasters,
       _retouchMaps,
       _faces,
+      _warpFaces ?? _faces,
     );
     final img = await imageFromRgba(out);
     try {
@@ -147,8 +151,9 @@ class CpuPhotoRenderer
     }
     final w = src.width, h = src.height;
     final rasters = _rasters;
+    final faces = _warpFaces ?? _faces;
     final out = await runInBackground(
-      () => _overlay(w, h, settings, index, tint, rasters),
+      () => _overlay(w, h, settings, index, tint, rasters, faces),
     );
     if (_disposed) return null;
     return imageFromRgba(out);
@@ -165,6 +170,13 @@ class CpuPhotoRenderer
   void setRetouch(RetouchMaps? maps, FaceAnalysis? faces) {
     _retouchMaps = maps;
     _faces = faces;
+    final last = _last;
+    if (last != null) update(last);
+  }
+
+  @override
+  void setWarpFaces(FaceAnalysis? faces) {
+    _warpFaces = faces;
     final last = _last;
     if (last != null) update(last);
   }
@@ -210,6 +222,7 @@ RgbaBuffer _overlay(
   int index,
   MaskTint tint,
   Map<String, MaskRaster> rasters,
+  FaceAnalysis? faces,
 ) => renderMaskOverlayReference(
   width,
   height,
@@ -217,6 +230,16 @@ RgbaBuffer _overlay(
   MaskRasterizer.build(settings.masks, width, height, rasters: rasters),
   index,
   tint: tint,
+  warp: hasWarpEdits(settings, faces)
+      ? buildWarpField(
+          WarpRequest.fromSettings(
+            settings,
+            faces,
+            sourceWidth: width,
+            sourceHeight: height,
+          ),
+        )
+      : null,
 );
 
 /// Retouch + develop off the UI isolate. Top-level so the closure only
@@ -227,10 +250,12 @@ Future<RgbaBuffer> _renderInBackground(
   Map<String, MaskRaster> rasters,
   RetouchMaps? maps,
   FaceAnalysis? faces,
+  FaceAnalysis? warpFaces,
 ) => runInBackground(
   () => renderReference(
     retouchedSource(src, settings, maps, faces),
     settings,
     maskRasters: rasters,
+    faces: warpFaces,
   ),
 );

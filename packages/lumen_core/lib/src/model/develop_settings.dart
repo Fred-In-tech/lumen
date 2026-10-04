@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 
 import '../inpaint/heal_op.dart';
 import 'geometry.dart';
+import 'liquify.dart';
 import 'mask.dart';
 import 'param_registry.dart';
 import 'portrait.dart';
@@ -20,6 +21,7 @@ class DevelopSettings {
     this.masks = const [],
     this.portrait = PortraitSettings.empty,
     this.heal = const [],
+    this.liquify = const [],
   });
 
   factory DevelopSettings.fromJson(Object? json) {
@@ -51,6 +53,7 @@ class DevelopSettings {
           : const [],
       portrait: PortraitSettings.fromJson(json['portrait']),
       heal: parseHealOps(json['heal']),
+      liquify: parseLiquify(json['liquify']),
     );
   }
 
@@ -67,6 +70,9 @@ class DevelopSettings {
 
   /// Ordered heal / remove / clone ops (patches drawn onto the source).
   final List<HealOp> heal;
+
+  /// Manual liquify strokes (warp field), in order.
+  final List<LiquifyStroke> liquify;
 
   /// Non-default scalar values (read-only view).
   Map<ParamId, double> get nonDefaultValues => Map.unmodifiable(_values);
@@ -98,6 +104,7 @@ class DevelopSettings {
       masks: masks,
       portrait: portrait,
       heal: heal,
+      liquify: liquify,
     );
   }
 
@@ -108,6 +115,7 @@ class DevelopSettings {
     List<LocalMask>? masks,
     PortraitSettings? portrait,
     List<HealOp>? heal,
+    List<LiquifyStroke>? liquify,
   }) => DevelopSettings(
     values: _values,
     curves: curves ?? this.curves,
@@ -116,6 +124,7 @@ class DevelopSettings {
     masks: masks == null ? this.masks : List.unmodifiable(masks),
     portrait: portrait ?? this.portrait,
     heal: heal == null ? this.heal : List.unmodifiable(heal),
+    liquify: liquify == null ? this.liquify : List.unmodifiable(liquify),
   );
 
   /// Returns a copy with every scalar in [ids] reset to its default.
@@ -130,7 +139,8 @@ class DevelopSettings {
       geometry.isIdentity &&
       masks.isEmpty &&
       portrait.isDefault &&
-      heal.isEmpty;
+      heal.isEmpty &&
+      liquify.isEmpty;
 
   /// Scalar params whose values differ between this and [other].
   Set<ParamId> changedParams(DevelopSettings other) => {
@@ -146,6 +156,7 @@ class DevelopSettings {
     'masks': [for (final m in masks) m.toJson()],
     if (!portrait.isDefault) 'portrait': portrait.toJson(),
     if (heal.isNotEmpty) 'heal': [for (final h in heal) h.toJson()],
+    if (liquify.isNotEmpty) 'liquify': [for (final l in liquify) l.toJson()],
   };
 
   @override
@@ -157,7 +168,8 @@ class DevelopSettings {
       other.geometry == geometry &&
       const ListEquality<LocalMask>().equals(other.masks, masks) &&
       other.portrait == portrait &&
-      const ListEquality<HealOp>().equals(other.heal, heal);
+      const ListEquality<HealOp>().equals(other.heal, heal) &&
+      const ListEquality<LiquifyStroke>().equals(other.liquify, liquify);
 
   @override
   int get hashCode => Object.hash(
@@ -168,6 +180,7 @@ class DevelopSettings {
     const ListEquality<LocalMask>().hash(masks),
     portrait,
     const ListEquality<HealOp>().hash(heal),
+    const ListEquality<LiquifyStroke>().hash(liquify),
   );
 
   @override

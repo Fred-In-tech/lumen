@@ -2,7 +2,7 @@
 // Lumen develop uber pass (engine lumen-1). Every per-pixel op in float.
 // CPU twin: packages/lumen_core/lib/src/render/develop_kernel.dart and
 // color_ops.dart; local masks: local_adjust.dart; uniform layout:
-// uniform_layout.dart (194 floats).
+// uniform_layout.dart (198 floats). Warp: warp/warp_field.dart.
 #include <flutter/runtime_effect.glsl>
 #include "lib/common.glsl"
 
@@ -57,6 +57,7 @@ uniform vec4 uMask6C;           //   dehaze, contrast, whites, blacks
 uniform vec4 uMask7A;           // 182-193: exposure EV, temp, tint, sat
 uniform vec4 uMask7B;           //   highlights, shadows, clarity, texture
 uniform vec4 uMask7C;           //   dehaze, contrast, whites, blacks
+uniform vec4 uWarpInfo;         // 194-197 warp grid wh, range (uv), enabled
 
 uniform sampler2D uSource;      // 0: sRGB source (FilterQuality.low)
 uniform sampler2D uAuxA;        // 1: RG baseMid, B dark (FilterQuality.none)
@@ -64,6 +65,7 @@ uniform sampler2D uAuxB;        // 2: RG meanB, B meanA (FilterQuality.none)
 uniform sampler2D uCurveLut;    // 3: 1024x4 packed LUT (FilterQuality.none)
 uniform sampler2D uMasks0;      // 4: masks 0-3 atlas (2w x h, FilterQuality.none)
 uniform sampler2D uMasks1;      // 5: masks 4-7 atlas
+uniform sampler2D uWarp;        // 6: warp (2w x h) dx | dy codes, FilterQuality.none
 
 out vec4 fragColor;
 
@@ -90,6 +92,27 @@ vec4 sampleAux(vec2 uv) {
   vec2 b = mix(mix(auxTapB(lo), auxTapB(vec2(hi.x, lo.y)), f.x),
                mix(auxTapB(vec2(lo.x, hi.y)), auxTapB(hi), f.x), f.y);
   return vec4(a, b);
+}
+
+// ---- Warp: backward displacement in source uv (WarpField.sample) ---------
+vec2 warpTap(vec2 t) {
+  vec2 size = vec2(2.0 * uWarpInfo.x, uWarpInfo.y);
+  return vec2(warpCode(texture(uWarp, (t + 0.5) / size).rg),
+              warpCode(texture(uWarp, (t + vec2(uWarpInfo.x + 0.5, 0.5)) / size).rg)) -
+         32767.0;
+}
+
+// Source, aux, masks (and the retouched/healed source) are all sampled at
+// the warped uv. Identity when no warp (bit-exact).
+vec2 warpUv(vec2 suv) {
+  if (uWarpInfo.w < 0.5) return suv;
+  vec2 lo;
+  vec2 hi;
+  vec2 f;
+  maskTaps(suv, uWarpInfo.xy, lo, hi, f);
+  vec2 top = mix(warpTap(lo), warpTap(vec2(hi.x, lo.y)), f.x);
+  vec2 bot = mix(warpTap(vec2(lo.x, hi.y)), warpTap(hi), f.x);
+  return suv + mix(top, bot, f.y) / 32767.0 * uWarpInfo.z;
 }
 
 // ---- Mask atlases: left tile RGB = masks 4k..4k+2, right tile R = 4k+3 ----
@@ -248,7 +271,7 @@ void main() {
   // 1. Output pixel -> output uv -> source uv.
   vec2 px = min(FlutterFragCoord().xy, uOutSize);
   vec2 uv = (px + uTile.xy) / uTile.zw;
-  vec2 suv = sourceUvFrom(uv, uCrop, uGeom, uSrc.xy);
+  vec2 suv = warpUv(sourceUvFrom(uv, uCrop, uGeom, uSrc.xy));
   if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) {
     fragColor = vec4(0.0);
     return;

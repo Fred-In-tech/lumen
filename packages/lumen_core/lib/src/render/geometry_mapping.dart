@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../model/develop_settings.dart';
 import '../model/geometry.dart';
 import 'uniform_layout.dart';
 
@@ -45,4 +46,29 @@ import 'uniform_layout.dart';
     3 => (1 - y, x),
     _ => (x, y),
   };
+}
+
+/// Output-normalized uv → source uv for [s] on a [srcWidth]×[srcHeight]
+/// source (crop, straighten, rotation, flips; no warp). Liquify strokes are
+/// stored in this space: map pointer positions through it.
+(double, double) sourceUvOf(
+  DevelopSettings s,
+  int srcWidth,
+  int srcHeight,
+  double u,
+  double v,
+) {
+  final size = outputSizeFor(srcWidth, srcHeight, s.geometry);
+  final f = DevelopUniforms.pack(
+    s,
+    DevelopContext(
+      outWidth: size.width,
+      outHeight: size.height,
+      sourceWidth: srcWidth,
+      sourceHeight: srcHeight,
+      auxWidth: 1,
+      auxHeight: 1,
+    ),
+  );
+  return sourceUvFor(u, v, f);
 }

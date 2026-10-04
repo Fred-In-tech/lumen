@@ -14,9 +14,9 @@ const _ctx = DevelopContext(
 
 void main() {
   group('DevelopUniforms', () {
-    test('packs exactly kDevelopFloatCount (194) floats', () {
-      expect(kDevelopFloatCount, 194);
-      expect(DevelopUniforms.pack(DevelopSettings.defaults, _ctx).length, 194);
+    test('packs exactly kDevelopFloatCount (198) floats', () {
+      expect(kDevelopFloatCount, 198);
+      expect(DevelopUniforms.pack(DevelopSettings.defaults, _ctx).length, 198);
     });
 
     test('index table matches PLAN.md §1.6 and is contiguous', () {
@@ -51,6 +51,7 @@ void main() {
           'uMask${i}B': (102 + 12 * i, 4),
           'uMask${i}C': (106 + 12 * i, 4),
         },
+        'uWarpInfo': (194, 4),
       };
       var next = 0;
       for (final u in DevelopUniforms.table) {
@@ -81,7 +82,8 @@ void main() {
       expect(f[91], closeTo(1.5, 1e-6));
       expect(f[92], 0);
       expect(f.sublist(94, 98), [1, 1, 0, 0]);
-      expect(f.sublist(98).every((v) => v == 0), isTrue);
+      expect(f.sublist(98, 194).every((v) => v == 0), isTrue);
+      expect(f.sublist(194, 198), [1, 1, 0, 0]); // no warp
     });
 
     test('maps slider units to shader units', () {
@@ -294,5 +296,28 @@ void main() {
       expect(DenoiseUniforms.isIdentity(s), isFalse);
       expect(DenoiseUniforms.isIdentity(DevelopSettings.defaults), isTrue);
     });
+  });
+
+  test('uWarpInfo carries the warp grid, range and the enabled flag', () {
+    final f = DevelopUniforms.pack(
+      DevelopSettings.defaults,
+      const DevelopContext(
+        outWidth: 10,
+        outHeight: 10,
+        sourceWidth: 10,
+        sourceHeight: 10,
+        auxWidth: 1,
+        auxHeight: 1,
+        warpWidth: 512,
+        warpHeight: 384,
+        warpRange: 0.03,
+      ),
+    );
+    expect(f.sublist(DevelopIndex.warpInfo, DevelopIndex.warpInfo + 4), [
+      512,
+      384,
+      closeTo(0.03, 1e-7),
+      1,
+    ]);
   });
 }

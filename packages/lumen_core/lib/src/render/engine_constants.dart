@@ -12,8 +12,8 @@ const String kEngineVersion = 'lumen-1';
 // ---- Layout -----------------------------------------------------------------
 
 /// Number of floats in `develop.frag` uniforms (PLAN.md §1.6 table + mask
-/// grid vec4 + 8 masks × 3 vec4).
-const int kDevelopFloatCount = 194;
+/// grid vec4 + 8 masks × 3 vec4 + `uWarpInfo`).
+const int kDevelopFloatCount = 198;
 
 /// Number of floats in `finish.frag` uniforms.
 const int kFinishFloatCount = 18;

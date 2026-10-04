@@ -139,3 +139,10 @@ vec3 hueTone(vec3 c, float mx, float mn, float tmx, float tmn) {
   if (mx - mn < 1e-6) return vec3(tmx);
   return tmn + (c - mn) * ((tmx - tmn) / (mx - mn));
 }
+
+// ---- Warp field (warp/warp_field.dart) --------------------------------------
+// 16-bit code of a packed (hi, lo) texel, rounded so 32767 (= no move) is
+// exact; displacement = (code - 32767) / 32767 * range.
+float warpCode(vec2 rg) {
+  return floor(dot(rg, vec2(65280.0, 255.0)) + 0.5);
+}

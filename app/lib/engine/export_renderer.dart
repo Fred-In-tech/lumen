@@ -21,6 +21,9 @@
 ///   preview's uploaded `retouchTextures`; maps are source-uv, so the same
 ///   maps serve any resolution). Pass R runs over the full-res source in
 ///   `tileSize` tiles before develop; identity settings skip it.
+/// * Warp: pass the editor's `warp` field, or let it be built from
+///   `settings` (liquify + face-shape sliders, which need `faceAnalysis`)
+///   off the UI isolate. It is sampled in source uv, so tiles are seamless.
 /// * Encode the result with `encodeImage(EncodeRequest(...))`.
 library;
 
@@ -28,6 +31,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:lumen_core/lumen_core.dart';
 
 import 'aux_cache.dart';
@@ -36,6 +40,7 @@ import 'lut_texture.dart';
 import 'mask_atlas_cache.dart';
 import 'retouch_textures.dart';
 import 'shader_library.dart';
+import 'warp_textures.dart';
 
 /// Default cap for the export long edge (Android/Windows/web); Apple
 /// platforms may pass 16384.
@@ -123,6 +128,7 @@ class ExportRenderer {
     FaceAnalysis? faceAnalysis,
     RetouchMaps? retouchMaps,
     RetouchTextures? retouchTextures,
+    WarpField? warp,
   }) async {
     final full = outputSizeFor(source.width, source.height, settings.geometry);
     final size = exportSize(
@@ -144,6 +150,22 @@ class ExportRenderer {
             rasters: maskRasters,
           ),
         );
+    final field =
+        warp ??
+        (hasWarpEdits(settings, faceAnalysis)
+            ? await compute(
+                buildWarpField,
+                WarpRequest.fromSettings(
+                  settings,
+                  faceAnalysis,
+                  sourceWidth: source.width,
+                  sourceHeight: source.height,
+                ),
+              )
+            : null);
+    final warpTex = field == null || field.isIdentity
+        ? null
+        : await WarpTexture.upload(field);
     final lut = await LutTexture.upload(ToneLut.bake(settings));
     final ui.Image src;
     try {
@@ -157,6 +179,7 @@ class ExportRenderer {
       );
     } on Object {
       lut.dispose();
+      warpTex?.dispose();
       if (ownMasks) atlases.dispose();
       rethrow;
     }
@@ -195,6 +218,9 @@ class ExportRenderer {
             airlight: aux.maps.airlight,
             maskWidth: atlases.width,
             maskHeight: atlases.height,
+            warpWidth: warpTex?.field.width ?? 1,
+            warpHeight: warpTex?.field.height ?? 1,
+            warpRange: warpTex?.field.range ?? 0,
           );
           var image = runDevelop(
             shaders,
@@ -207,6 +233,7 @@ class ExportRenderer {
             height: rh,
             masks0: atlases.atlas0,
             masks1: atlases.atlas1,
+            warp: warpTex?.image,
           );
           if (finish) {
             final developed = image;
@@ -237,6 +264,7 @@ class ExportRenderer {
       }
     } finally {
       lut.dispose();
+      warpTex?.dispose();
       if (ownMasks) atlases.dispose();
       if (!identical(src, source)) EngineImages.dispose(src);
     }

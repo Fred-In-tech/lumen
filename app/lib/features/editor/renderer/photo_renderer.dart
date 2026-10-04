@@ -77,6 +77,18 @@ abstract interface class HealSink {
   void setHealer(HealedSourceCache? healer);
 }
 
+/// Optional renderer capability: the face analysis of the open photo for
+/// the face-shape sliders (`shape.*` in `settings.portrait`, resolved per
+/// face). Liquify strokes (`settings.liquify`) need nothing extra. The
+/// renderer builds the warp field itself: shape changes rebuild it in an
+/// isolate (debounced 80 ms, the previous field stays on screen), liquify
+/// strokes update it incrementally. Falls back to the faces given to
+/// [RetouchSink.setRetouch]. Check with `renderer is WarpSink`.
+abstract interface class WarpSink {
+  /// Replaces the faces the shape sliders warp and re-renders.
+  void setWarpFaces(FaceAnalysis? faces);
+}
+
 /// [src] with the portrait retouch of [settings] applied (CPU reference),
 /// or [src] itself when there is nothing to retouch.
 RgbaBuffer retouchedSource(

@@ -88,5 +88,6 @@ Future<RgbaBuffer> developInBackground(
     retouchedSource(src, settings, maps, faces),
     settings,
     maskRasters: rasters,
+    faces: faces,
   ),
 );

@@ -71,7 +71,7 @@ class ShaderLibrary {
     }
   }
 
-  /// Uber develop pass (194 floats, 6 samplers).
+  /// Uber develop pass (198 floats, 7 samplers).
   final ui.FragmentProgram develop;
 
   /// Sharpen → grain → dither (18 floats, 1 sampler).
@@ -80,7 +80,7 @@ class ShaderLibrary {
   /// NR-lite bilateral pre-pass (6 floats, 1 sampler).
   final ui.FragmentProgram denoise;
 
-  /// One mask's coverage as a tint in output space (26 floats, 1 sampler).
+  /// One mask's coverage as a tint in output space (30 floats, 2 samplers).
   final ui.FragmentProgram maskOverlay;
 
   /// Portrait retouch pass R (206 floats, 7 samplers).
