@@ -13,7 +13,7 @@ import 'package:lumen/import/photo_decoder.dart';
 
 /// Reference-pipeline renderer: correct everywhere, slower than the GPU path.
 class CpuPhotoRenderer
-    implements PhotoRenderer, MaskOverlayRenderer, MaskRasterSink {
+    implements PhotoRenderer, MaskOverlayRenderer, MaskRasterSink, RetouchSink {
   CpuPhotoRenderer({
     this.previewLongEdge = 1280,
     this.interactiveLongEdge = 640,
@@ -32,6 +32,8 @@ class CpuPhotoRenderer
   bool _disposed = false;
   Timer? _settle;
   Map<String, MaskRaster> _rasters = const {};
+  RetouchMaps? _retouchMaps;
+  FaceAnalysis? _faces;
   DevelopSettings? _last;
 
   @override
@@ -78,10 +80,13 @@ class CpuPhotoRenderer
     if (settings == null || src == null) return;
     _pending = null;
     _busy = true;
-    final rasters = _rasters;
     try {
-      final out = await runInBackground(
-        () => renderReference(src, settings, maskRasters: rasters),
+      final out = await _renderInBackground(
+        src,
+        settings,
+        _rasters,
+        _retouchMaps,
+        _faces,
       );
       if (_disposed) return;
       final img = await imageFromRgba(out);
@@ -104,9 +109,12 @@ class CpuPhotoRenderer
     final small = await resizeImage(before, longEdge);
     final buf = await rgbaFromImage(small);
     small.dispose();
-    final rasters = _rasters;
-    final out = await runInBackground(
-      () => renderReference(buf, settings, maskRasters: rasters),
+    final out = await _renderInBackground(
+      buf,
+      settings,
+      _rasters,
+      _retouchMaps,
+      _faces,
     );
     final img = await imageFromRgba(out);
     try {
@@ -145,6 +153,14 @@ class CpuPhotoRenderer
   }
 
   @override
+  void setRetouch(RetouchMaps? maps, FaceAnalysis? faces) {
+    _retouchMaps = maps;
+    _faces = faces;
+    final last = _last;
+    if (last != null) update(last);
+  }
+
+  @override
   void dispose() {
     _disposed = true;
     _settle?.cancel();
@@ -169,4 +185,20 @@ RgbaBuffer _overlay(
   MaskRasterizer.build(settings.masks, width, height, rasters: rasters),
   index,
   tint: tint,
+);
+
+/// Retouch + develop off the UI isolate. Top-level so the closure only
+/// captures plain data.
+Future<RgbaBuffer> _renderInBackground(
+  RgbaBuffer src,
+  DevelopSettings settings,
+  Map<String, MaskRaster> rasters,
+  RetouchMaps? maps,
+  FaceAnalysis? faces,
+) => runInBackground(
+  () => renderReference(
+    retouchedSource(src, settings, maps, faces),
+    settings,
+    maskRasters: rasters,
+  ),
 );

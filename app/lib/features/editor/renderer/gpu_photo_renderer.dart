@@ -22,7 +22,7 @@ final _log = Logger('GpuPhotoRenderer');
 /// Fragment-shader renderer (interactive). Falls back to [CpuPhotoRenderer]
 /// when shaders cannot load on this device.
 class GpuPhotoRenderer
-    implements PhotoRenderer, MaskOverlayRenderer, MaskRasterSink {
+    implements PhotoRenderer, MaskOverlayRenderer, MaskRasterSink, RetouchSink {
   GpuPhotoRenderer({required this.assetId, this.previewLongEdge = 2560});
 
   final String assetId;
@@ -35,6 +35,8 @@ class GpuPhotoRenderer
   RgbaBuffer? _proxy;
   CpuPhotoRenderer? _fallback;
   Map<String, MaskRaster> _rasters = const {};
+  RetouchMaps? _retouchMaps;
+  FaceAnalysis? _faces;
   DevelopSettings? _last;
 
   /// True when the CPU fallback is in use.
@@ -56,7 +58,9 @@ class GpuPhotoRenderer
       shaders = await ShaderLibrary.load();
     } on ShaderLoadException catch (e) {
       _log.warning('Shaders unavailable, using CPU renderer: $e');
-      final cpu = _fallback = CpuPhotoRenderer()..setMaskRasters(_rasters);
+      final cpu = _fallback = CpuPhotoRenderer()
+        ..setMaskRasters(_rasters)
+        ..setRetouch(_retouchMaps, _faces);
       await cpu.open(original);
       return;
     }
@@ -66,13 +70,17 @@ class GpuPhotoRenderer
       maxLongEdge: previewLongEdge,
     );
     final aux = _aux = await AuxTextures.build(source);
-    final graph = _graph = RenderGraph(
-      shaders: shaders,
-      source: source,
-      aux: aux,
-      assetId: assetId,
-      originalSize: (width: size.width, height: size.height),
-    )..maskRasters = _rasters;
+    final graph = _graph =
+        RenderGraph(
+            shaders: shaders,
+            source: source,
+            aux: aux,
+            assetId: assetId,
+            originalSize: (width: size.width, height: size.height),
+          )
+          ..maskRasters = _rasters
+          ..retouchMaps = _retouchMaps
+          ..faceAnalysis = _faces;
     final scheduler = _scheduler = RenderScheduler(graph);
     scheduler.frame.addListener(() => _output.value = scheduler.frame.value);
     scheduler.errors.listen((e) => _log.warning('render failed: $e'));
@@ -95,6 +103,19 @@ class GpuPhotoRenderer
     final fb = _fallback;
     if (fb != null) return fb.setMaskRasters(_rasters);
     _graph?.maskRasters = _rasters;
+    final last = _last;
+    if (last != null) _scheduler?.update(last);
+  }
+
+  @override
+  void setRetouch(RetouchMaps? maps, FaceAnalysis? faces) {
+    _retouchMaps = maps;
+    _faces = faces;
+    final fb = _fallback;
+    if (fb != null) return fb.setRetouch(maps, faces);
+    _graph
+      ?..retouchMaps = maps
+      ..faceAnalysis = faces;
     final last = _last;
     if (last != null) _scheduler?.update(last);
   }

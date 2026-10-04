@@ -15,6 +15,7 @@ import 'package:lumen/features/editor/renderer/renderer_factory.dart';
 import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/masks/ai_mask_rasters.dart';
 import 'package:lumen/features/masks/mask_shortcuts.dart';
+import 'package:lumen/features/portrait/retouch_inputs.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 
 /// Editor route. Owns the [EditorSession] for the current photo and swaps it
@@ -73,6 +74,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
         session,
         ref.read(aiMaskRastersProvider(_assetId)).value,
       );
+      _pushRetouch(session, ref.read(retouchInputsProvider(_assetId)).value);
       session.render(_renderSettings(s));
     } on Exception catch (e) {
       if (mounted) setState(() => _openError = e);
@@ -86,6 +88,13 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
   ) {
     if (session?.renderer case final MaskRasterSink sink) {
       sink.setMaskRasters(rasters ?? const {});
+    }
+  }
+
+  /// Hands portrait retouch maps + faces to the renderer (null clears).
+  static void _pushRetouch(EditorSession? session, RetouchInputs? inputs) {
+    if (session?.renderer case final RetouchSink sink) {
+      sink.setRetouch(inputs?.maps, inputs?.faces);
     }
   }
 
@@ -215,6 +224,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
     ref.listen<AsyncValue<Map<String, MaskRaster>>>(
       aiMaskRastersProvider(_assetId),
       (_, next) => _pushMaskRasters(session, next.value),
+    );
+    // Portrait retouch maps are built once per face analysis.
+    ref.listen<AsyncValue<RetouchInputs?>>(
+      retouchInputsProvider(_assetId),
+      (_, next) => _pushRetouch(session, next.value),
     );
     final width = MediaQuery.sizeOf(context).width;
     final phone = width < Layout.phoneBreakpoint;

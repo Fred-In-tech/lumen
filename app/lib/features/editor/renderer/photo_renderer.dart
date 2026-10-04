@@ -54,3 +54,31 @@ abstract interface class MaskRasterSink {
   /// (frame, thumbnails and mask overlay all use them).
   void setMaskRasters(Map<String, MaskRaster> rasters);
 }
+
+/// Optional renderer capability: the portrait retouch inputs of the open
+/// photo. [maps] come from `computeRetouchMaps` on any decode of the photo
+/// (they are sampled in source uv); [faces] is the analysis they were built
+/// from, which resolves per-face group and individual values. Null clears
+/// retouch. Check with `renderer is RetouchSink`.
+abstract interface class RetouchSink {
+  /// Replaces the retouch inputs and re-renders the last settings.
+  void setRetouch(RetouchMaps? maps, FaceAnalysis? faces);
+}
+
+/// [src] with the portrait retouch of [settings] applied (CPU reference),
+/// or [src] itself when there is nothing to retouch.
+RgbaBuffer retouchedSource(
+  RgbaBuffer src,
+  DevelopSettings settings,
+  RetouchMaps? maps,
+  FaceAnalysis? faces,
+) {
+  if (maps == null || faces == null || !settings.portrait.hasFaceEdits) {
+    return src;
+  }
+  return applyRetouch(
+    src,
+    maps,
+    RetouchUniforms.fromSettings(settings.portrait, faces),
+  );
+}
