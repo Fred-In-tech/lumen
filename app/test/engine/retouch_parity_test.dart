@@ -194,6 +194,151 @@ void main() {
     );
   });
 
+  Future<int> strict(
+    String name,
+    RgbaBuffer image,
+    RetouchMaps m,
+    RetouchUniforms u,
+  ) async {
+    final cpu = applyRetouch(image, m, u);
+    expect(identical(cpu, image), isFalse, reason: '$name: no effect');
+    final gpu = await gpuRetouch(image, m, u);
+    final d = diffStats(gpu, cpu);
+    expect(d.max, lessThanOrEqualTo(1), reason: name);
+    expect(d.mean, lessThanOrEqualTo(1), reason: name);
+    if (_report) {
+      debugPrint(
+        'retouch parity $name: max ${d.max}/255, '
+        'mean ${d.mean.toStringAsFixed(3)}/255',
+      );
+    }
+    var changed = 0;
+    for (var i = 0; i < cpu.data.length; i++) {
+      if (cpu.data[i] != image.data[i]) changed++;
+    }
+    return changed;
+  }
+
+  test('glasses glare: clear and tinted lenses, 50 and 100', () async {
+    for (final g in [SynthGlasses.clear, SynthGlasses.tinted]) {
+      final gp = renderSynthPortrait(384, 384, [
+        SynthFace(id: 'a', cx: 192, cy: 150, iod: 104, glasses: g),
+      ]);
+      final m = computeRetouchMaps(gp.image, gp.analysis);
+      for (final v in [50.0, 100.0]) {
+        final u = RetouchUniforms.fromSettings(
+          portraitOf({PortraitIds.glare: v}),
+          gp.analysis,
+        );
+        expect(
+          await strict('glare ${g.name} $v', gp.image, m, u),
+          greaterThan(0),
+        );
+      }
+      // With other face edits on top (glare shares the heal atlas).
+      final both = RetouchUniforms.fromSettings(
+        portraitOf({
+          PortraitIds.glare: 100,
+          PortraitIds.skinSoftening: 60,
+          PortraitIds.skinShine: 80,
+        }),
+        gp.analysis,
+      );
+      final cpu = applyRetouch(gp.image, m, both);
+      final d = diffStats(await gpuRetouch(gp.image, m, both), cpu);
+      expect(d.max, lessThanOrEqualTo(3), reason: 'glare ${g.name} + skin');
+      expect(d.mean, lessThanOrEqualTo(1), reason: 'glare ${g.name} + skin');
+    }
+  });
+
+  group('clothes (image scope)', () {
+    late ClothesScene shirt;
+    late RetouchMaps cm;
+    setUpAll(() {
+      shirt = renderClothesScene(w: 320, h: 240);
+      cm = computeRetouchMaps(
+        shirt.image,
+        shirt.analysis,
+        backdrop: shirt.input,
+      );
+    });
+
+    test('the shirt maps are ready', () {
+      expect(cm.backdrop.clothesState, ClothesState.ready);
+      expect(cm.hasClothes, isTrue);
+    });
+
+    for (final e in {
+      'wrinkles 100': {PortraitIds.clothesWrinkles: 100.0},
+      'wrinkles 40': {PortraitIds.clothesWrinkles: 40.0},
+      'lint 100': {PortraitIds.clothesLint: 100.0},
+      'wrinkles 70 + lint 60': {
+        PortraitIds.clothesWrinkles: 70.0,
+        PortraitIds.clothesLint: 60.0,
+      },
+    }.entries) {
+      test(e.key, () async {
+        final u = RetouchUniforms.fromSettings(
+          withImage(e.value),
+          shirt.analysis,
+        );
+        expect(
+          await strict('clothes ${e.key}', shirt.image, cm, u),
+          greaterThan(0),
+        );
+        final tiled = await gpuRetouch(shirt.image, cm, u, tileSize: 100);
+        expect(tiled.data, (await gpuRetouch(shirt.image, cm, u)).data);
+      });
+    }
+
+    test('zero values are skipped bit-exactly', () async {
+      final u = RetouchUniforms.fromSettings(
+        PortraitSettings.empty,
+        shirt.analysis,
+      );
+      expect(
+        identical(await gpuRetouch(shirt.image, cm, u), shirt.image),
+        isTrue,
+      );
+      expect(EngineImages.live, 0);
+    });
+
+    test('backdrop and clothes together in one atlas', () async {
+      final b = renderBackdropScene(w: 320, h: 240);
+      final people = b.people;
+      final clothes = MaskRaster(
+        people.width,
+        people.height,
+        Uint8List.fromList([
+          for (var i = 0; i < people.data.length; i++)
+            (i ~/ people.width) >= 0.64 * people.height ? people.data[i] : 0,
+        ]),
+      );
+      final m = computeRetouchMaps(
+        b.image,
+        b.analysis,
+        backdrop: BackdropInput(
+          people: b.people,
+          hair: b.hair,
+          clothes: clothes,
+          wantsClothes: true,
+        ),
+      );
+      expect(m.backdrop.state, BackdropState.ready);
+      expect(m.backdrop.clothesState, ClothesState.ready);
+      final u = RetouchUniforms.fromSettings(
+        withImage({
+          PortraitIds.bgClean: 100,
+          PortraitIds.bgUnify: 60,
+          PortraitIds.clothesWrinkles: 100,
+          PortraitIds.clothesLint: 100,
+        }),
+        b.analysis,
+      );
+      await strict('backdrop + clothes', b.image, m, u);
+    });
+  });
+
   group('backdrop (image scope)', () {
     late BackdropScene scene;
     late RetouchMaps bd;

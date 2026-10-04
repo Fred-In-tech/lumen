@@ -82,7 +82,9 @@ void main() {
       expect(maps.hasFaces, isFalse);
       expect(maps.isUsable, isTrue);
       expect([b.width, b.height], [480, 360]);
-      expect(b.atlas, hasLength(16 * 480 * 360));
+      expect(b.atlas, hasLength(24 * 480 * 360));
+      expect(b.clothesState, ClothesState.notRequested);
+      expect(maps.hasClothes, isFalse);
       expect(b.medianL, closeTo(s.backdropL - 0.03, 0.03));
       expect(b.tauL, greaterThanOrEqualTo(kGrainTauFloorL));
     });

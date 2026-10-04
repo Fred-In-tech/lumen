@@ -7,24 +7,26 @@
 ///
 /// Image-scope backdrop values ([BackdropParams]) follow the face rows.
 ///
-/// Packed layout ([RetouchUniforms.pack], 200 floats = 50 vec4):
+/// Packed layout ([RetouchUniforms.pack], 204 floats = 51 vec4):
 ///
 /// | floats | vec4 | contents |
 /// |---|---|---|
 /// | 0–3 | `uRetouch` | face count, any active (0/1), spot ramp, 0 |
 /// | 4 + 24k + 0–3 | `uFace[6k]` | smooth, texture gain, even, red-eye |
 /// | 4 + 24k + 4–7 | `uFace[6k+1]` | dark circles, bags, lid protect, shine |
-/// | 4 + 24k + 8–11 | `uFace[6k+2]` | eye whites, iris, red vein, shine fill |
+/// | 4 + 24k + 8–11 | `uFace[6k+2]` | eye whites, iris, red vein, glasses glare |
 /// | 4 + 24k + 12–15 | `uFace[6k+3]` | teeth bright, teeth desat, acne, freckle |
 /// | 4 + 24k + 16–19 | `uFace[6k+4]` | mole, lips, blush, wrinkle crow's feet |
 /// | 4 + 24k + 20–23 | `uFace[6k+5]` | wrinkle forehead, frown, smile, marionette |
 ///
 /// | 196–199 | `uBackdropParams` | clean, unify, luminance, strays |
+/// | 200–203 | `uClothesParams` | wrinkles, lint, active (pass), 0 |
 ///
 /// for slots k = 0..7 (unused slots hold identity rows). `uFace[6k+5]`
 /// holds the two blend pairs of the wrinkle zone code (forehead ↔ frown,
 /// smile ↔ marionette), see `wrinkle_zones.dart`. The amplitude threshold
-/// is derived from smooth (`mapAmpThreshold`), not packed.
+/// (`mapAmpThreshold(smooth)`) and the shine fill (`mapShineFill(shine)`)
+/// are derived in the pass, not packed.
 library;
 
 import 'dart:typed_data';
@@ -43,9 +45,9 @@ const int kFaceRowFloats = 24;
 /// Header floats before the face rows.
 const int kRetouchHeaderFloats = 4;
 
-/// Total packed floats (header, face rows, backdrop params).
+/// Total packed floats (header, face rows, backdrop and clothes params).
 const int kRetouchUniformFloats =
-    kRetouchHeaderFloats + kFaceRowFloats * kMaxRetouchFaces + 4;
+    kRetouchHeaderFloats + kFaceRowFloats * kMaxRetouchFaces + 8;
 
 /// Internal retouch parameters of one face (already mapped from 0–100).
 class FaceRetouchParams {
@@ -54,6 +56,7 @@ class FaceRetouchParams {
     this.textureGain = 1,
     this.even = 0,
     this.redEye = 0,
+    this.glare = 0,
     this.darkCircles = 0,
     this.bags = 0,
     this.lidProtect = 1,
@@ -84,6 +87,7 @@ class FaceRetouchParams {
       textureGain: mapTextureGain(value(PortraitIds.skinTexture)),
       even: mapEvenTone(value(PortraitIds.skinEven)),
       redEye: mapLinear(value(PortraitIds.redEye)),
+      glare: mapLinear(value(PortraitIds.glare)),
       darkCircles: mapLinear(value(PortraitIds.darkCircles)),
       bags: mapLinear(value(PortraitIds.eyeBags)),
       lidProtect: mapLinear(value(PortraitIds.lidProtect)),
@@ -114,6 +118,9 @@ class FaceRetouchParams {
 
   /// Red-eye fix (0..1).
   final double redEye;
+
+  /// Glasses glare removal (0..1).
+  final double glare;
 
   /// Amplitude-selective threshold, derived from [smooth] (§3.1).
   double get ampThreshold => mapAmpThreshold(smooth);
@@ -173,13 +180,14 @@ class FaceRetouchParams {
       wrinkleCrowsFeet == 0 &&
       wrinkleSmile == 0 &&
       wrinkleMarionette == 0 &&
-      redEye == 0;
+      redEye == 0 &&
+      glare == 0;
 
   /// The row's [kFaceRowFloats] floats in [RetouchUniforms] order.
   List<double> toList() => [
     smooth, textureGain, even, redEye, //
     darkCircles, bags, lidProtect, shine,
-    whites, iris, redVein, shineFill,
+    whites, iris, redVein, glare,
     teethBrightness, teethDesaturate, acne, freckle,
     mole, lips, blush, wrinkleCrowsFeet,
     wrinkleForehead, wrinkleFrown, wrinkleSmile, wrinkleMarionette,
@@ -251,11 +259,17 @@ class RetouchUniforms {
         values,
       );
     }
-    out.setRange(
-      kRetouchUniformFloats - 4,
-      kRetouchUniformFloats,
-      backdrop.toList(),
-    );
+    out
+      ..setRange(
+        kRetouchUniformFloats - 8,
+        kRetouchUniformFloats - 4,
+        backdrop.toList(),
+      )
+      ..setRange(
+        kRetouchUniformFloats - 4,
+        kRetouchUniformFloats,
+        backdrop.clothesList(),
+      );
     return out;
   }
 
@@ -266,8 +280,11 @@ class RetouchUniforms {
       for (final f in faces)
         f.toList().map((v) => v.toStringAsFixed(4)).join(','),
     ];
-    final bd = backdrop.toList().map((v) => v.toStringAsFixed(4)).join(',');
-    return 'retouch:v3:${rows.join('|')}|bd:$bd';
+    final bd = [
+      ...backdrop.toList(),
+      ...backdrop.clothesList(),
+    ].map((v) => v.toStringAsFixed(4)).join(',');
+    return 'retouch:v4:${rows.join('|')}|bd:$bd';
   }
 
   @override

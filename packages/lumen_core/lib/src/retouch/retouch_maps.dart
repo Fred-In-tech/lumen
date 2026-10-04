@@ -59,6 +59,19 @@ int encodeSigned(double v, double range) {
   return (128.5 + 127 * t).floor();
 }
 
+/// [encodeSigned] rounding up or down at random ([d] ∈ [0, 1), e.g.
+/// `ditherAt`), so smooth signed fields do not band at 8 bits.
+int encodeSignedDithered(double v, double range, double d) {
+  final t = v / range;
+  if (t.isNaN) return 128;
+  if (t <= -1) return 1;
+  if (t >= 1) return 255;
+  final x = 128 + 127 * t;
+  final lo = x.floorToDouble();
+  final b = (x - lo > d ? lo + 1 : lo).toInt();
+  return b < 1 ? 1 : (b > 255 ? 255 : b);
+}
+
 /// Inverse of [encodeSigned] for a (possibly interpolated) byte value.
 double decodeSigned(double byteValue, double range) =>
     (byteValue - 128) / 127 * range;
@@ -217,8 +230,11 @@ class RetouchMaps {
   /// Backdrop effects can run ([BackdropState.ready]).
   bool get hasBackdrop => backdrop.isReady;
 
-  /// Anything to retouch with: faces or a ready backdrop.
-  bool get isUsable => hasFaces || hasBackdrop;
+  /// Clothes effects can run.
+  bool get hasClothes => backdrop.clothesReady;
+
+  /// Anything to retouch with: faces, a ready backdrop or clothes.
+  bool get isUsable => hasFaces || hasBackdrop || hasClothes;
 
   /// Size of one tile (the `Rres` grid).
   final int width;
@@ -350,12 +366,18 @@ bool retouchSlotActive(RetouchMaps maps, RetouchUniforms u, int slot) {
 
 /// True when the backdrop maps are ready and a backdrop value is set.
 bool retouchBackdropActive(RetouchMaps maps, RetouchUniforms u) =>
-    maps.hasBackdrop && !u.backdrop.isIdentity;
+    maps.hasBackdrop && !u.backdrop.backdropIdentity;
+
+/// True when the clothes maps are ready and a clothes value is set.
+bool retouchClothesActive(RetouchMaps maps, RetouchUniforms u) =>
+    maps.hasClothes && !u.backdrop.clothesIdentity;
 
 /// True when pass R changes at least one pixel (otherwise it is skipped
 /// and the source is used bit-exact).
 bool retouchPassActive(RetouchMaps maps, RetouchUniforms u) {
-  if (retouchBackdropActive(maps, u)) return true;
+  if (retouchBackdropActive(maps, u) || retouchClothesActive(maps, u)) {
+    return true;
+  }
   if (!maps.hasFaces) return false;
   for (var k = 0; k < kMaxRetouchFaces; k++) {
     if (retouchSlotActive(maps, u, k)) return true;

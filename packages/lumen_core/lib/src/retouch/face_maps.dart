@@ -12,6 +12,7 @@ import 'blemish_types.dart';
 import 'face_frame.dart';
 import 'face_parsing_input.dart';
 import 'face_regions.dart';
+import 'glare.dart';
 import 'filters.dart';
 import 'lab_planes.dart';
 import 'shine_core.dart';
@@ -85,7 +86,7 @@ FaceMapPlanes computeFaceMaps(
     gridH: grid.height,
   );
   final spots = [...detected, ...resolved.manual];
-  final heal = healBlemishes(
+  final spotHeal = healBlemishes(
     f,
     lab,
     spots,
@@ -94,6 +95,9 @@ FaceMapPlanes computeFaceMaps(
     overrides: resolved.overrides,
     core: regions.shineCore,
   );
+  // Glasses glare: a subtracted veil, merged as spot code kGlareCode.
+  final glare = detectGlare(f, lab);
+  final heal = glare == null ? spotHeal : mergeGlare(spotHeal, glare, f);
   // Wrinkles are found on the spot-healed image and folded into every
   // band: B1 = G(σ1) ∗ (L + ΔW), so the pass removes `wEff·ΔW` without
   // smoothing ever counting a wrinkle twice (§3.4, retouch_kernel.dart).

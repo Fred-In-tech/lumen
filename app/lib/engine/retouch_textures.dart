@@ -4,10 +4,10 @@
 /// Public API:
 /// * `RetouchTextures.upload(RetouchMaps)`: the seven map textures (B1,
 ///   B2, B3 at W×H; Bh, regionA, regionB at 2W×H; the backdrop atlas at
-///   2W'×2H'); `maps`, `dispose()`.
+///   3W'×2H'); `maps`, `dispose()`.
 /// * `RetouchMapsCache`: `obtain(maps)` uploads each `RetouchMaps` instance
 ///   once (identity-keyed) and returns null for null maps or maps with
-///   neither faces nor a ready backdrop (`RetouchMaps.isUsable`).
+///   no faces and no ready backdrop / clothes (`RetouchMaps.isUsable`).
 ///   Replaced textures are released after the replacement is ready;
 ///   `dispose()` releases the current ones. The cache owns the textures.
 /// * `runRetouchPass(shaders, source:, textures:, uniforms:, tileSize:)`:
@@ -78,7 +78,11 @@ class RetouchTextures {
     (m.bh, 2 * w, h),
     (m.regionA, 2 * w, h),
     (m.regionB, 2 * w, h),
-    (m.backdrop.atlas, 2 * m.backdrop.width, 2 * m.backdrop.height),
+    (
+      m.backdrop.atlas,
+      kImageAtlasColumns * m.backdrop.width,
+      kImageAtlasRows * m.backdrop.height,
+    ),
   ];
 
   final RetouchMaps maps;

@@ -28,12 +28,17 @@ const double kSpotRamp = 0.08;
 
 /// Spot codes: `0` = no spot, else `1 + kind·64 + q`, where `q` ∈ 0..62 is
 /// the threshold quantized to [kSpotLevels] steps and 63 = forced removal.
-/// Kind 3 is a clipped shine core ([kShineCoreCode]); it is selected by
-/// the Shine slider above 50 % (`shineFill`), not by a threshold.
+/// Kind 3 holds sub-codes without thresholds: a clipped shine core
+/// ([kShineCoreCode], selected by the Shine slider above 50 %,
+/// `shineFill`) and glasses glare ([kGlareCode], the Glasses glare slider).
 const int kSpotLevels = 62;
 const int kSpotForced = 63;
 const int kShineCoreKind = 3;
 const int kShineCoreCode = 1 + kShineCoreKind * 64;
+
+/// Glasses glare veil (kind 3, second sub-code), selected by the Glasses
+/// glare slider (`glare.dart`).
+const int kGlareCode = kShineCoreCode + 1;
 
 /// Slider value (0..1) at which a spot with z-score [z] and radius
 /// [radiusIod] starts to heal: the smallest `v` with `z ≥ k(v)` and
@@ -61,11 +66,16 @@ double spotSelection(
   double freckle,
   double mole, [
   double shineFill = 0,
+  double glare = 0,
 ]) {
   if (code <= 0) return 0;
   final c = code - 1;
   final kind = c >> 6, q = c & 63;
-  if (kind == kShineCoreKind) return shineFill;
+  if (kind == kShineCoreKind) {
+    return code == kShineCoreCode
+        ? shineFill
+        : (code == kGlareCode ? glare : 0);
+  }
   if (q == kSpotForced) return 1;
   final slider = kind == 0 ? acne : (kind == 1 ? freckle : mole);
   if (slider <= 0) return 0;

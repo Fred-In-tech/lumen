@@ -5,7 +5,7 @@
 // retouch/backdrop_kernel.dart (step 16) map 1:1; constants are the
 // literals of retouch/kernel_constants.dart, wrinkle codes are
 // retouch/wrinkle_zones.dart. Uniforms: render/retouch_pass.dart
-// (314 floats). Untouched pixels output the source texel unchanged.
+// (318 floats). Untouched pixels output the source texel unchanged.
 #include <flutter/runtime_effect.glsl>
 #include "lib/common.glsl"
 
@@ -43,53 +43,54 @@ uniform vec4 uBackdropInfo1;    // 110-113 median backdrop L, a, b, tau C
 uniform vec4 uRetouch;          // 114-117 face count, any active, spot ramp, 0
 uniform vec4 uFace0;             // 118-121 face 0: smooth, texture gain, even, red-eye
 uniform vec4 uFace1;             // 122-125 face 0: dark circles, bags, lid protect, shine
-uniform vec4 uFace2;             // 126-129 face 0: eye whites, iris, red vein, shine fill
+uniform vec4 uFace2;             // 126-129 face 0: eye whites, iris, red vein, glare
 uniform vec4 uFace3;             // 130-133 face 0: teeth bright, teeth desat, acne, freckle
 uniform vec4 uFace4;             // 134-137 face 0: mole, lips, blush, wrinkle crow's feet
 uniform vec4 uFace5;             // 138-141 face 0: wrinkle forehead, frown, smile, marionette
 uniform vec4 uFace6;             // 142-145 face 1: smooth, texture gain, even, red-eye
 uniform vec4 uFace7;             // 146-149 face 1: dark circles, bags, lid protect, shine
-uniform vec4 uFace8;             // 150-153 face 1: eye whites, iris, red vein, shine fill
+uniform vec4 uFace8;             // 150-153 face 1: eye whites, iris, red vein, glare
 uniform vec4 uFace9;             // 154-157 face 1: teeth bright, teeth desat, acne, freckle
 uniform vec4 uFace10;            // 158-161 face 1: mole, lips, blush, wrinkle crow's feet
 uniform vec4 uFace11;            // 162-165 face 1: wrinkle forehead, frown, smile, marionette
 uniform vec4 uFace12;            // 166-169 face 2: smooth, texture gain, even, red-eye
 uniform vec4 uFace13;            // 170-173 face 2: dark circles, bags, lid protect, shine
-uniform vec4 uFace14;            // 174-177 face 2: eye whites, iris, red vein, shine fill
+uniform vec4 uFace14;            // 174-177 face 2: eye whites, iris, red vein, glare
 uniform vec4 uFace15;            // 178-181 face 2: teeth bright, teeth desat, acne, freckle
 uniform vec4 uFace16;            // 182-185 face 2: mole, lips, blush, wrinkle crow's feet
 uniform vec4 uFace17;            // 186-189 face 2: wrinkle forehead, frown, smile, marionette
 uniform vec4 uFace18;            // 190-193 face 3: smooth, texture gain, even, red-eye
 uniform vec4 uFace19;            // 194-197 face 3: dark circles, bags, lid protect, shine
-uniform vec4 uFace20;            // 198-201 face 3: eye whites, iris, red vein, shine fill
+uniform vec4 uFace20;            // 198-201 face 3: eye whites, iris, red vein, glare
 uniform vec4 uFace21;            // 202-205 face 3: teeth bright, teeth desat, acne, freckle
 uniform vec4 uFace22;            // 206-209 face 3: mole, lips, blush, wrinkle crow's feet
 uniform vec4 uFace23;            // 210-213 face 3: wrinkle forehead, frown, smile, marionette
 uniform vec4 uFace24;            // 214-217 face 4: smooth, texture gain, even, red-eye
 uniform vec4 uFace25;            // 218-221 face 4: dark circles, bags, lid protect, shine
-uniform vec4 uFace26;            // 222-225 face 4: eye whites, iris, red vein, shine fill
+uniform vec4 uFace26;            // 222-225 face 4: eye whites, iris, red vein, glare
 uniform vec4 uFace27;            // 226-229 face 4: teeth bright, teeth desat, acne, freckle
 uniform vec4 uFace28;            // 230-233 face 4: mole, lips, blush, wrinkle crow's feet
 uniform vec4 uFace29;            // 234-237 face 4: wrinkle forehead, frown, smile, marionette
 uniform vec4 uFace30;            // 238-241 face 5: smooth, texture gain, even, red-eye
 uniform vec4 uFace31;            // 242-245 face 5: dark circles, bags, lid protect, shine
-uniform vec4 uFace32;            // 246-249 face 5: eye whites, iris, red vein, shine fill
+uniform vec4 uFace32;            // 246-249 face 5: eye whites, iris, red vein, glare
 uniform vec4 uFace33;            // 250-253 face 5: teeth bright, teeth desat, acne, freckle
 uniform vec4 uFace34;            // 254-257 face 5: mole, lips, blush, wrinkle crow's feet
 uniform vec4 uFace35;            // 258-261 face 5: wrinkle forehead, frown, smile, marionette
 uniform vec4 uFace36;            // 262-265 face 6: smooth, texture gain, even, red-eye
 uniform vec4 uFace37;            // 266-269 face 6: dark circles, bags, lid protect, shine
-uniform vec4 uFace38;            // 270-273 face 6: eye whites, iris, red vein, shine fill
+uniform vec4 uFace38;            // 270-273 face 6: eye whites, iris, red vein, glare
 uniform vec4 uFace39;            // 274-277 face 6: teeth bright, teeth desat, acne, freckle
 uniform vec4 uFace40;            // 278-281 face 6: mole, lips, blush, wrinkle crow's feet
 uniform vec4 uFace41;            // 282-285 face 6: wrinkle forehead, frown, smile, marionette
 uniform vec4 uFace42;            // 286-289 face 7: smooth, texture gain, even, red-eye
 uniform vec4 uFace43;            // 290-293 face 7: dark circles, bags, lid protect, shine
-uniform vec4 uFace44;            // 294-297 face 7: eye whites, iris, red vein, shine fill
+uniform vec4 uFace44;            // 294-297 face 7: eye whites, iris, red vein, glare
 uniform vec4 uFace45;            // 298-301 face 7: teeth bright, teeth desat, acne, freckle
 uniform vec4 uFace46;            // 302-305 face 7: mole, lips, blush, wrinkle crow's feet
 uniform vec4 uFace47;            // 306-309 face 7: wrinkle forehead, frown, smile, marionette
 uniform vec4 uBackdropParams;   // 310-313 clean, unify, luminance, strays
+uniform vec4 uClothesParams;    // 314-317 clothes wrinkles, lint, active, 0
 
 uniform sampler2D uSource;     // 0: sRGB source (FilterQuality.none)
 uniform sampler2D uB1;         // 1: W x H bands (sRGB, dithered), FilterQuality.none
@@ -98,7 +99,7 @@ uniform sampler2D uB3;         // 3
 uniform sampler2D uBh;         // 4: 2W x H heal deltas (low | high)
 uniform sampler2D uRegionA;    // 5: 2W x H skin, under-eye, lash | mouth, sclera, iris
 uniform sampler2D uRegionB;    // 6: 2W x H lips, blush, wrinkle dL | face id, spot code, wrinkle zone
-uniform sampler2D uBackdropMap; // 7: 2W' x 2H' backdrop E | G / U | weights
+uniform sampler2D uBackdropMap; // 7: 3W' x 2H' image atlas E | G | fold / U | weights | lint
 
 out vec4 fragColor;
 
@@ -111,14 +112,17 @@ out vec4 fragColor;
     f.y)
 
 // Heal weight of a spot code (blemish_types.dart spotSelection). Kind 3
-// is a clipped shine core, selected by the shine fill weight.
+// holds whole-patch heals: 193 = clipped shine core (shine fill weight),
+// 194 = glasses glare (glare slider).
 float spotSel(float code, float acne, float freckle, float mole,
-              float shineFill) {
+              float shineFill, float glare) {
   if (code < 0.5) return 0.0;
   float c = code - 1.0;
   float kind = floor(c / 64.0);
   float q = c - kind * 64.0;
-  if (kind > 2.5) return shineFill;
+  if (kind > 2.5) {
+    return code < 193.5 ? shineFill : (code < 194.5 ? glare : 0.0);
+  }
   if (q > 62.5) return 1.0;
   float slider = kind < 0.5 ? acne : (kind < 1.5 ? freckle : mole);
   if (slider <= 0.0) return 0.0;
@@ -205,7 +209,9 @@ bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
   float lash = ra0.b;
   float mouth = ra1.r;
   float dW = rb0.b * 0.2;  // kWrinkleRangeL
-  float sel = spotSel(floor(ids.g * 255.0 + 0.5), r3.z, r3.w, r4.x, r2.w);
+  float shineFill = clamp((r1.w - 0.5) / 0.4, 0.0, 1.0);
+  float sel = spotSel(floor(ids.g * 255.0 + 0.5), r3.z, r3.w, r4.x,
+                      shineFill, r2.w);
   // 3. Effect weights; untouched pixels keep the source exactly.
   float s = r0.x * skin;
   float ev = r0.z * skin;
@@ -344,43 +350,66 @@ bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
   return true;
 }
 
-// Backdrop atlas taps: tile (OX, OY) of the 2W x 2H atlas (backdrop_maps.dart).
+// Image atlas taps: tile (OX, OY) of the 3W x 2H atlas (backdrop_maps.dart).
 #define BTAP(X, Y) texture(uBackdropMap, (vec2(X, Y) + 0.5) / BA).rgb
 #define BBILERP(OX, OY) mix( \
     mix(BTAP(blo.x + (OX), blo.y + (OY)), BTAP(bhi.x + (OX), blo.y + (OY)), bf.x), \
     mix(BTAP(blo.x + (OX), bhi.y + (OY)), BTAP(bhi.x + (OX), bhi.y + (OY)), bf.x), \
     bf.y)
 
-// 16. Backdrop (image scope, backdrop_kernel.dart): adds the Clean /
-// stray-hair blend and the Unify shift to o; false when untouched.
+// Signed atlas bytes (retouch_maps.dart decodeSigned): 128 is zero.
+vec3 decodeSigned(vec3 v, vec3 range) {
+  return (v * 255.0 - 128.0) / 127.0 * range;
+}
+
+// 16. Backdrop and clothes (image scope, backdrop_kernel.dart): adds the
+// Clean / stray-hair blend, the Unify shift and the clothing wrinkle /
+// lint change to o; false when untouched.
 bool backdropRetouch(vec2 uv, vec3 li, inout vec3 o) {
-  if (uBackdropInfo0.z < 0.5) return false;
+  bool backdropOn = uBackdropInfo0.z > 0.5;
+  bool clothesOn = uClothesParams.z > 0.5;
+  if (!backdropOn && !clothesOn) return false;
   vec2 BW = uBackdropInfo0.xy;
-  vec2 BA = 2.0 * BW;
+  vec2 BA = vec2(3.0, 2.0) * BW;
   vec2 blo;
   vec2 bhi;
   vec2 bf;
   maskTaps(uv, BW, blo, bhi, bf);
-  vec3 wts = BBILERP(BW.x, BW.y);
-  float mixW = max(uBackdropParams.x * wts.r, uBackdropParams.w * wts.b);
-  float matte = wts.g;
-  bool unify = matte > 0.0 &&
-      (uBackdropParams.y > 0.0 || uBackdropParams.z != 0.0);
-  if (mixW <= 0.0 && !unify) return false;
-  if (mixW > 0.0) {
-    vec3 e = bandLab(BBILERP(0.0, 0.0));
-    vec3 g = bandLab(BBILERP(BW.x, 0.0));
-    vec3 r = li - g;
-    vec3 tau = vec3(uBackdropInfo0.w, uBackdropInfo1.w, uBackdropInfo1.w);
-    vec3 t = e + r / (1.0 + abs(r) / tau);
-    o += mixW * (t - li);
+  bool touched = false;
+  if (backdropOn) {
+    vec3 wts = BBILERP(BW.x, BW.y);
+    float mixW = max(uBackdropParams.x * wts.r, uBackdropParams.w * wts.b);
+    float matte = wts.g;
+    bool unify = matte > 0.0 &&
+        (uBackdropParams.y > 0.0 || uBackdropParams.z != 0.0);
+    if (mixW > 0.0) {
+      vec3 e = bandLab(BBILERP(0.0, 0.0));
+      vec3 g = bandLab(BBILERP(BW.x, 0.0));
+      vec3 r = li - g;
+      vec3 tau = vec3(uBackdropInfo0.w, uBackdropInfo1.w, uBackdropInfo1.w);
+      vec3 t = e + r / (1.0 + abs(r) / tau);
+      o += mixW * (t - li);
+    }
+    if (unify) {
+      vec3 u = bandLab(BBILERP(0.0, BW.y));
+      o += matte * (uBackdropParams.y * (uBackdropInfo1.xyz - u) +
+                    vec3(uBackdropParams.z, 0.0, 0.0));
+    }
+    touched = mixW > 0.0 || unify;
   }
-  if (unify) {
-    vec3 u = bandLab(BBILERP(0.0, BW.y));
-    o += matte * (uBackdropParams.y * (uBackdropInfo1.xyz - u) +
-                  vec3(uBackdropParams.z, 0.0, 0.0));
+  if (clothesOn) {
+    // Tiles (2, 0): removable fold field D; (2, 1): lint fill delta.
+    vec3 fold = decodeSigned(BBILERP(2.0 * BW.x, 0.0), vec3(0.2, 0.08, 0.08));
+    vec3 lint = decodeSigned(BBILERP(2.0 * BW.x, BW.y), vec3(0.6, 0.15, 0.15));
+    bool clothes =
+        (uClothesParams.x > 0.0 && any(greaterThan(abs(fold), vec3(1e-6)))) ||
+        (uClothesParams.y > 0.0 && any(greaterThan(abs(lint), vec3(1e-6))));
+    if (clothes) {
+      o += uClothesParams.y * lint - uClothesParams.x * fold;
+      touched = true;
+    }
   }
-  return true;
+  return touched;
 }
 
 void main() {

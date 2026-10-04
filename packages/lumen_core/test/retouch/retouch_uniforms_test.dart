@@ -159,9 +159,23 @@ void main() {
         expect(u.isIdentity, isFalse, reason: id);
         expect(u.faces.single.isIdentity, isTrue, reason: '$id is image scope');
         expect(needsBackdropMaps(s), isTrue, reason: id);
+        expect(needsClothesMaps(s), isFalse, reason: id);
+        expect(portraitNeedsRetouch(s), isTrue, reason: id);
+      }
+      for (final id in [PortraitIds.clothesWrinkles, PortraitIds.clothesLint]) {
+        final s = PortraitSettings.empty.withImageValue(id, 40);
+        final u = RetouchUniforms.fromSettings(s, one);
+        expect(u.isIdentity, isFalse, reason: id);
+        expect(u.faces.single.isIdentity, isTrue, reason: '$id is image scope');
+        expect(u.backdrop.backdropIdentity, isTrue, reason: id);
+        expect(u.backdrop.clothesIdentity, isFalse, reason: id);
+        // Only the clothes raster is loaded (lazily, for these values).
+        expect(needsClothesMaps(s), isTrue, reason: id);
+        expect(needsBackdropMaps(s), isFalse, reason: id);
         expect(portraitNeedsRetouch(s), isTrue, reason: id);
       }
       expect(needsBackdropMaps(PortraitSettings.empty), isFalse);
+      expect(needsClothesMaps(PortraitSettings.empty), isFalse);
     });
 
     test('no faces is identity', () {
@@ -195,13 +209,16 @@ void main() {
         .withImageValue(PortraitIds.bgClean, 60)
         .withImageValue(PortraitIds.bgUnify, 25)
         .withImageValue(PortraitIds.bgUnifyLuminance, -50)
-        .withImageValue(PortraitIds.strayHairs, 80);
+        .withImageValue(PortraitIds.strayHairs, 80)
+        .withGroupValue(FaceGroup.male, PortraitIds.glare, 45)
+        .withImageValue(PortraitIds.clothesWrinkles, 70)
+        .withImageValue(PortraitIds.clothesLint, 35);
     final u = RetouchUniforms.fromSettings(settings, analysis);
     final f = u.pack();
 
     test('has the documented size and header', () {
       expect(f, hasLength(kRetouchUniformFloats));
-      expect(kRetouchUniformFloats, 200);
+      expect(kRetouchUniformFloats, 204);
       expect(kFaceRowFloats, 24);
       expect(f[0], 2);
       expect(f[1], 1);
@@ -216,7 +233,7 @@ void main() {
         3: (0.4, 'red-eye'),
         6: (1, 'lid protect default'),
         7: (0.7, 'shine'),
-        11: (0.5, 'shine fill = (0.7 − 0.5) / 0.4'),
+        11: (0.45, 'glasses glare'),
         13: (0.5, 'teeth desaturate'),
         16: (0.25, 'mole'),
         17: (0.3, 'lips'),
@@ -232,13 +249,16 @@ void main() {
       }
       expect(f[kRetouchHeaderFloats + 0], 0, reason: 'slot 0 smooth');
       expect(f[kRetouchHeaderFloats + 20], 0, reason: 'slot 0 forehead');
-      // uBackdropParams after the rows.
-      expect(f.sublist(196), [
+      // The shine fill is derived from Shine (row slot 7), not stored.
+      expect(u.row(1).shineFill, closeTo(0.5, 1e-12));
+      // uBackdropParams and uClothesParams after the rows.
+      expect(f.sublist(196, 200), [
         closeTo(0.6, 1e-6),
         closeTo(0.25, 1e-6),
         closeTo(-0.5 * kBackdropLumMax, 1e-6),
         closeTo(0.8, 1e-6),
       ]);
+      expect(f.sublist(200), [closeTo(0.7, 1e-6), closeTo(0.35, 1e-6), 0, 0]);
     });
 
     test('shine fill starts above 50 % Shine', () {
@@ -266,6 +286,17 @@ void main() {
         analysis,
       );
       expect(other.key, isNot(u.key));
+      expect(u.key, startsWith('retouch:v4:'));
+      for (final changed in [
+        settings.withGroupValue(FaceGroup.male, PortraitIds.glare, 46),
+        settings.withImageValue(PortraitIds.clothesWrinkles, 71),
+        settings.withImageValue(PortraitIds.clothesLint, 36),
+      ]) {
+        expect(
+          RetouchUniforms.fromSettings(changed, analysis).key,
+          isNot(u.key),
+        );
+      }
       expect(RetouchUniforms.identity.key, 'retouch:identity');
     });
 

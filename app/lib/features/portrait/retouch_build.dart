@@ -18,8 +18,8 @@ import 'package:lumen/platform/background.dart';
 final _log = Logger('RetouchBuild');
 
 /// Builds the retouch maps off the UI isolate. Top-level so the isolate
-/// closure only captures plain data. [backdrop] (person / hair rasters)
-/// adds the image-scope backdrop maps; [skinPen] applies the Manual Tuning
+/// closure only captures plain data. [backdrop] (person / hair / clothes
+/// rasters) adds the image-scope backdrop and clothing maps; [skinPen] applies the Manual Tuning
 /// Pen (the editor applies it separately with `applySkinPen`, so pen
 /// strokes never re-run this).
 Future<RetouchMaps> computeRetouchMapsInBackground(
@@ -38,40 +38,63 @@ Future<RetouchMaps> computeRetouchMapsInBackground(
   ),
 );
 
-/// Loads the person and hair rasters the backdrop maps need, through the
-/// AI mask pipeline (segments the photo once if needed; read-only use).
-/// [BackdropInput.missing] when masks are unavailable (web, no model,
-/// offline), so the UI can say why the backdrop sliders do nothing.
+/// Which image-scope rasters a photo's edits need.
+typedef ImageRasterRequest = ({bool backdrop, bool clothes});
+
+/// The image-scope rasters [settings] need (backdrop: person / hair;
+/// clothing: clothes), or null when no image-scope value is set.
+ImageRasterRequest? imageRasterRequest(PortraitSettings settings) {
+  final backdrop = needsBackdropMaps(settings);
+  final clothes = needsClothesMaps(settings);
+  return backdrop || clothes ? (backdrop: backdrop, clothes: clothes) : null;
+}
+
+/// Loads the rasters the image-scope maps need through the AI mask
+/// pipeline (segments the photo once if needed; read-only use): person and
+/// hair for the backdrop, clothes for the clothing cleanup, each only when
+/// [want] asks for it. A raster that is unavailable (web, no model,
+/// offline, failure) stays null, so the maps carry why its sliders do
+/// nothing; with nothing available for a backdrop-only request the result
+/// is [BackdropInput.missing].
 Future<BackdropInput> loadBackdropRasters(
   AiMaskSource? source,
   AiMaskRasterLoader? loader,
-  String assetId,
-) async {
-  if (source == null || loader == null || !source.supports(MaskKind.person)) {
-    return BackdropInput.missing;
-  }
-  try {
-    final people = await loader.load(
-      assetId,
-      (await source.segment(assetId, MaskKind.person)).maskRef,
-    );
-    if (people == null) return BackdropInput.missing;
-    MaskRaster? hair;
-    if (source.supports(MaskKind.hair)) {
-      hair = await loader.load(
-        assetId,
-        (await source.segment(assetId, MaskKind.hair)).maskRef,
-      );
+  String assetId, {
+  ImageRasterRequest want = (backdrop: true, clothes: false),
+}) async {
+  Future<MaskRaster?> raster(MaskKind kind) async {
+    if (source == null || loader == null || !source.supports(kind)) {
+      return null;
     }
-    return BackdropInput(people: people, hair: hair);
-  } on Exception catch (e) {
-    _log.warning('backdrop masks unavailable for $assetId: $e');
-    return BackdropInput.missing;
+    try {
+      return await loader.load(
+        assetId,
+        (await source.segment(assetId, kind)).maskRef,
+      );
+    } on Exception catch (e) {
+      _log.warning('${kind.name} mask unavailable for $assetId: $e');
+      return null;
+    }
   }
+
+  final people = want.backdrop ? await raster(MaskKind.person) : null;
+  final hair = people != null ? await raster(MaskKind.hair) : null;
+  final clothes = want.clothes ? await raster(MaskKind.clothes) : null;
+  if (people == null && clothes == null) return _unavailable(want);
+  return BackdropInput(
+    people: people,
+    hair: hair,
+    clothes: clothes,
+    wantsBackdrop: want.backdrop,
+    wantsClothes: want.clothes,
+  );
 }
 
-/// Loads the backdrop rasters of a photo (see [loadBackdropRasters]).
-typedef BackdropRasterLoader = Future<BackdropInput> Function(String assetId);
+/// Loads the image-scope rasters of a photo (see [loadBackdropRasters]).
+typedef BackdropRasterLoader = Future<BackdropInput> Function(
+  String assetId,
+  ImageRasterRequest want,
+);
 
 /// How far around a detected face box a heal still counts as "on the face"
 /// (the retouch maps reach the hairline and the jaw).
@@ -159,14 +182,15 @@ class StoredRetouchLoader {
   final Future<FaceAnalysisService> Function() faceService;
   final PatchStoreGetter? patches;
 
-  /// Person / hair rasters for backdrop edits (null: none available).
+  /// Person / hair / clothes rasters for image-scope edits (null: none
+  /// available).
   final BackdropRasterLoader? backdrop;
 
   /// Never throws: when analysis cannot run (web, missing models) the
   /// result has no maps and a [kRetouchSkippedNote].
   Future<StoredRetouch> load(String assetId, DevelopSettings settings) async {
     if (!portraitNeedsRetouch(settings.portrait)) return kNoRetouch;
-    final wantsBackdrop = needsBackdropMaps(settings.portrait);
+    final want = imageRasterRequest(settings.portrait);
     try {
       final service = await faceService();
       var entry = await service.cached(assetId);
@@ -181,7 +205,7 @@ class StoredRetouchLoader {
         );
       }
       final faces = entry.analysis;
-      if (faces.faces.isEmpty && !wantsBackdrop) return kNoRetouch;
+      if (faces.faces.isEmpty && want == null) return kNoRetouch;
       decoded ??= await loadAnalysisPixels(catalog, assetId);
       final pixels = await healedAnalysisPixels(
         decoded.pixels,
@@ -195,10 +219,10 @@ class StoredRetouchLoader {
         faces,
         settings.portrait.spots,
         skinPen: settings.portrait.skinPen,
-        backdrop: wantsBackdrop
-            ? await (backdrop?.call(assetId) ??
-                  Future.value(BackdropInput.missing))
-            : null,
+        backdrop: want == null
+            ? null
+            : await (backdrop?.call(assetId, want) ??
+                  Future.value(_unavailable(want))),
       );
       return maps.isUsable
           ? (maps: maps, faces: faces, note: null)
@@ -210,15 +234,22 @@ class StoredRetouchLoader {
   }
 }
 
+/// [want] with no raster available.
+BackdropInput _unavailable(ImageRasterRequest want) =>
+    want.backdrop && !want.clothes
+    ? BackdropInput.missing
+    : BackdropInput(wantsBackdrop: want.backdrop, wantsClothes: want.clothes);
+
 final storedRetouchLoaderProvider = Provider<StoredRetouchLoader>(
   (ref) => StoredRetouchLoader(
     catalog: ref.watch(catalogRepositoryProvider),
     faceService: () => ref.read(faceAnalysisServiceProvider.future),
     patches: () => ref.read(patchStoreProvider.future),
-    backdrop: (id) => loadBackdropRasters(
+    backdrop: (id, want) => loadBackdropRasters(
       ref.read(aiMaskSourceProvider),
       ref.read(aiMaskRasterLoaderProvider),
       id,
+      want: want,
     ),
   ),
 );

@@ -100,9 +100,15 @@ Float32List _exactGaussian(Float32List src, int w, int h, double sigma) {
   return pass(pass(src, true), false);
 }
 
-/// Separable min ([isMax] false) or max filter with a square of radius [r].
+/// Separable min ([isMax] false) or max filter with a square of radius [r]
+/// (the window is clamped to the image). From radius
+/// [kRankFastRadius] on, each pass is van Herk / Gil-Werman: three
+/// comparisons per texel whatever the radius, same result.
 Float32List rankFilter(Float32List src, int w, int h, int r, bool isMax) {
   if (r <= 0) return Float32List.fromList(src);
+  if (r >= kRankFastRadius) {
+    return _vanHerk(_vanHerk(src, w, h, r, isMax, true), w, h, r, isMax, false);
+  }
   Float32List pass(Float32List s, bool horiz) {
     final out = Float32List(s.length);
     final len = horiz ? w : h, lines = horiz ? h : w;
@@ -123,6 +129,60 @@ Float32List rankFilter(Float32List src, int w, int h, int r, bool isMax) {
   }
 
   return pass(pass(src, true), false);
+}
+
+/// Radius from which [rankFilter] uses van Herk / Gil-Werman.
+const int kRankFastRadius = 3;
+
+/// One van Herk / Gil-Werman pass: the line is padded with the identity
+/// (±∞) by [r] on both sides and cut into blocks of `2r + 1`; a window is
+/// the suffix extreme of its first block and the prefix extreme of its
+/// last one.
+Float32List _vanHerk(
+  Float32List s,
+  int w,
+  int h,
+  int r,
+  bool isMax,
+  bool horiz,
+) {
+  final out = Float32List(s.length);
+  final len = horiz ? w : h, lines = horiz ? h : w;
+  final step = horiz ? 1 : w;
+  final k = 2 * r + 1, n = len + 2 * r;
+  final pad = isMax ? double.negativeInfinity : double.infinity;
+  final p = Float32List(n), g = Float32List(n), e = Float32List(n);
+  for (var line = 0; line < lines; line++) {
+    final base = horiz ? line * w : line;
+    p.fillRange(0, r, pad);
+    p.fillRange(r + len, n, pad);
+    for (var j = 0; j < len; j++) {
+      p[r + j] = s[base + j * step];
+    }
+    for (var j = 0; j < n; j++) {
+      final v = p[j];
+      if (j % k == 0) {
+        g[j] = v;
+      } else {
+        final m = g[j - 1];
+        g[j] = (isMax ? v > m : v < m) ? v : m;
+      }
+    }
+    for (var j = n - 1; j >= 0; j--) {
+      final v = p[j];
+      if (j == n - 1 || (j + 1) % k == 0) {
+        e[j] = v;
+      } else {
+        final m = e[j + 1];
+        e[j] = (isMax ? v > m : v < m) ? v : m;
+      }
+    }
+    for (var i = 0; i < len; i++) {
+      final a = e[i], b = g[i + 2 * r];
+      out[base + i * step] = (isMax ? b > a : b < a) ? b : a;
+    }
+  }
+  return out;
 }
 
 /// Guided filter (He et al. 2010) of each plane in [inputs] with [guide],

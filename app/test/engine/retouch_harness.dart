@@ -9,6 +9,7 @@ import '../../../packages/lumen_core/test/retouch/support/synthetic_portrait.dar
 import '../support/test_images.dart';
 
 export '../../../packages/lumen_core/test/retouch/support/synthetic_backdrop.dart';
+export '../../../packages/lumen_core/test/retouch/support/synthetic_clothes.dart';
 export '../../../packages/lumen_core/test/retouch/support/synthetic_portrait.dart';
 
 /// Settings with [values] on the All group (or [group]).

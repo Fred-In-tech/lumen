@@ -36,7 +36,7 @@ RetouchMaps _maps({List<int> slots = const [0, 2]}) {
 }
 
 void main() {
-  test('packs size, tile, map info, face info and rows (314 floats)', () {
+  test('packs size, tile, map info, face info and rows (318 floats)', () {
     const smooth = FaceRetouchParams(smooth: 0.5);
     const u = RetouchUniforms([smooth, FaceRetouchParams.identity, smooth]);
     final f = RetouchPassUniforms.pack(
@@ -49,11 +49,12 @@ void main() {
       fullWidth: 1000,
       fullHeight: 500,
     );
-    expect(kRetouchPassFloatCount, 314);
+    expect(kRetouchPassFloatCount, 318);
     expect(RetouchPassIndex.backdropInfo, 106);
     expect(RetouchPassIndex.header, 114);
     expect(RetouchPassIndex.rows, 118);
     expect(RetouchPassIndex.backdropParams, 310);
+    expect(RetouchPassIndex.clothesParams, 314);
     expect(f.length, kRetouchPassFloatCount);
     expect(f.sublist(0, 6), [64, 32, 128, 96, 1000, 500]);
     expect(f.sublist(6, 9), [4, 2, 2]); // map W, H, face count
@@ -87,9 +88,74 @@ void main() {
       ),
       u.pack().sublist(4),
     );
-    // Backdrop not requested: inactive, params identity.
+    // Backdrop and clothes not requested: inactive, params identity.
     expect(f[RetouchPassIndex.backdropInfo + 2], 0);
-    expect(f.sublist(RetouchPassIndex.backdropParams), [0, 0, 0, 0]);
+    expect(
+      f.sublist(
+        RetouchPassIndex.backdropParams,
+        RetouchPassIndex.clothesParams,
+      ),
+      [0, 0, 0, 0],
+    );
+    expect(f.sublist(RetouchPassIndex.clothesParams), [0, 0, 0, 0]);
+  });
+
+  group('clothes', () {
+    RetouchMaps clothesMaps(ClothesState state) => RetouchMaps.empty(
+      backdrop: BackdropMaps(
+        width: 4,
+        height: 2,
+        atlas: Uint8List(4 * kImageAtlasColumns * kImageAtlasRows * 4 * 2),
+        state: BackdropState.notRequested,
+        clothesState: state,
+      ),
+    );
+    final u = RetouchUniforms.fromSettings(
+      PortraitSettings.empty
+          .withImageValue(PortraitIds.clothesWrinkles, 60)
+          .withImageValue(PortraitIds.clothesLint, 20),
+      const FaceAnalysis(imageWidth: 8, imageHeight: 8, modelVersion: 't'),
+    );
+
+    test('ready clothes maps and a value: active, wrinkles / lint packed '
+        '(uClothesParams)', () {
+      final m = clothesMaps(ClothesState.ready);
+      final f = RetouchPassUniforms.pack(m, u, width: 8, height: 8);
+      expect(f.sublist(RetouchPassIndex.clothesParams), [
+        closeTo(0.6, 1e-6),
+        closeTo(0.2, 1e-6),
+        1,
+        0,
+      ]);
+      expect(f[RetouchPassIndex.backdropInfo + 2], 0, reason: 'backdrop');
+      expect(
+        f.sublist(
+          RetouchPassIndex.backdropInfo,
+          RetouchPassIndex.backdropInfo + 2,
+        ),
+        [4, 2],
+      );
+      expect(f[RetouchPassIndex.header + 1], 1);
+      expect(RetouchPassUniforms.isActive(m, u), isTrue);
+    });
+
+    test('no clothes maps or no value: inactive', () {
+      for (final s in [
+        ClothesState.notRequested,
+        ClothesState.noMatte,
+        ClothesState.noClothes,
+      ]) {
+        final m = clothesMaps(s);
+        final f = RetouchPassUniforms.pack(m, u, width: 8, height: 8);
+        expect(f[RetouchPassIndex.clothesParams + 2], 0, reason: '$s');
+        expect(RetouchPassUniforms.isActive(m, u), isFalse, reason: '$s');
+      }
+      final ready = clothesMaps(ClothesState.ready);
+      expect(
+        RetouchPassUniforms.isActive(ready, RetouchUniforms.identity),
+        isFalse,
+      );
+    });
   });
 
   test('a non-identity row without maps is inactive', () {

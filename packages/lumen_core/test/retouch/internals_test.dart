@@ -9,6 +9,53 @@ import 'package:lumen_core/src/retouch/skin_model.dart';
 import 'package:test/test.dart';
 
 void main() {
+  group('rankFilter', () {
+    // Brute-force square window, clamped to the image.
+    Float32List naive(Float32List s, int w, int h, int r, bool isMax) {
+      final out = Float32List(s.length);
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          var m = isMax ? double.negativeInfinity : double.infinity;
+          for (
+            var yy = math.max(0, y - r);
+            yy <= math.min(h - 1, y + r);
+            yy++
+          ) {
+            for (
+              var xx = math.max(0, x - r);
+              xx <= math.min(w - 1, x + r);
+              xx++
+            ) {
+              final v = s[yy * w + xx];
+              m = isMax ? math.max(m, v) : math.min(m, v);
+            }
+          }
+          out[y * w + x] = m;
+        }
+      }
+      return out;
+    }
+
+    test('every radius (naive and van Herk paths) matches a brute-force '
+        'window exactly', () {
+      final rnd = math.Random(7);
+      for (final (w, h) in const [(37, 23), (5, 41), (64, 1)]) {
+        final s = Float32List.fromList([
+          for (var i = 0; i < w * h; i++) rnd.nextDouble() * 2 - 1,
+        ]);
+        for (final r in const [1, 2, 3, 4, 7, 11, 20, 50]) {
+          for (final isMax in const [true, false]) {
+            expect(
+              rankFilter(s, w, h, r, isMax),
+              naive(s, w, h, r, isMax),
+              reason: '$w×$h r $r max $isMax',
+            );
+          }
+        }
+      }
+    });
+  });
+
   group('pushPull', () {
     const w = 40, h = 30;
     Float32List hole(double cx, double cy, double r) => Float32List.fromList([

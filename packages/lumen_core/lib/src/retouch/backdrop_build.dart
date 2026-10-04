@@ -1,5 +1,7 @@
 /// Builds [BackdropMaps] once per photo from the source and the person
-/// (and hair) rasters of the vision pipeline. Pure and isolate-safe.
+/// (and hair) rasters of the vision pipeline, plus the clothes raster for
+/// the clothing cleanup (`clothes_maps.dart`); each part only when its
+/// sliders are set. Pure and isolate-safe.
 ///
 /// 1. Person matte P: the people raster, resampled to the backdrop grid
 ///    and refined against L with a small guided filter.
@@ -24,12 +26,14 @@ import '../render/mask_rasterizer.dart';
 import '../render/rgba_buffer.dart';
 import 'backdrop_maps.dart';
 import 'backdrop_strays.dart';
+import 'clothes_maps.dart';
 import 'filters.dart';
 import 'lab_planes.dart';
 import 'map_rect.dart';
 import 'push_pull.dart';
+import 'retouch_maps.dart' show encodeSignedDithered;
 
-/// Backdrop grid long edge (the atlas is 2× this per side).
+/// Image-scope grid long edge (the atlas is 3 × 2 tiles of this grid).
 const int kBackdropLongEdge = 1024;
 
 /// Clean guard band at the subject edge (fraction of the long edge).
@@ -62,38 +66,190 @@ const double kGrainTauSigmas = 3.0;
 const double kGrainTauFloorL = 0.012;
 const double kGrainTauFloorC = 0.006;
 
-/// Inputs for backdrop maps (8-bit coverage on any grid with the source's
-/// aspect, e.g. the 1024-px AI mask grid). [missing] = requested but the
-/// person raster is unavailable ([BackdropState.noMatte]).
+/// Inputs for the image-scope maps (8-bit coverage on any grid with the
+/// source's aspect, e.g. the 1024-px AI mask grid): the person (and hair)
+/// rasters for the backdrop, the clothes raster for clothing cleanup.
+/// [missing] = backdrop requested but no person raster
+/// ([BackdropState.noMatte]).
 class BackdropInput {
-  const BackdropInput({required MaskRaster this.people, this.hair});
-  const BackdropInput._missing() : people = null, hair = null;
+  const BackdropInput({
+    this.people,
+    this.hair,
+    this.clothes,
+    this.wantsBackdrop = true,
+    this.wantsClothes = false,
+  });
 
-  static const missing = BackdropInput._missing();
+  static const missing = BackdropInput();
 
   final MaskRaster? people;
   final MaskRaster? hair;
+  final MaskRaster? clothes;
+  final bool wantsBackdrop;
+  final bool wantsClothes;
 }
 
-/// Computes the backdrop maps of [source] ([input] null → not requested).
+/// Computes the image-scope maps of [source] ([input] null → nothing
+/// requested): the backdrop part and the clothes part, each only when
+/// wanted and possible, on one grid and one atlas.
 BackdropMaps computeBackdropMaps(RgbaBuffer source, BackdropInput? input) {
   if (input == null) return BackdropMaps.none(BackdropState.notRequested);
-  final people = input.people;
-  if (people == null) return BackdropMaps.none(BackdropState.noMatte);
+  var state = !input.wantsBackdrop
+      ? BackdropState.notRequested
+      : (input.people == null ? BackdropState.noMatte : BackdropState.ready);
+  var clothesState = !input.wantsClothes
+      ? ClothesState.notRequested
+      : (input.clothes == null ? ClothesState.noMatte : ClothesState.ready);
+  if (state != BackdropState.ready && clothesState != ClothesState.ready) {
+    return BackdropMaps.none(state, clothes: clothesState);
+  }
   final srcLong = math.max(source.width, source.height);
   final grid = AuxMaps.proxy(
     source,
     longEdge: math.min(kBackdropLongEdge, srcLong),
   );
-  final w = grid.width, h = grid.height, n = w * h;
-  final long = math.max(w, h);
+  final w = grid.width, h = grid.height;
   final lab = LabPlanes.fromRgba(grid, MapRect(0, 0, w, h));
-  // 1. Person matte, refined against L.
-  final rawP = resampleRaster(people, w, h);
-  final p = guidedFilter(lab.l, [rawP], w, h, 2, 1e-3).first;
-  for (var i = 0; i < n; i++) {
-    p[i] = clamp01(p[i]);
+  final g1 = lab.mapChannels((c) => gaussianBlur(c, w, h, 1.0));
+  final atlas = _Atlas(w, h);
+  _BackdropStats? stats;
+  if (state == BackdropState.ready) {
+    final r = _backdrop(lab, g1, input, atlas, w, h);
+    state = r.state;
+    stats = r.stats;
   }
+  if (clothesState == ClothesState.ready) {
+    final cloth = _refined(lab, input.clothes!, w, h);
+    final planes = computeClothes(lab, g1, cloth, w, h);
+    if (planes == null) {
+      clothesState = ClothesState.noClothes;
+    } else {
+      atlas.signed(2, 0, planes.fold, kClothesFoldRange, 21);
+      atlas.signed(2, 1, planes.lint, kLintRange, 22);
+    }
+  }
+  if (state != BackdropState.ready && clothesState != ClothesState.ready) {
+    return BackdropMaps.none(state, clothes: clothesState);
+  }
+  return BackdropMaps(
+    width: w,
+    height: h,
+    atlas: atlas.bytes,
+    state: state,
+    clothesState: clothesState,
+    medianL: stats?.medianL ?? 0,
+    medianA: stats?.medianA ?? 0,
+    medianB: stats?.medianB ?? 0,
+    tauL: stats?.tauL ?? kGrainTauFloorL,
+    tauC: stats?.tauC ?? kGrainTauFloorC,
+    textureMad: stats?.mad ?? 0,
+  );
+}
+
+/// A raster resampled to the grid and refined against L.
+Float32List _refined(LabPlanes lab, MaskRaster r, int w, int h) {
+  final raw = resampleRaster(r, w, h);
+  final out = guidedFilter(lab.l, [raw], w, h, 2, 1e-3).first;
+  for (var i = 0; i < out.length; i++) {
+    out[i] = clamp01(out[i]);
+  }
+  return out;
+}
+
+typedef _BackdropStats = ({
+  double medianL,
+  double medianA,
+  double medianB,
+  double tauL,
+  double tauC,
+  double mad,
+});
+
+/// The 3×2-tile atlas being built (signed tiles start at 128 = 0).
+class _Atlas {
+  _Atlas(this.w, this.h)
+    : bytes = Uint8List(4 * kImageAtlasColumns * kImageAtlasRows * w * h) {
+    for (var ty = 0; ty < kImageAtlasRows; ty++) {
+      for (var y = 0; y < h; y++) {
+        for (var tx = 0; tx < kImageAtlasColumns; tx++) {
+          final v = tx == 2 ? 128 : 0;
+          for (var x = 0; x < w; x++) {
+            final o = _offset(tx, ty, x, y);
+            bytes[o] = v;
+            bytes[o + 1] = v;
+            bytes[o + 2] = v;
+            bytes[o + 3] = 255;
+          }
+        }
+      }
+    }
+  }
+
+  final int w;
+  final int h;
+  final Uint8List bytes;
+
+  int _offset(int tx, int ty, int x, int y) =>
+      ((ty * h + y) * kImageAtlasColumns * w + tx * w + x) * 4;
+
+  /// OkLab planes as dithered sRGB into tile ([tx], [ty]).
+  void srgb(LabPlanes planes, int tx, int ty, int seed) {
+    final all = Int8List(w * h);
+    final tex = Uint8List(4 * w * h);
+    planes.writeSrgb(tex, w, all, 0, seed: seed);
+    for (var y = 0; y < h; y++) {
+      final dst = _offset(tx, ty, 0, y);
+      bytes.setRange(dst, dst + 4 * w, tex, y * w * 4);
+    }
+  }
+
+  /// Three 0..1 planes as bytes into tile ([tx], [ty]).
+  void unit(List<Float32List> planes, int tx, int ty) {
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final o = _offset(tx, ty, x, y), i = y * w + x;
+        for (var c = 0; c < 3; c++) {
+          bytes[o + c] = _byte(planes[c][i]);
+        }
+      }
+    }
+  }
+
+  /// Three signed planes into tile ([tx], [ty]), dithered (seeded).
+  void signed(
+    int tx,
+    int ty,
+    List<Float32List> planes,
+    List<double> range,
+    int seed,
+  ) {
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final o = _offset(tx, ty, x, y), i = y * w + x;
+        for (var c = 0; c < 3; c++) {
+          bytes[o + c] = encodeSignedDithered(
+            planes[c][i],
+            range[c],
+            ditherAt(x, y, seed, c),
+          );
+        }
+      }
+    }
+  }
+}
+
+/// The backdrop part: solid check, E, U, weights and statistics.
+({BackdropState state, _BackdropStats? stats}) _backdrop(
+  LabPlanes lab,
+  LabPlanes g1,
+  BackdropInput input,
+  _Atlas atlas,
+  int w,
+  int h,
+) {
+  final n = w * h, long = math.max(w, h);
+  // 1. Person matte, refined against L.
+  final p = _refined(lab, input.people!, w, h);
   final hair = input.hair == null ? null : resampleRaster(input.hair!, w, h);
   // Core backdrop: clearly background, a guard band away from the subject.
   final guard = math.max(1, (kBackdropGuardFrac * long).round());
@@ -109,10 +265,9 @@ BackdropMaps computeBackdropMaps(RgbaBuffer source, BackdropInput? input) {
     area += core[i];
   }
   if (area < kMinBackdropFraction * n) {
-    return BackdropMaps.none(BackdropState.tooLittleBackdrop);
+    return (state: BackdropState.tooLittleBackdrop, stats: null);
   }
   // 2. Solid check.
-  final g1 = lab.mapChannels((c) => gaussianBlur(c, w, h, 1.0));
   final r0 = math.max(1, (kBackdropEstimateFrac * long).round());
   final den = _blur3(core, w, h, r0);
   final e0 = g1.mapChannels((c) => _normConv(c, core, den, w, h, r0));
@@ -126,7 +281,7 @@ BackdropMaps computeBackdropMaps(RgbaBuffer source, BackdropInput? input) {
   final madL = 1.4826 * _maskedMedianAbs(resL, core);
   final madC = 1.4826 * _maskedMedianAbs(resC, core);
   if (madL > kSolidMadL || madC > kSolidMadC) {
-    return BackdropMaps.none(BackdropState.notSolid);
+    return (state: BackdropState.notSolid, stats: null);
   }
   final grainL = 1.4826 * _maskedMedianAbs(fine, core);
   // 3. E: fill subject + defects from clean backdrop, then edge-aware smooth.
@@ -158,48 +313,30 @@ BackdropMaps computeBackdropMaps(RgbaBuffer source, BackdropInput? input) {
     width: w,
     height: h,
   );
-  final atlas = Uint8List(16 * n);
-  for (var i = 3; i < atlas.length; i += 4) {
-    atlas[i] = 255;
+  atlas.srgb(LabPlanes(lab.rect, e[0], e[1], e[2]), 0, 0, kDitherSeedB1 + 10);
+  atlas.srgb(g1, 1, 0, kDitherSeedB2 + 10);
+  atlas.srgb(u, 0, 1, kDitherSeedB3 + 10);
+  final clean = Float32List(n), unify = Float32List(n);
+  for (var i = 0; i < n; i++) {
+    final bg = 1 - p[i];
+    clean[i] = bg * (1 - clamp01(guardBlur[i]));
+    // Unify follows the matte itself (no guard: a low-frequency shift must
+    // reach the subject edge), contrast-shaped so it does not leak into
+    // the subject.
+    unify[i] = smoothstep(kUnifyMatteLo, kUnifyMatteHi, bg);
   }
-  final all = Int8List(n);
-  final stride = 2 * w;
-  void tile(LabPlanes planes, int tx, int ty, int seed) {
-    final tex = Uint8List(4 * n);
-    planes.writeSrgb(tex, w, all, 0, seed: seed);
-    for (var y = 0; y < h; y++) {
-      final dst = ((ty * h + y) * stride + tx * w) * 4;
-      atlas.setRange(dst, dst + 4 * w, tex, y * w * 4);
-    }
-  }
-
-  tile(LabPlanes(lab.rect, e[0], e[1], e[2]), 0, 0, kDitherSeedB1 + 10);
-  tile(g1, 1, 0, kDitherSeedB2 + 10);
-  tile(u, 0, 1, kDitherSeedB3 + 10);
-  for (var y = 0; y < h; y++) {
-    for (var x = 0; x < w; x++) {
-      final i = y * w + x, o = ((h + y) * stride + w + x) * 4;
-      final bg = 1 - p[i];
-      atlas[o] = _byte(bg * (1 - clamp01(guardBlur[i])));
-      // Unify follows the matte itself (no guard: a low-frequency shift
-      // must reach the subject edge), contrast-shaped so it does not
-      // leak into the subject.
-      atlas[o + 1] = _byte(smoothstep(kUnifyMatteLo, kUnifyMatteHi, bg));
-      atlas[o + 2] = _byte(strays[i]);
-    }
-  }
+  atlas.unit([clean, unify, strays], 1, 1);
   final grainC = grainL / 2;
-  return BackdropMaps(
-    width: w,
-    height: h,
-    atlas: atlas,
+  return (
     state: BackdropState.ready,
-    medianL: median[0],
-    medianA: median[1],
-    medianB: median[2],
-    tauL: math.max(kGrainTauFloorL, kGrainTauSigmas * grainL),
-    tauC: math.max(kGrainTauFloorC, kGrainTauSigmas * grainC),
-    textureMad: madL,
+    stats: (
+      medianL: median[0],
+      medianA: median[1],
+      medianB: median[2],
+      tauL: math.max(kGrainTauFloorL, kGrainTauSigmas * grainL),
+      tauC: math.max(kGrainTauFloorC, kGrainTauSigmas * grainC),
+      mad: madL,
+    ),
   );
 }
 

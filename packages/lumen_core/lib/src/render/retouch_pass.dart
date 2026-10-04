@@ -1,7 +1,7 @@
 /// Uniforms of the GPU retouch pass `R` (`app/shaders/retouch.frag`), the
 /// shader twin of `applyRetouch` (`retouch/retouch_kernel.dart`).
 ///
-/// Layout (314 floats = `vec2` + 78 `vec4`, set in declaration order):
+/// Layout (318 floats = `vec2` + 79 `vec4`, set in declaration order):
 ///
 /// | floats | uniform | contents |
 /// |---|---|---|
@@ -16,9 +16,10 @@
 /// | 114–117 | `uRetouch` | face count, any active, spot ramp, 0 |
 /// | 118 + 24k | `uFace{6k..6k+5}` | the face row (`RetouchUniforms.pack`) |
 /// | 310–313 | `uBackdropParams` | clean, unify, luminance, strays |
+/// | 314–317 | `uClothesParams` | wrinkles, lint, **active**, 0 |
 ///
-/// "active" (slot has maps and a non-identity row; backdrop ready and a
-/// backdrop value set) replaces the "has maps" / "ready" floats of
+/// "active" (slot has maps and a non-identity row; backdrop / clothes
+/// ready and one of their values set) replaces the "has maps" / "ready" floats of
 /// `packInfo`, so the shader keeps untouched pixels bit-exact exactly
 /// where the CPU kernel returns early.
 library;
@@ -43,7 +44,8 @@ abstract final class RetouchPassIndex {
   static const backdropInfo = 6 + kRetouchInfoFloats - kBackdropInfoFloats;
   static const header = 6 + kRetouchInfoFloats;
   static const rows = header + kRetouchHeaderFloats;
-  static const backdropParams = kRetouchPassFloatCount - 4;
+  static const backdropParams = kRetouchPassFloatCount - 8;
+  static const clothesParams = kRetouchPassFloatCount - 4;
 }
 
 abstract final class RetouchPassUniforms {
@@ -86,17 +88,19 @@ abstract final class RetouchPassUniforms {
       f[RetouchPassIndex.faceInfo(k) + 1] = active ? 1 : 0;
     }
     final backdrop = retouchBackdropActive(maps, u);
+    final clothes = retouchClothesActive(maps, u);
     f[RetouchPassIndex.backdropInfo + 2] = backdrop ? 1 : 0;
     final rows = u.pack();
     f
       ..[RetouchPassIndex.header] = rows[0]
-      ..[RetouchPassIndex.header + 1] = any || backdrop ? 1 : 0
+      ..[RetouchPassIndex.header + 1] = any || backdrop || clothes ? 1 : 0
       ..[RetouchPassIndex.header + 2] = kSpotRamp
       ..setRange(
         RetouchPassIndex.rows,
         kRetouchPassFloatCount,
         rows.sublist(kRetouchHeaderFloats),
-      );
+      )
+      ..[RetouchPassIndex.clothesParams + 2] = clothes ? 1 : 0;
     return f;
   }
 }

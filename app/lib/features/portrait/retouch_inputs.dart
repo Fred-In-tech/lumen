@@ -18,24 +18,25 @@ typedef RetouchInputs = ({RetouchMaps maps, FaceAnalysis faces});
 /// Pen-free retouch maps for one photo, built once per face analysis
 /// (slider drags never rebuild them; they only change shader uniforms) and
 /// rebuilt when the user keeps or removes a spot, a heal on a face changes,
-/// or backdrop edits are switched on or off (the person / hair rasters are
-/// loaded only then). Null when the photo has no usable faces and no
-/// backdrop edits; with backdrop edits the maps carry `backdrop.state`
-/// (and its reason) even when the backdrop cannot be cleaned.
+/// or backdrop / clothing edits are switched on or off (the person / hair
+/// and clothes rasters are loaded only then, each only for its own
+/// edits). Null when the photo has no usable faces and no image-scope
+/// edits; with them the maps carry `backdrop.state` / `clothesState` (and
+/// their reasons) even when nothing can be cleaned.
 final retouchBaseMapsProvider = FutureProvider.family<RetouchInputs?, String>((
   ref,
   assetId,
 ) async {
   final faces = (await ref.watch(faceAnalysisProvider(assetId).future))
       .analysis;
-  final wantsBackdrop = ref.watch(
+  final want = ref.watch(
     editorProvider(assetId).select(
-      (s) => needsBackdropMaps(
+      (s) => imageRasterRequest(
         s.value?.settings.portrait ?? PortraitSettings.empty,
       ),
     ),
   );
-  if (faces.faces.isEmpty && !wantsBackdrop) return null;
+  if (faces.faces.isEmpty && want == null) return null;
   final spots = ref.watch(
     editorProvider(assetId)
         .select((s) => s.value?.settings.portrait.spots ?? PortraitSpots.none),
@@ -59,20 +60,21 @@ final retouchBaseMapsProvider = FutureProvider.family<RetouchInputs?, String>((
     faces: faces,
     patches: () => ref.read(patchStoreProvider.future),
   );
-  final backdrop = wantsBackdrop
-      ? await loadBackdropRasters(
+  final backdrop = want == null
+      ? null
+      : await loadBackdropRasters(
           ref.read(aiMaskSourceProvider),
           ref.read(aiMaskRasterLoaderProvider),
           assetId,
-        )
-      : null;
+          want: want,
+        );
   final maps = await computeRetouchMapsInBackground(
     pixels,
     faces,
     spots,
     backdrop: backdrop,
   );
-  return maps.isUsable || wantsBackdrop ? (maps: maps, faces: faces) : null;
+  return maps.isUsable || want != null ? (maps: maps, faces: faces) : null;
 });
 
 /// The Manual Tuning Pen strokes of a photo, compared by content (so other
@@ -129,6 +131,17 @@ final retouchInputsProvider =
 final backdropStatusProvider = Provider.family<BackdropState?, String>(
   (ref, assetId) =>
       ref.watch(retouchInputsProvider(assetId)).value?.maps.backdrop.state,
+);
+
+/// Why the clothing sliders of photo [assetId] do nothing (or null when
+/// they work or were never used): `ClothesState.reason` of its maps.
+final clothesStatusProvider = Provider.family<ClothesState?, String>(
+  (ref, assetId) => ref
+      .watch(retouchInputsProvider(assetId))
+      .value
+      ?.maps
+      .backdrop
+      .clothesState,
 );
 
 /// Faces the face-shape warp needs, as soon as they are known: when the photo

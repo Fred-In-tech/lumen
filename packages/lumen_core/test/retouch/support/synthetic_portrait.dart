@@ -163,6 +163,37 @@ bool isVein(double dx, double y) =>
     dx.abs() > kIrisRadius * 1.15 &&
     kVeinLines.any((v) => (y - v.$1 * dx - v.$2).abs() < kVeinHalfWidth);
 
+enum SynthGlasses { none, clear, tinted }
+
+/// Lens ellipses (local centre ±[kLensX], [kLensY]; half-axes), rim width
+/// (fraction of the radius), brown tint (linear RGB factors) and the glare
+/// band (white, linear amount, through the right lens centre).
+const kLensX = 0.5, kLensY = 0.02, kLensRx = 0.38, kLensRy = 0.26;
+const kRim = 0.035;
+const kTint = (0.55, 0.45, 0.38);
+const kGlareAmount = 0.35, kGlareSigma = 0.05, kGlareSlope = -1.2;
+
+/// Glare band weight (0..1) at local (x, y) of the right lens.
+double glareBand(double x, double y) {
+  // Line through (−kLensX, kLensY) with direction (1, kGlareSlope).
+  final dx = x + kLensX, dy = y - kLensY;
+  final n = math.sqrt(1 + kGlareSlope * kGlareSlope);
+  final d = (dy - kGlareSlope * dx).abs() / n;
+  return math.exp(-d * d / (2 * kGlareSigma * kGlareSigma));
+}
+
+/// Inside a lens: on the rim, or the glare to add (linear).
+({bool rim, double glare})? _lens(SynthFace f, double x, double y) {
+  for (final cx in const [-kLensX, kLensX]) {
+    final u = (x - cx) / kLensRx, v = (y - kLensY) / kLensRy;
+    final r = math.sqrt(u * u + v * v);
+    if (r > 1 + kRim) continue;
+    if (r > 1 - kRim) return (rim: true, glare: 0.0);
+    return (rim: false, glare: cx < 0 ? kGlareAmount * glareBand(x, y) : 0.0);
+  }
+  return null;
+}
+
 /// Stubble patch (local centre and half-axes) when [SynthFace.penPatches].
 const kStubbleX = -0.05, kStubbleY = 1.72, kStubbleRx = 0.16, kStubbleRy = 0.09;
 
@@ -196,6 +227,7 @@ class SynthFace {
     this.clippedShine = false,
     this.redEye = false,
     this.penPatches = false,
+    this.glasses = SynthGlasses.none,
   });
 
   final String id;
@@ -224,6 +256,9 @@ class SynthFace {
   /// calls it skin) and a cool-tinted blotchy patch on the left cheek (the
   /// colour model misses it).
   final bool penPatches;
+
+  /// Glasses with a glare band across the right lens (image left).
+  final SynthGlasses glasses;
 
   ({double x, double y}) toPx(double x, double y) =>
       (x: cx + x * iod, y: cy + y * iod);
@@ -255,12 +290,31 @@ SynthPortrait renderSynthPortrait(int w, int h, List<SynthFace> faces) {
         _shadeFace(f, polys, p.x, p.y, _hash(x, y), lab);
       }
       final rgb = oklabToLinearSrgb(Oklab(lab[0], lab[1], lab[2]));
+      var r = rgb.r, g = rgb.g, b = rgb.b;
+      for (final f in faces) {
+        if (f.glasses == SynthGlasses.none) continue;
+        final p = f.toLocal(x + 0.5, y + 0.5);
+        final lens = _lens(f, p.x, p.y);
+        if (lens == null) continue;
+        if (lens.rim) {
+          r = g = b = 0.02;
+          continue;
+        }
+        if (f.glasses == SynthGlasses.tinted) {
+          r *= kTint.$1;
+          g *= kTint.$2;
+          b *= kTint.$3;
+        }
+        r += lens.glare;
+        g += lens.glare;
+        b += lens.glare;
+      }
       img.setPixel(
         x,
         y,
-        (linearToSrgb(rgb.r) * 255).round(),
-        (linearToSrgb(rgb.g) * 255).round(),
-        (linearToSrgb(rgb.b) * 255).round(),
+        (linearToSrgb(r.clamp(0.0, 1.0)) * 255).round(),
+        (linearToSrgb(g.clamp(0.0, 1.0)) * 255).round(),
+        (linearToSrgb(b.clamp(0.0, 1.0)) * 255).round(),
       );
     }
   }

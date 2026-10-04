@@ -98,6 +98,7 @@ class RetouchKernel {
       p.freckle,
       p.mole,
       p.shineFill,
+      p.glare,
     );
     // 3. Effect weights; untouched pixels keep the source exactly.
     final s = p.smooth * skin, ev = p.even * skin;
