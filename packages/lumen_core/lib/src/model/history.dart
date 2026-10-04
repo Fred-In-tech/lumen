@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 
 import '../inpaint/heal_op.dart';
+import 'backdrop_change.dart';
 import 'liquify.dart';
 import '../model/develop_settings.dart';
 import 'geometry.dart';
@@ -21,12 +22,13 @@ enum HistoryKind {
   instruction,
   import,
   liquify,
+  backdrop,
 }
 
 /// One reversible change: [path] goes from [from] to [to] (JSON values).
 ///
 /// Paths: `values.<paramId>`, `curves.<channel>`, `treatment`, `geometry`,
-/// `masks`, `portrait`, `heal`, `liquify`.
+/// `masks`, `portrait`, `heal`, `liquify`, `backdrop`.
 class HistoryOp {
   const HistoryOp(this.path, this.from, this.to);
 
@@ -71,6 +73,7 @@ DevelopSettings _apply(DevelopSettings s, String path, Object? v) {
     'portrait' => s.copyWith(portrait: PortraitSettings.fromJson(v)),
     'heal' => s.copyWith(heal: parseHealOps(v)),
     'liquify' => s.copyWith(liquify: parseLiquify(v)),
+    'backdrop' => s.copyWith(backdrop: BackdropChange.fromJson(v)),
     _ => s,
   };
 }
@@ -122,6 +125,9 @@ List<HistoryOp> _diffOps(DevelopSettings a, DevelopSettings b) {
         [for (final l in b.liquify) l.toJson()],
       ),
     );
+  }
+  if (a.backdrop != b.backdrop) {
+    ops.add(HistoryOp('backdrop', a.backdrop.toJson(), b.backdrop.toJson()));
   }
   return ops;
 }

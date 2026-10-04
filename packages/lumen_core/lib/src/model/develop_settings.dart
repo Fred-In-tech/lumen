@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 
 import '../inpaint/heal_op.dart';
+import 'backdrop_change.dart';
 import 'geometry.dart';
 import 'liquify.dart';
 import 'mask.dart';
@@ -22,6 +23,7 @@ class DevelopSettings {
     this.portrait = PortraitSettings.empty,
     this.heal = const [],
     this.liquify = const [],
+    this.backdrop = BackdropChange.none,
   });
 
   factory DevelopSettings.fromJson(Object? json) {
@@ -54,6 +56,7 @@ class DevelopSettings {
       portrait: PortraitSettings.fromJson(json['portrait']),
       heal: parseHealOps(json['heal']),
       liquify: parseLiquify(json['liquify']),
+      backdrop: BackdropChange.fromJson(json['backdrop']),
     );
   }
 
@@ -73,6 +76,9 @@ class DevelopSettings {
 
   /// Manual liquify strokes (warp field), in order.
   final List<LiquifyStroke> liquify;
+
+  /// Backdrop changer / background blur.
+  final BackdropChange backdrop;
 
   /// Non-default scalar values (read-only view).
   Map<ParamId, double> get nonDefaultValues => Map.unmodifiable(_values);
@@ -105,6 +111,7 @@ class DevelopSettings {
       portrait: portrait,
       heal: heal,
       liquify: liquify,
+      backdrop: backdrop,
     );
   }
 
@@ -116,6 +123,7 @@ class DevelopSettings {
     PortraitSettings? portrait,
     List<HealOp>? heal,
     List<LiquifyStroke>? liquify,
+    BackdropChange? backdrop,
   }) => DevelopSettings(
     values: _values,
     curves: curves ?? this.curves,
@@ -125,6 +133,7 @@ class DevelopSettings {
     portrait: portrait ?? this.portrait,
     heal: heal == null ? this.heal : List.unmodifiable(heal),
     liquify: liquify == null ? this.liquify : List.unmodifiable(liquify),
+    backdrop: backdrop ?? this.backdrop,
   );
 
   /// Returns a copy with every scalar in [ids] reset to its default.
@@ -140,7 +149,8 @@ class DevelopSettings {
       masks.isEmpty &&
       portrait.isDefault &&
       heal.isEmpty &&
-      liquify.isEmpty;
+      liquify.isEmpty &&
+      backdrop == BackdropChange.none;
 
   /// Scalar params whose values differ between this and [other].
   Set<ParamId> changedParams(DevelopSettings other) => {
@@ -157,6 +167,7 @@ class DevelopSettings {
     if (!portrait.isDefault) 'portrait': portrait.toJson(),
     if (heal.isNotEmpty) 'heal': [for (final h in heal) h.toJson()],
     if (liquify.isNotEmpty) 'liquify': [for (final l in liquify) l.toJson()],
+    if (backdrop != BackdropChange.none) 'backdrop': backdrop.toJson(),
   };
 
   @override
@@ -169,7 +180,8 @@ class DevelopSettings {
       const ListEquality<LocalMask>().equals(other.masks, masks) &&
       other.portrait == portrait &&
       const ListEquality<HealOp>().equals(other.heal, heal) &&
-      const ListEquality<LiquifyStroke>().equals(other.liquify, liquify);
+      const ListEquality<LiquifyStroke>().equals(other.liquify, liquify) &&
+      other.backdrop == backdrop;
 
   @override
   int get hashCode => Object.hash(
@@ -181,6 +193,7 @@ class DevelopSettings {
     portrait,
     const ListEquality<HealOp>().hash(heal),
     const ListEquality<LiquifyStroke>().hash(liquify),
+    backdrop,
   );
 
   @override

@@ -88,6 +88,7 @@ flutter:
     - shaders/denoise.frag
     - shaders/mask_overlay.frag
     - shaders/retouch.frag
+    - shaders/backdrop.frag
 
   # On-device face models bundled in the binary (Apache-2.0, see docs/MODEL_LICENSES.md).
   assets:

@@ -206,3 +206,187 @@ class LiquifyGroup extends ConsumerWidget {
     );
   }
 }
+
+/// Background swap (Evoto's Backdrop Changer + background blur): writes
+/// `settings.backdrop`. The renderer needs the subject rasters
+/// (`BackdropSink.setBackdropInputs`); image mode shows once an image is
+/// stored (`imageRef`).
+class BackgroundSwapGroup extends ConsumerWidget {
+  const BackgroundSwapGroup({super.key, required this.assetId});
+
+  final String assetId;
+
+  static const _swatches = [
+    0xFFFFFFFF, 0xFFD9D9D9, 0xFF3A3A3A, 0xFF000000, //
+    0xFF2050C0, 0xFF6E8FB5, 0xFFE8D8B0, 0xFF9DB59A, 0xFFE9B9B0,
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final b = ref.watch(
+      editorProvider(assetId)
+          .select((s) => s.value?.settings.backdrop ?? BackdropChange.none),
+    );
+    final ctl = ref.read(editorProvider(assetId).notifier);
+    void commit(BackdropChange next, String label) {
+      final s = ref.read(editorProvider(assetId)).value?.settings;
+      if (s == null) return;
+      ctl.commit(
+        s.copyWith(backdrop: next),
+        label: label,
+        kind: HistoryKind.backdrop,
+      );
+    }
+
+    Widget slider(
+      String label,
+      double value,
+      double min,
+      double max,
+      double def,
+      BackdropChange Function(double v) apply, {
+      bool bipolar = false,
+    }) => LumenSlider(
+      label: label,
+      value: value,
+      min: min,
+      max: max,
+      defaultValue: def,
+      bipolar: bipolar,
+      onChangeStart: () => ctl.beginGesture(label),
+      onChanged: (v) {
+        final s = ref.read(editorProvider(assetId)).value?.settings;
+        if (s != null) ctl.preview(s.copyWith(backdrop: apply(v)));
+      },
+      onChangeEnd: () => ctl.commitGesture(
+        label: 'Background $label',
+        kind: HistoryKind.backdrop,
+      ),
+      onCommit: (v) => commit(apply(v), 'Background $label ${v.round()}'),
+    );
+
+    final modes = {
+      BackdropMode.none: 'Off',
+      BackdropMode.blur: 'Blur',
+      BackdropMode.color: 'Colour',
+      BackdropMode.gradient: 'Gradient',
+      if (b.imageRef.isNotEmpty) BackdropMode.image: 'Image',
+    };
+    return DevelopGroup(
+      title: 'Background swap',
+      modified: b != BackdropChange.none,
+      onReset: () => commit(BackdropChange.none, 'Reset background'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Segmented<BackdropMode>(
+              value: modes.containsKey(b.mode) ? b.mode : BackdropMode.none,
+              options: modes,
+              onChanged: (m) =>
+                  commit(b.copyWith(mode: m), 'Background ${modes[m]}'),
+            ),
+          ),
+          if (b.mode == BackdropMode.blur)
+            slider('Blur', b.blur, 0, 100, 50, (v) => b.copyWith(blur: v)),
+          if (b.mode == BackdropMode.color ||
+              b.mode == BackdropMode.gradient ||
+              (b.mode == BackdropMode.image && b.fit == BackdropFit.fit))
+            _SwatchRow(
+              selected: b.color,
+              colors: _swatches,
+              onPick: (c) => commit(b.copyWith(color: c), 'Background colour'),
+            ),
+          if (b.mode == BackdropMode.gradient) ...[
+            _SwatchRow(
+              selected: b.color2,
+              colors: _swatches,
+              onPick: (c) => commit(b.copyWith(color2: c), 'Gradient colour'),
+            ),
+            slider('Angle', b.angle, 0, 360, 90, (v) => b.copyWith(angle: v)),
+          ],
+          if (b.mode == BackdropMode.image)
+            Segmented<BackdropFit>(
+              value: b.fit,
+              options: const {
+                BackdropFit.fill: 'Fill',
+                BackdropFit.fit: 'Fit',
+                BackdropFit.stretch: 'Stretch',
+              },
+              onChanged: (f) => commit(b.copyWith(fit: f), 'Background fit'),
+            ),
+          if (b.mode != BackdropMode.none) ...[
+            slider(
+              'Edge',
+              b.edgeShift,
+              -100,
+              100,
+              0,
+              (v) => b.copyWith(edgeShift: v),
+              bipolar: true,
+            ),
+            slider('Feather', b.feather, 0, 100, 50, (v) {
+              return b.copyWith(feather: v);
+            }),
+            slider('Remove spill', b.spill, 0, 100, 50, (v) {
+              return b.copyWith(spill: v);
+            }),
+            if (b.mode != BackdropMode.blur)
+              slider('Match light', b.match, 0, 100, 0, (v) {
+                return b.copyWith(match: v);
+              }),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SwatchRow extends StatelessWidget {
+  const _SwatchRow({
+    required this.selected,
+    required this.colors,
+    required this.onPick,
+  });
+
+  final int selected;
+  final List<int> colors;
+  final ValueChanged<int> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Sp.s2),
+      child: Wrap(
+        spacing: Sp.s2,
+        runSpacing: Sp.s2,
+        children: [
+          for (final c in colors)
+            Semantics(
+              button: true,
+              selected: c == selected,
+              label: '#${(c & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}',
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => onPick(c),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: Color(c),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: c == selected ? t.accent : t.lineStrong,
+                      width: c == selected ? 2 : 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

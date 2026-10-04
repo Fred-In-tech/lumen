@@ -21,6 +21,7 @@ export 'src/render/rgba_buffer.dart';
 export 'src/model/model.dart';
 export 'src/render/render.dart';
 export 'src/warp/warp.dart';
+export 'src/backdrop/backdrop.dart';
 export 'src/analysis/analysis.dart';
 export 'src/auto/auto.dart';
 export 'src/api/api.dart';

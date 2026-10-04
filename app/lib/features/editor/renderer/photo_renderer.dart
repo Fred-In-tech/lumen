@@ -89,6 +89,36 @@ abstract interface class WarpSink {
   void setWarpFaces(FaceAnalysis? faces);
 }
 
+/// The subject rasters and backdrop image of a photo (see [BackdropSink]).
+typedef BackdropInputs = ({
+  MaskRaster? people,
+  MaskRaster? hair,
+  RgbaBuffer? image,
+});
+
+const BackdropInputs kNoBackdropInputs = (
+  people: null,
+  hair: null,
+  image: null,
+);
+
+/// Optional renderer capability: what `settings.backdrop` (backdrop
+/// changer / background blur) needs besides the settings. [people] and
+/// [hair] are the AI person and hair planes of the open photo (any
+/// resolution; their union is refined against the photo, hair edges
+/// included); without either the backdrop stays off. [image] is the
+/// decoded backdrop photo of image mode (`BackdropChange.imageRef`). The
+/// renderer builds the matte once per rasters and the textures on settings
+/// changes, off the UI isolate. Check with `renderer is BackdropSink`.
+abstract interface class BackdropSink {
+  /// Replaces the inputs and re-renders the last settings.
+  void setBackdropInputs({
+    MaskRaster? people,
+    MaskRaster? hair,
+    RgbaBuffer? image,
+  });
+}
+
 /// [src] with the portrait retouch of [settings] applied (CPU reference),
 /// or [src] itself when there is nothing to retouch.
 RgbaBuffer retouchedSource(

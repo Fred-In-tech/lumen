@@ -20,7 +20,8 @@ class CpuPhotoRenderer
         MaskRasterSink,
         RetouchSink,
         HealSink,
-        WarpSink {
+        WarpSink,
+        BackdropSink {
   CpuPhotoRenderer({
     this.previewLongEdge = 1280,
     this.interactiveLongEdge = 640,
@@ -43,6 +44,7 @@ class CpuPhotoRenderer
   FaceAnalysis? _faces;
   FaceAnalysis? _warpFaces;
   HealedSourceCache? _healer;
+  BackdropInputs _swap = kNoBackdropInputs;
   DevelopSettings? _last;
 
   @override
@@ -99,6 +101,7 @@ class CpuPhotoRenderer
         _retouchMaps,
         _faces,
         _warpFaces ?? _faces,
+        _swap,
       );
       if (_disposed) return;
       final img = await imageFromRgba(out);
@@ -128,6 +131,7 @@ class CpuPhotoRenderer
       _retouchMaps,
       _faces,
       _warpFaces ?? _faces,
+      _swap,
     );
     final img = await imageFromRgba(out);
     try {
@@ -177,6 +181,17 @@ class CpuPhotoRenderer
   @override
   void setWarpFaces(FaceAnalysis? faces) {
     _warpFaces = faces;
+    final last = _last;
+    if (last != null) update(last);
+  }
+
+  @override
+  void setBackdropInputs({
+    MaskRaster? people,
+    MaskRaster? hair,
+    RgbaBuffer? image,
+  }) {
+    _swap = (people: people, hair: hair, image: image);
     final last = _last;
     if (last != null) update(last);
   }
@@ -242,8 +257,9 @@ RgbaBuffer _overlay(
       : null,
 );
 
-/// Retouch + develop off the UI isolate. Top-level so the closure only
-/// captures plain data.
+/// Retouch + backdrop + develop off the UI isolate. Top-level so the
+/// closure only captures plain data. The backdrop matte is rebuilt per
+/// render (the CPU path is the fallback; correctness over speed).
 Future<RgbaBuffer> _renderInBackground(
   RgbaBuffer src,
   DevelopSettings settings,
@@ -251,9 +267,16 @@ Future<RgbaBuffer> _renderInBackground(
   RetouchMaps? maps,
   FaceAnalysis? faces,
   FaceAnalysis? warpFaces,
+  BackdropInputs swap,
 ) => runInBackground(
   () => renderReference(
-    retouchedSource(src, settings, maps, faces),
+    backdroppedSource(
+      retouchedSource(src, settings, maps, faces),
+      settings.backdrop,
+      people: swap.people,
+      hair: swap.hair,
+      image: swap.image,
+    ),
     settings,
     maskRasters: rasters,
     faces: warpFaces,

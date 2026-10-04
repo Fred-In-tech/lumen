@@ -1,4 +1,5 @@
-/// The preview render graph: denoise? → develop → finish?
+/// The preview render graph: denoise? → retouch? → backdrop? → develop →
+/// finish?
 ///
 /// Public API:
 /// * `abstract interface class FrameRenderer`:
@@ -24,6 +25,11 @@
 ///   the mask overlay sample source, aux, retouch output and masks at the
 ///   warped uv; null or identity fields skip the warp (bit-exact). The
 ///   field is uploaded once per instance by `warpCache`.
+/// * Backdrop (pass B, after R): set `backdropAssets` (from the renderer's
+///   `BackdropService`). `settings.backdrop` uniforms apply on every render;
+///   the B output is cached by change + textures + upstream image. While B
+///   runs and develop uses spatial maps (`needsAuxMaps`), develop samples
+///   the composite's aux maps (`backdrop.auxBuilds`) instead of [aux].
 /// * `renderMaskOverlay(settings, index, {scale, tint})`: one mask's
 ///   coverage as a premultiplied tint (default 50 % red), same size and
 ///   geometry as `render` (draw it over the frame for "show overlay").
@@ -35,6 +41,7 @@ import 'dart:ui' as ui;
 import 'package:lumen_core/lumen_core.dart';
 
 import 'aux_cache.dart';
+import 'backdrop_stage.dart';
 import 'gpu_pass.dart';
 import 'lut_texture.dart';
 import 'mask_atlas_cache.dart';
@@ -71,7 +78,8 @@ class RenderGraph implements FrameRenderer {
        maskCache = MaskAtlasCache(
          sourceWidth: source.width,
          sourceHeight: source.height,
-       );
+       ),
+       backdrop = BackdropStage(shaders);
 
   final ShaderLibrary shaders;
 
@@ -121,6 +129,13 @@ class RenderGraph implements FrameRenderer {
 
   /// Uploaded warp field (owned by the graph).
   final WarpFieldCache warpCache = WarpFieldCache();
+
+  /// Pass B state (owned by the graph).
+  final BackdropStage backdrop;
+
+  /// Backdrop textures of this photo (null = no backdrop pass).
+  BackdropAssets? get backdropAssets => backdrop.assets;
+  set backdropAssets(BackdropAssets? value) => backdrop.assets = value;
   bool _disposed = false;
 
   /// Swaps the source for a same-size image (e.g. the preview with heal
@@ -140,6 +155,7 @@ class RenderGraph implements FrameRenderer {
     _denoised = null;
     _denoiseKey = null;
     _releaseRetouched();
+    backdrop.release();
   }
 
   /// Output size for [settings] at [scale].
@@ -164,6 +180,7 @@ class RenderGraph implements FrameRenderer {
     final lut = await _lutFor(settings);
     final masks = await maskCache.obtain(settings.masks);
     final retouch = await retouchCache.obtain(retouchMaps);
+    final swap = await backdrop.prepare(settings);
     final ownWarp =
         warp != null && !identical(warp, warpField) && !warp.isIdentity;
     final warpTex = ownWarp
@@ -175,7 +192,12 @@ class RenderGraph implements FrameRenderer {
       if (ownWarp) warpTex?.dispose();
       throw StateError('RenderGraph disposed');
     }
-    final src = _retouchedFor(settings, _sourceFor(settings), retouch);
+    final src = backdrop.composite(
+      settings.backdrop,
+      _retouchedFor(settings, _sourceFor(settings), retouch),
+      swap,
+    );
+    final ax = swap?.aux ?? aux;
     final size = outputSize(settings, scale);
     final developed = runDevelop(
       shaders,
@@ -186,9 +208,9 @@ class RenderGraph implements FrameRenderer {
           outHeight: size.height,
           sourceWidth: source.width,
           sourceHeight: source.height,
-          auxWidth: aux.width,
-          auxHeight: aux.height,
-          airlight: aux.maps.airlight,
+          auxWidth: ax.width,
+          auxHeight: ax.height,
+          airlight: ax.maps.airlight,
           showClipping: showClipping,
           maskWidth: masks.width,
           maskHeight: masks.height,
@@ -198,8 +220,8 @@ class RenderGraph implements FrameRenderer {
         ),
       ),
       source: src,
-      auxA: aux.auxA,
-      auxB: aux.auxB,
+      auxA: ax.auxA,
+      auxB: ax.auxB,
       lut: lut.image,
       width: size.width,
       height: size.height,
@@ -352,6 +374,7 @@ class RenderGraph implements FrameRenderer {
     maskCache.dispose();
     retouchCache.dispose();
     warpCache.dispose();
+    backdrop.dispose();
     _releaseRetouched();
     EngineImages.dispose(_denoised);
     _denoised = null;

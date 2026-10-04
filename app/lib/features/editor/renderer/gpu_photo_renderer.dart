@@ -8,7 +8,7 @@ import 'package:logging/logging.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/engine/aux_cache.dart';
-import 'package:lumen/engine/export_renderer.dart';
+import 'package:lumen/engine/backdrop_service.dart';
 import 'package:lumen/engine/gpu_pass.dart';
 import 'package:lumen/engine/render_graph.dart';
 import 'package:lumen/engine/render_scheduler.dart';
@@ -17,9 +17,10 @@ import 'package:lumen/engine/warp_service.dart';
 import 'package:lumen/features/editor/renderer/cpu_photo_renderer.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
-import 'package:lumen/features/export/source_render.dart';
 import 'package:lumen/features/remove/healed_source.dart';
 import 'package:lumen/import/photo_decoder.dart';
+
+export 'gpu_source_renderer.dart';
 
 final _log = Logger('GpuPhotoRenderer');
 
@@ -32,7 +33,8 @@ class GpuPhotoRenderer
         MaskRasterSink,
         RetouchSink,
         HealSink,
-        WarpSink {
+        WarpSink,
+        BackdropSink {
   GpuPhotoRenderer({required this.assetId, this.previewLongEdge = 2560});
 
   final String assetId;
@@ -48,6 +50,8 @@ class GpuPhotoRenderer
   RetouchMaps? _retouchMaps;
   FaceAnalysis? _warpFaces;
   WarpFieldService? _warp;
+  BackdropService? _swap;
+  BackdropInputs _swapInputs = kNoBackdropInputs;
   FaceAnalysis? _faces;
   DevelopSettings? _last;
 
@@ -87,7 +91,12 @@ class GpuPhotoRenderer
         ..setMaskRasters(_rasters)
         ..setRetouch(_retouchMaps, _faces)
         ..setHealer(_healer)
-        ..setWarpFaces(_warpFaces);
+        ..setWarpFaces(_warpFaces)
+        ..setBackdropInputs(
+          people: _swapInputs.people,
+          hair: _swapInputs.hair,
+          image: _swapInputs.image,
+        );
       await cpu.open(original);
       return;
     }
@@ -118,6 +127,20 @@ class GpuPhotoRenderer
         if (last != null) _scheduler?.update(last);
       },
     )..faces = _warpFaces ?? _faces;
+    _swap =
+        BackdropService(
+          preview: () async => _sourceRgba ??= await rgbaFromImage(source),
+          onAssets: (assets) {
+            if (_disposed) return;
+            graph.backdropAssets = assets;
+            final last = _last;
+            if (last != null) _scheduler?.update(last);
+          },
+        )..setInputs(
+          people: _swapInputs.people,
+          hair: _swapInputs.hair,
+          image: _swapInputs.image,
+        );
     final scheduler = _scheduler = RenderScheduler(graph);
     scheduler.frame.addListener(() => _output.value = scheduler.frame.value);
     scheduler.errors.listen((e) => _log.warning('render failed: $e'));
@@ -133,6 +156,7 @@ class GpuPhotoRenderer
     if (fb != null) return fb.update(settings, interactive: interactive);
     _requestHeals(settings.heal);
     _warp?.update(settings);
+    _swap?.update(settings.backdrop);
     _scheduler?.update(settings, interactive: interactive);
   }
 
@@ -259,6 +283,24 @@ class GpuPhotoRenderer
   }
 
   @override
+  void setBackdropInputs({
+    MaskRaster? people,
+    MaskRaster? hair,
+    RgbaBuffer? image,
+  }) {
+    _swapInputs = (people: people, hair: hair, image: image);
+    final fb = _fallback;
+    if (fb != null) {
+      return fb.setBackdropInputs(people: people, hair: hair, image: image);
+    }
+    _swap?.setInputs(people: people, hair: hair, image: image);
+  }
+
+  /// Exact backdrop textures for [b] (export), null when off.
+  Future<BackdropAssets?> backdropAssetsFor(BackdropChange b) async =>
+      _swap?.assetsFor(b);
+
+  @override
   Future<Uint8List> renderThumbnail(
     DevelopSettings settings, {
     int longEdge = 384,
@@ -308,92 +350,11 @@ class GpuPhotoRenderer
     _disposed = true;
     _fallback?.dispose();
     _warp?.dispose();
+    _swap?.dispose();
     _scheduler?.dispose();
     _releaseHealed();
     _aux?.dispose();
     EngineImages.dispose(_source);
     _output.dispose();
-  }
-}
-
-/// GPU full-resolution export render (tiled). Falls back to the CPU path.
-Future<RgbaBuffer> gpuFullResRender(
-  Uint8List original,
-  DevelopSettings settings,
-  int? longEdge, {
-  String assetId = '',
-}) async {
-  final ShaderLibrary shaders;
-  try {
-    shaders = await ShaderLibrary.load();
-  } on ShaderLoadException {
-    final decoded = await decodePhoto(original, maxLongEdge: longEdge);
-    final src = await rgbaFromImage(decoded);
-    decoded.dispose();
-    return renderReference(src, settings);
-  }
-  final source = await ExportRenderer.decodeOriginal(original);
-  final aux = await AuxTextures.build(source);
-  try {
-    final px = await ExportRenderer(shaders).render(
-      source: source,
-      aux: aux,
-      settings: settings,
-      assetId: assetId,
-      longEdge: longEdge,
-    );
-    return RgbaBuffer(px.width, px.height, px.rgba);
-  } finally {
-    aux.dispose();
-    EngineImages.dispose(source);
-  }
-}
-
-/// GPU export of decoded (healed) source pixels: portrait retouch (pass R),
-/// AI masks and the develop/finish passes, tiled, with aux maps built from
-/// the source it is given. Falls back to [CpuSourceRenderer] when shaders
-/// cannot load.
-class GpuSourceRenderer implements SourceRenderer {
-  const GpuSourceRenderer();
-
-  @override
-  int? decodeLongEdge(int? longEdge) => kMaxExportEdge;
-
-  @override
-  Future<RgbaBuffer> render(
-    RgbaBuffer source,
-    DevelopSettings settings,
-    SourceInputs inputs, {
-    int? longEdge,
-  }) async {
-    final ShaderLibrary shaders;
-    try {
-      shaders = await ShaderLibrary.load();
-    } on ShaderLoadException {
-      return const CpuSourceRenderer().render(
-        source,
-        settings,
-        inputs,
-        longEdge: longEdge,
-      );
-    }
-    final img = await imageFromRgba(source);
-    final aux = await AuxTextures.build(img);
-    try {
-      final px = await ExportRenderer(shaders).render(
-        source: img,
-        aux: aux,
-        settings: settings,
-        assetId: inputs.assetId,
-        longEdge: longEdge,
-        maskRasters: inputs.maskRasters,
-        faceAnalysis: inputs.faces,
-        retouchMaps: inputs.retouchMaps,
-      );
-      return RgbaBuffer(px.width, px.height, px.rgba);
-    } finally {
-      aux.dispose();
-      img.dispose();
-    }
   }
 }

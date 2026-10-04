@@ -24,6 +24,10 @@
 /// * Warp: pass the editor's `warp` field, or let it be built from
 ///   `settings` (liquify + face-shape sliders, which need `faceAnalysis`)
 ///   off the UI isolate. It is sampled in source uv, so tiles are seamless.
+/// * Backdrop: pass the editor's `backdropAssets` (exact for
+///   `settings.backdrop`, e.g. `BackdropService.assetsFor`). Pass B runs
+///   over the full-res source in tiles after R; develop then uses the
+///   composite's aux maps when it needs spatial maps.
 /// * Encode the result with `encodeImage(EncodeRequest(...))`.
 library;
 
@@ -35,6 +39,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:lumen_core/lumen_core.dart';
 
 import 'aux_cache.dart';
+import 'backdrop_stage.dart';
 import 'gpu_pass.dart';
 import 'lut_texture.dart';
 import 'mask_atlas_cache.dart';
@@ -129,6 +134,7 @@ class ExportRenderer {
     RetouchMaps? retouchMaps,
     RetouchTextures? retouchTextures,
     WarpField? warp,
+    BackdropAssets? backdropAssets,
   }) async {
     final full = outputSizeFor(source.width, source.height, settings.geometry);
     final size = exportSize(
@@ -168,15 +174,24 @@ class ExportRenderer {
         : await WarpTexture.upload(field);
     final lut = await LutTexture.upload(ToneLut.bake(settings));
     final ui.Image src;
+    final AuxTextures ax;
     try {
-      src = await _preparedSource(
+      final prepared = await _withBackdrop(
         source,
+        await _preparedSource(
+          source,
+          settings,
+          tileSize,
+          faceAnalysis,
+          retouchTextures?.maps ?? retouchMaps,
+          retouchTextures,
+        ),
         settings,
+        backdropAssets,
         tileSize,
-        faceAnalysis,
-        retouchTextures?.maps ?? retouchMaps,
-        retouchTextures,
       );
+      src = prepared.image;
+      ax = prepared.aux ?? aux;
     } on Object {
       lut.dispose();
       warpTex?.dispose();
@@ -213,9 +228,9 @@ class ExportRenderer {
             fullHeight: size.height.toDouble(),
             sourceWidth: source.width,
             sourceHeight: source.height,
-            auxWidth: aux.width,
-            auxHeight: aux.height,
-            airlight: aux.maps.airlight,
+            auxWidth: ax.width,
+            auxHeight: ax.height,
+            airlight: ax.maps.airlight,
             maskWidth: atlases.width,
             maskHeight: atlases.height,
             warpWidth: warpTex?.field.width ?? 1,
@@ -226,8 +241,8 @@ class ExportRenderer {
             shaders,
             floats: DevelopUniforms.pack(settings, ctx),
             source: src,
-            auxA: aux.auxA,
-            auxB: aux.auxB,
+            auxA: ax.auxA,
+            auxB: ax.auxB,
             lut: lut.image,
             width: rw,
             height: rh,
@@ -267,6 +282,7 @@ class ExportRenderer {
       warpTex?.dispose();
       if (ownMasks) atlases.dispose();
       if (!identical(src, source)) EngineImages.dispose(src);
+      if (!identical(ax, aux)) ax.dispose();
     }
     return ExportPixels(size.width, size.height, frame);
   }
@@ -312,6 +328,32 @@ class ExportRenderer {
       if (!identical(textures, given)) textures.dispose();
     }
     return src;
+  }
+
+  /// Pass B over [prepared] (replacing it) with the composite's aux, or
+  /// [prepared] as is when the backdrop is off.
+  Future<({ui.Image image, AuxTextures? aux})> _withBackdrop(
+    ui.Image source,
+    ui.Image prepared,
+    DevelopSettings settings,
+    BackdropAssets? assets,
+    int tileSize,
+  ) async {
+    try {
+      final swapped = await exportBackdrop(
+        shaders,
+        source: prepared,
+        settings: settings,
+        assets: assets,
+        tileSize: tileSize,
+      );
+      if (swapped == null) return (image: prepared, aux: null);
+      if (!identical(prepared, source)) EngineImages.dispose(prepared);
+      return swapped;
+    } on Object {
+      if (!identical(prepared, source)) EngineImages.dispose(prepared);
+      rethrow;
+    }
   }
 
   /// Copies the apron-free [tile] region of a tile image into [frame].

@@ -4,7 +4,7 @@
 /// * `ShaderLibrary.load()` → `Future<ShaderLibrary>`; throws
 ///   [ShaderLoadException] naming the asset if a shader fails to load
 ///   (fails loudly, never falls back silently).
-/// * `develop`, `finish`, `denoise`, `maskOverlay`, `retouch`: the programs; create a fresh
+/// * `develop`, `finish`, `denoise`, `maskOverlay`, `retouch`, `backdrop`: the programs; create a fresh
 ///   `FragmentShader` per pass with `program.fragmentShader()`.
 library;
 
@@ -28,6 +28,7 @@ class ShaderLibrary {
     this.denoise,
     this.maskOverlay,
     this.retouch,
+    this.backdrop,
   );
 
   static const developAsset = 'shaders/develop.frag';
@@ -35,6 +36,7 @@ class ShaderLibrary {
   static const denoiseAsset = 'shaders/denoise.frag';
   static const maskOverlayAsset = 'shaders/mask_overlay.frag';
   static const retouchAsset = 'shaders/retouch.frag';
+  static const backdropAsset = 'shaders/backdrop.frag';
 
   static Future<ShaderLibrary>? _shared;
 
@@ -49,6 +51,7 @@ class ShaderLibrary {
         _program(denoiseAsset),
         _program(maskOverlayAsset),
         _program(retouchAsset),
+        _program(backdropAsset),
       ]);
       return ShaderLibrary._(
         programs[0],
@@ -56,6 +59,7 @@ class ShaderLibrary {
         programs[2],
         programs[3],
         programs[4],
+        programs[5],
       );
     } on Object {
       _shared = null;
@@ -85,4 +89,7 @@ class ShaderLibrary {
 
   /// Portrait retouch pass R (206 floats, 7 samplers).
   final ui.FragmentProgram retouch;
+
+  /// Backdrop composite pass B (46 floats, 5 samplers).
+  final ui.FragmentProgram backdrop;
 }

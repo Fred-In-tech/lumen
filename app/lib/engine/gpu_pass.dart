@@ -10,6 +10,9 @@
 ///   each, given packed uniforms from `lumen_core`. The caller owns (and
 ///   disposes) the result.
 /// * `runRetouch`: one tile of the portrait retouch pass R (source space).
+/// * `runBackdrop`: one tile of the backdrop composite pass B (source space).
+/// * `renderTiled`: runs a per-tile pass over a w×h image and composes the
+///   tiles 1:1 into one image (one pass when it fits).
 /// * `emptyMaskAtlas`: a shared 1×1 transparent image bound when no mask
 ///   atlas is in use (never disposed, not in the ledger).
 /// * `EngineImages`: debug counter of live engine-created images.
@@ -209,3 +212,56 @@ ui.Image runRetouch(
   width,
   height,
 );
+
+/// One tile of backdrop pass B over [source]; [floats] from
+/// `BackdropUniforms.pack`; [maps] = matte, fill, plate A, plate B (all
+/// nearest-sampled; the shader interpolates manually).
+ui.Image runBackdrop(
+  ShaderLibrary shaders, {
+  required Float32List floats,
+  required ui.Image source,
+  required List<ui.Image> maps,
+  required int width,
+  required int height,
+}) => _run(
+  shaders.backdrop,
+  floats,
+  [
+    (source, ui.FilterQuality.none),
+    for (final m in maps) (m, ui.FilterQuality.none),
+  ],
+  width,
+  height,
+);
+
+/// Renders a [width]×[height] image as tiles of at most [tileSize] with
+/// [tile] (offset, size → a tile image) and composes them 1:1 (exact
+/// copies). The caller owns the result.
+ui.Image renderTiled(
+  int width,
+  int height,
+  int tileSize,
+  ui.Image Function(int x0, int y0, int w, int h) tile,
+) {
+  if (width <= tileSize && height <= tileSize) {
+    return tile(0, 0, width, height);
+  }
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder);
+  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+  final parts = <ui.Image>[];
+  for (var y0 = 0; y0 < height; y0 += tileSize) {
+    for (var x0 = 0; x0 < width; x0 += tileSize) {
+      final tw = width - x0 < tileSize ? width - x0 : tileSize;
+      final th = height - y0 < tileSize ? height - y0 : tileSize;
+      final part = tile(x0, y0, tw, th);
+      parts.add(part);
+      canvas.drawImage(part, ui.Offset(x0.toDouble(), y0.toDouble()), paint);
+    }
+  }
+  final picture = recorder.endRecording();
+  final out = EngineImages.track(picture.toImageSync(width, height));
+  picture.dispose();
+  parts.forEach(EngineImages.dispose);
+  return out;
+}
