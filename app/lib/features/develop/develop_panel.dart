@@ -8,9 +8,12 @@ import 'package:lumen/features/ai/ai_panel.dart';
 import 'package:lumen/features/develop/histogram_view.dart';
 import 'package:lumen/features/develop/sections.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
+import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/editor_session.dart';
+import 'package:lumen/features/portrait/portrait_panel.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 import 'package:lumen/widgets/buttons.dart';
+import 'package:lumen/widgets/segmented.dart';
 import 'package:lumen/widgets/toast.dart';
 
 /// Right-hand develop panel (desktop/tablet): histogram, AI, groups, footer.
@@ -35,6 +38,7 @@ class DevelopPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final id = session.assetId;
+    final module = ref.watch(editorModuleProvider(id));
     return Container(
       width: width,
       decoration: BoxDecoration(
@@ -57,6 +61,8 @@ class DevelopPanel extends ConsumerWidget {
                   _exifLine(session.entry?.exif),
                   style: LumenType.monoStyle().copyWith(color: t.textTertiary),
                 ),
+                const SizedBox(height: Sp.s3),
+                ModuleTabs(assetId: id),
               ],
             ),
           ),
@@ -64,16 +70,21 @@ class DevelopPanel extends ConsumerWidget {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Sp.s4,
-                    Sp.s1,
-                    Sp.s4,
-                    Sp.s4,
-                  ),
-                  child: AiPanel(session: session),
-                ),
-                DevelopSections(assetId: id),
+                ...switch (module) {
+                  EditorModule.adjust => [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        Sp.s4,
+                        Sp.s1,
+                        Sp.s4,
+                        Sp.s4,
+                      ),
+                      child: AiPanel(session: session),
+                    ),
+                    DevelopSections(assetId: id),
+                  ],
+                  EditorModule.portrait => [PortraitPanel(assetId: id)],
+                },
                 const SizedBox(height: Sp.s6),
               ],
             ),
@@ -115,6 +126,24 @@ class DevelopPanel extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Module switcher at the top of the right panel (Adjust · Portrait · …).
+class ModuleTabs extends ConsumerWidget {
+  const ModuleTabs({super.key, required this.assetId});
+
+  final String assetId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final module = ref.watch(editorModuleProvider(assetId));
+    return Segmented<EditorModule>(
+      value: module,
+      height: 30,
+      options: {for (final m in EditorModule.values) m: m.label},
+      onChanged: ref.read(editorModuleProvider(assetId).notifier).select,
     );
   }
 }

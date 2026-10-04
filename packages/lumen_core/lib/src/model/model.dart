@@ -6,5 +6,6 @@ export 'edit_document.dart';
 export 'face_analysis.dart';
 export 'migrations.dart';
 export 'portrait.dart';
+export 'portrait_presets.dart';
 export 'preset.dart';
 export 'settings_subset.dart';

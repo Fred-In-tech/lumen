@@ -104,6 +104,8 @@ void main() {
       'logging',
       'image',
       'http',
+      // Bundles libtensorflowlite_c-win.dll + libLiteRt.dll (ffiPlugin).
+      'flutter_litert',
       'cross_file',
       'lumen_core',
       'flutter',

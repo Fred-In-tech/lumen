@@ -61,6 +61,21 @@ void main() {
       );
     });
 
+    test('clearing one individual value re-inherits only that param', () {
+      final t = s
+          .withIndividualValue('p1', PortraitIds.acne, 20)
+          .clearIndividualValue('p1', PortraitIds.skinSoftening);
+      expect(
+        t.valueFor(PortraitIds.skinSoftening, group: female, personId: 'p1'),
+        45,
+      );
+      expect(t.valueFor(PortraitIds.acne, group: female, personId: 'p1'), 20);
+      expect(
+        t.clearIndividualValue('p1', PortraitIds.acne).hasIndividual('p1'),
+        isFalse,
+      );
+    });
+
     test('image-scope params cannot be set per face', () {
       expect(
         () => s.withGroupValue(FaceGroup.all, PortraitIds.bgClean, 10),
@@ -163,6 +178,32 @@ void main() {
       expect(back.faces.single.personId, 'p1');
       expect(back.faces.single.landmarkCount, 2);
       expect(back.faces.single.tagSource, TagSource.manual);
+    });
+  });
+
+  group('PortraitPresets.autoRetouch', () {
+    test('sets All values, gentler child/senior overrides, keeps people', () {
+      final current = PortraitSettings.empty
+          .withIndividualValue('p1', PortraitIds.skinSoftening, 5)
+          .withImageValue(PortraitIds.bgClean, 40);
+      final r = PortraitPresets.autoRetouch(current);
+      expect(r.valueFor(PortraitIds.skinSoftening, group: FaceGroup.male), 40);
+      expect(r.valueFor(PortraitIds.skinSoftening, group: FaceGroup.child), 15);
+      expect(r.valueFor(PortraitIds.eyeBags, group: FaceGroup.child), 0);
+      expect(r.groupOverrides(FaceGroup.child, PortraitIds.eyeBags), isTrue);
+      expect(
+        r.valueFor(
+          PortraitIds.skinSoftening,
+          group: FaceGroup.female,
+          personId: 'p1',
+        ),
+        5,
+      );
+      expect(r.imageValue(PortraitIds.bgClean), 40);
+      for (final e in PortraitPresets.natural.entries) {
+        final spec = PortraitRegistry.byId(e.key);
+        expect(e.value, inInclusiveRange(spec.min, spec.max), reason: e.key);
+      }
     });
   });
 }

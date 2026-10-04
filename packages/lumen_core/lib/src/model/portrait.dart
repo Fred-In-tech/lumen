@@ -270,6 +270,13 @@ class PortraitSettings {
   PortraitSettings clearIndividual(String personId) =>
       _copy(individuals: _put(individuals, personId, const {}));
 
+  /// Removes one per-person value so [personId] inherits [id] from the group.
+  PortraitSettings clearIndividualValue(String personId, String id) {
+    final values = Map.of(individuals[personId] ?? const <String, double>{})
+      ..remove(id);
+    return _copy(individuals: _put(individuals, personId, values));
+  }
+
   /// Removes [group]'s override of [id] so it inherits All again.
   PortraitSettings clearGroupOverride(FaceGroup group, String id) {
     final values = Map.of(groups[group] ?? const <String, double>{})

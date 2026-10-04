@@ -12,14 +12,27 @@ import 'package:lumen/features/crop/crop_overlay.dart';
 import 'package:lumen/features/crop/crop_panel.dart';
 import 'package:lumen/features/develop/sections.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
+import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/features/editor/photo_canvas.dart';
 import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/presets/presets_panel.dart';
+import 'package:lumen/features/portrait/portrait_panel.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 import 'package:lumen/widgets/buttons.dart';
 
-enum _Tab { ai, light, color, curve, grading, effects, detail, crop, presets }
+enum _Tab {
+  ai,
+  portrait,
+  light,
+  color,
+  curve,
+  grading,
+  effects,
+  detail,
+  crop,
+  presets,
+}
 
 /// Phone editor: canvas on top, slider sheet + tool tabs below (DESIGN.md §3.4).
 class PhoneEditor extends ConsumerStatefulWidget {
@@ -43,6 +56,7 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
 
   static const _tabs = {
     _Tab.ai: ('AI', LucideIcons.sparkles),
+    _Tab.portrait: ('Portrait', LucideIcons.scanFace),
     _Tab.light: ('Light', LucideIcons.sun),
     _Tab.color: ('Color', LucideIcons.palette),
     _Tab.curve: ('Curve', LucideIcons.chartSpline),
@@ -56,6 +70,11 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
   void _select(_Tab tab) {
     final ctl = ref.read(editorProvider(widget.session.assetId).notifier);
     ctl.setCropMode(tab == _Tab.crop);
+    ref
+        .read(editorModuleProvider(widget.session.assetId).notifier)
+        .select(
+          tab == _Tab.portrait ? EditorModule.portrait : EditorModule.adjust,
+        );
     setState(() => _tab = tab);
   }
 
@@ -76,6 +95,7 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
           PromptBar(session: widget.session, width: double.infinity),
         ],
       ),
+      _Tab.portrait => PortraitPanel(assetId: id, touch: true),
       _Tab.light => DevelopSections(
         assetId: id,
         touch: true,
