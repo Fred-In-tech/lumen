@@ -103,6 +103,8 @@ abstract final class PortraitIds {
   static const bgUnify = 'bg.unify';
   static const bgUnifyLuminance = 'bg.unifyLuminance';
   static const strayHairs = 'hair.strayBeyond';
+  static const clothesWrinkles = 'clothes.wrinkles';
+  static const clothesLint = 'clothes.lint';
 }
 
 typedef _P = PortraitParamSpec;
@@ -161,6 +163,13 @@ abstract final class PortraitRegistry {
       scope: _image,
     ),
     _P(PortraitIds.strayHairs, 'Stray hairs', _S.hair, scope: _image),
+    _P(
+      PortraitIds.clothesWrinkles,
+      'Clothing wrinkles',
+      _S.background,
+      scope: _image,
+    ),
+    _P(PortraitIds.clothesLint, 'Lint & specks', _S.background, scope: _image),
   ];
 
   static final Map<String, PortraitParamSpec> _byId = {
