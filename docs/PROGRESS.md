@@ -43,7 +43,7 @@ Commands are run from the repo root unless noted. `bash tool/verify.sh` ends wit
 | 27 | gateway with mocked Claude: request shape, refusal 422, max_tokens 502, malformed 502, clamp, 401, 413, 429, cache | ✅ | `server/test/**` |
 | 28 | app ↔ gateway contract: vision → editable sliders + reasons, one history entry, AI amount | ✅ | `app/test/ai/gateway_contract_test.dart` |
 | 29 | real-key smoke test | ⏸ **not run: no API key** (conditional item) | `ANTHROPIC_API_KEY=… dart run tool/smoke_vision.dart` |
-| 30 | import JPEG/PNG/WebP/HEIC; dedupe; drag-and-drop (macOS) | ✅ | `app_flows_test` (5 formats + dedupe, macOS + iOS); `drag_drop_test` (file + folder via native channel); real iOS photo picker used manually |
+| 30 | import JPEG/PNG/WebP/HEIC; dedupe; drag-and-drop (macOS) | ✅ | `app_flows_test` (5 formats + dedupe, macOS + iOS); `drag_drop_test` (file + folder via native channel); real iOS photo picker used manually; **macOS Import picker + Finder drag confirmed by the user on the running app** |
 | 31 | Auto + each of 9 styles apply; one undo reverts | ✅ | `batch_sync_export_test` (9 styles); manual on iOS (Moody) |
 | 32 | prompt "warmer and brighten the shadows a bit" offline → temp↑ shadows↑, one labelled entry | ✅ | `app_flows_test` |
 | 33 | every develop control changes the render | ✅ | `test/engine/every_param_test.dart` (80 params + crop/straighten/rotate/flip/bw/4 curves) |
