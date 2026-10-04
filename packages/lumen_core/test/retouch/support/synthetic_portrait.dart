@@ -163,6 +163,12 @@ bool isVein(double dx, double y) =>
     dx.abs() > kIrisRadius * 1.15 &&
     kVeinLines.any((v) => (y - v.$1 * dx - v.$2).abs() < kVeinHalfWidth);
 
+/// Stubble patch (local centre and half-axes) when [SynthFace.penPatches].
+const kStubbleX = -0.05, kStubbleY = 1.72, kStubbleRx = 0.16, kStubbleRy = 0.09;
+
+/// Cool-tinted patch (local centre, radius) with mid-band blotches.
+const kTintX = 0.58, kTintY = 0.98, kTintR = 0.11;
+
 /// Red-eye pupil radius (× the iris radius) when [SynthFace.redEye].
 const kRedPupil = 0.6;
 
@@ -189,6 +195,7 @@ class SynthFace {
     this.veins = false,
     this.clippedShine = false,
     this.redEye = false,
+    this.penPatches = false,
   });
 
   final String id;
@@ -212,6 +219,11 @@ class SynthFace {
 
   /// Flash red-eye: the dilated pupil (0.6 × the iris) is red.
   final bool redEye;
+
+  /// Manual Tuning Pen fixtures: skin-coloured stubble on the chin (the AI
+  /// calls it skin) and a cool-tinted blotchy patch on the left cheek (the
+  /// colour model misses it).
+  final bool penPatches;
 
   ({double x, double y}) toPx(double x, double y) =>
       (x: cx + x * iod, y: cy + y * iod);
@@ -386,6 +398,27 @@ void _shadeFace(
     final d = w.distance(x, y);
     if (d < 4 * w.sigma) {
       l -= w.depth * math.exp(-d * d / (2 * w.sigma * w.sigma));
+    }
+  }
+  if (f.penPatches) {
+    final sx = (x - kStubbleX) / kStubbleRx, sy = (y - kStubbleY) / kStubbleRy;
+    if (sx * sx + sy * sy <= 1) {
+      // Short dark hairs: a hash-driven speckle on a slightly darker base.
+      l -=
+          0.04 +
+          0.05 * math.max(0.0, _hash((x * 997).floor(), (y * 991).floor()));
+    }
+    final d = math.sqrt(math.pow(x - kTintX, 2) + math.pow(y - kTintY, 2));
+    if (d <= kTintR) {
+      a = -0.03;
+      b = -0.03;
+      for (final (bx, by, sg) in const [
+        (-0.04, -0.03, 1.0),
+        (0.04, 0.02, -1.0),
+        (-0.02, 0.05, 1.0),
+      ]) {
+        l += 0.03 * sg * _g(x - kTintX - bx, y - kTintY - by, 0.02);
+      }
     }
   }
   if (f.clippedShine) {

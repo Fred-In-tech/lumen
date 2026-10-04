@@ -17,6 +17,9 @@ const double kFaceRectScale = 1.8;
 /// the skin reference blur, and about half the area of the full × 1.8.
 const double kFaceMarginIod = 0.5;
 
+/// Ownership centre: this far (IOD) below the eye midpoint, ≈ the nose.
+const double kOwnershipCenterIod = 0.45;
+
 /// Derived geometry of one face on a map grid (all lengths in map pixels;
 /// research 07 §1.2 "derived geometry").
 class FaceFrame {
@@ -147,8 +150,8 @@ class FaceFrame {
   /// assign overlapping rect pixels to one face: smaller wins).
   double ownershipDistance(int x, int y) {
     // Face centre ≈ the nose, 0.45 IOD below the eye midpoint.
-    final cx = eyeMid.x + 0.45 * iod * axis.x;
-    final cy = eyeMid.y + 0.45 * iod * axis.y;
+    final cx = eyeMid.x + kOwnershipCenterIod * iod * axis.x;
+    final cy = eyeMid.y + kOwnershipCenterIod * iod * axis.y;
     final dx = x + 0.5 - cx, dy = y + 0.5 - cy;
     return math.sqrt(dx * dx + dy * dy) / iod;
   }

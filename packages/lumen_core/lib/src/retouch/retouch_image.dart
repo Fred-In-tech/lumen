@@ -32,6 +32,7 @@ RgbaBuffer retouchImage(
     parsing: parsing,
     overrides: overrides,
     backdrop: uniforms.backdrop.isIdentity ? null : backdrop,
+    skinPen: settings.skinPen,
   );
   return applyRetouch(src, maps, uniforms);
 }

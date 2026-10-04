@@ -18,6 +18,7 @@
 library;
 
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:lumen_core/lumen_core.dart';
@@ -26,42 +27,76 @@ import 'gpu_pass.dart';
 import 'shader_library.dart';
 
 class RetouchTextures {
-  RetouchTextures._(this.maps, this.images);
+  RetouchTextures._(this.maps, this.images)
+    : _given = List.filled(images.length, false);
 
-  static Future<RetouchTextures> upload(RetouchMaps maps) async {
+  /// Uploads [maps]. Textures of [reuse] whose bytes are the very same
+  /// arrays (e.g. after a Manual Tuning Pen edit, which only replaces the
+  /// region atlases) move into the result instead of being uploaded again;
+  /// [reuse] then no longer disposes them.
+  static Future<RetouchTextures> upload(
+    RetouchMaps maps, {
+    RetouchTextures? reuse,
+  }) async {
     final w = maps.width, h = maps.height;
+    final slots = _slots(maps, w, h);
+    final donor = reuse == null || reuse._disposed
+        ? null
+        : _slots(reuse.maps, reuse.maps.width, reuse.maps.height);
+    // Claim reusable images up front, so the donor's disposal (after this
+    // upload completes, or earlier) cannot release them.
+    final taken = List<ui.Image?>.filled(slots.length, null);
+    for (var i = 0; i < slots.length; i++) {
+      if (donor != null && identical(donor[i].$1, slots[i].$1)) {
+        taken[i] = reuse!.images[i];
+        reuse._given[i] = true;
+      }
+    }
     final images = <ui.Image>[];
     try {
-      for (final (bytes, width) in [
-        (maps.b1, w),
-        (maps.b2, w),
-        (maps.b3, w),
-        (maps.bh, 2 * w),
-        (maps.regionA, 2 * w),
-        (maps.regionB, 2 * w),
-      ]) {
-        images.add(await uploadRgba(bytes, width, h));
+      for (var i = 0; i < slots.length; i++) {
+        final (bytes, width, height) = slots[i];
+        images.add(taken[i] ?? await uploadRgba(bytes, width, height));
       }
-      final bd = maps.backdrop;
-      images.add(await uploadRgba(bd.atlas, 2 * bd.width, 2 * bd.height));
     } on Object {
-      images.forEach(EngineImages.dispose);
+      // Give claimed images back to the donor; drop what was uploaded.
+      for (var i = 0; i < taken.length; i++) {
+        if (taken[i] != null) reuse!._given[i] = false;
+      }
+      for (var i = 0; i < images.length; i++) {
+        if (taken[i] == null) EngineImages.dispose(images[i]);
+      }
       rethrow;
     }
     return RetouchTextures._(maps, List.unmodifiable(images));
   }
+
+  static List<(Uint8List, int, int)> _slots(RetouchMaps m, int w, int h) => [
+    (m.b1, w, h),
+    (m.b2, w, h),
+    (m.b3, w, h),
+    (m.bh, 2 * w, h),
+    (m.regionA, 2 * w, h),
+    (m.regionB, 2 * w, h),
+    (m.backdrop.atlas, 2 * m.backdrop.width, 2 * m.backdrop.height),
+  ];
 
   final RetouchMaps maps;
 
   /// B1, B2, B3, Bh, regionA, regionB, backdrop (sampler order of
   /// `retouch.frag`).
   final List<ui.Image> images;
+
+  /// Images handed on to newer textures (not disposed here).
+  final List<bool> _given;
   bool _disposed = false;
 
   void dispose() {
     if (_disposed) return;
     _disposed = true;
-    images.forEach(EngineImages.dispose);
+    for (var i = 0; i < images.length; i++) {
+      if (!_given[i]) EngineImages.dispose(images[i]);
+    }
   }
 }
 
@@ -80,13 +115,14 @@ class RetouchMapsCache {
     final current = _current;
     if (current != null && identical(maps, _maps)) return current;
     _maps = maps;
+    final donor = _ready;
     _ready = null;
     final Future<RetouchTextures?> next;
     if (maps == null || !maps.isUsable) {
       next = Future.value(null);
     } else {
       _uploads++;
-      next = RetouchTextures.upload(maps);
+      next = RetouchTextures.upload(maps, reuse: donor);
     }
     _current = next;
     next.then((t) {

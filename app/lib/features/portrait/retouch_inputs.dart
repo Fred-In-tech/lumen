@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lumen_core/lumen_core.dart';
 
@@ -14,14 +15,14 @@ import 'package:lumen/features/remove/remove_providers.dart';
 /// analysis they were built from.
 typedef RetouchInputs = ({RetouchMaps maps, FaceAnalysis faces});
 
-/// Retouch maps for one photo, built once per face analysis (slider drags
-/// never rebuild them; they only change shader uniforms) and rebuilt when the
-/// user keeps or removes a spot, a heal on a face changes, or backdrop edits
-/// are switched on or off (the person / hair rasters are loaded only then).
-/// Null when the photo has no usable faces and no backdrop edits; with
-/// backdrop edits the maps carry `backdrop.state` (and its reason) even
-/// when the backdrop cannot be cleaned.
-final retouchMapsBuildProvider = FutureProvider.family<RetouchInputs?, String>((
+/// Pen-free retouch maps for one photo, built once per face analysis
+/// (slider drags never rebuild them; they only change shader uniforms) and
+/// rebuilt when the user keeps or removes a spot, a heal on a face changes,
+/// or backdrop edits are switched on or off (the person / hair rasters are
+/// loaded only then). Null when the photo has no usable faces and no
+/// backdrop edits; with backdrop edits the maps carry `backdrop.state`
+/// (and its reason) even when the backdrop cannot be cleaned.
+final retouchBaseMapsProvider = FutureProvider.family<RetouchInputs?, String>((
   ref,
   assetId,
 ) async {
@@ -72,6 +73,37 @@ final retouchMapsBuildProvider = FutureProvider.family<RetouchInputs?, String>((
     backdrop: backdrop,
   );
   return maps.isUsable || wantsBackdrop ? (maps: maps, faces: faces) : null;
+});
+
+/// The Manual Tuning Pen strokes of a photo, compared by content (so other
+/// edits never re-apply the pen).
+class _Pen {
+  const _Pen(this.strokes);
+  final List<BrushStroke> strokes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Pen && listEquals(other.strokes, strokes);
+
+  @override
+  int get hashCode => Object.hashAll(strokes);
+}
+
+/// Retouch maps the renderer uses: [retouchBaseMapsProvider] with the
+/// Manual Tuning Pen applied (`applySkinPen`, milliseconds: a pen stroke
+/// rewrites only the skin and face-id channels, and the GPU cache then
+/// re-uploads only the two region atlases).
+final retouchMapsBuildProvider = FutureProvider.family<RetouchInputs?, String>((
+  ref,
+  assetId,
+) async {
+  final base = await ref.watch(retouchBaseMapsProvider(assetId).future);
+  final pen = ref.watch(
+    editorProvider(assetId)
+        .select((s) => _Pen(s.value?.settings.portrait.skinPen ?? const [])),
+  );
+  if (base == null || pen.strokes.isEmpty) return base;
+  return (maps: applySkinPen(base.maps, pen.strokes), faces: base.faces);
 });
 
 /// Retouch inputs the open editor should use: built when the photo has face

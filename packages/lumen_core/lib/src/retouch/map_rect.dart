@@ -35,6 +35,13 @@ class MapRect {
   int get area => w * h;
   bool get isEmpty => w <= 0 || h <= 0;
 
+  /// The overlap of this and [o] (empty when they do not overlap).
+  MapRect intersect(MapRect o) {
+    final a = x0 > o.x0 ? x0 : o.x0, b = y0 > o.y0 ? y0 : o.y0;
+    final c = x1 < o.x1 ? x1 : o.x1, d = y1 < o.y1 ? y1 : o.y1;
+    return MapRect(a, b, c > a ? c - a : 0, d > b ? d - b : 0);
+  }
+
   bool contains(int x, int y) => x >= x0 && x < x1 && y >= y0 && y < y1;
 
   /// Index of grid pixel `(x, y)` inside a plane covering this rect.

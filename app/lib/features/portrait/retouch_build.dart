@@ -19,18 +19,22 @@ final _log = Logger('RetouchBuild');
 
 /// Builds the retouch maps off the UI isolate. Top-level so the isolate
 /// closure only captures plain data. [backdrop] (person / hair rasters)
-/// adds the image-scope backdrop maps.
+/// adds the image-scope backdrop maps; [skinPen] applies the Manual Tuning
+/// Pen (the editor applies it separately with `applySkinPen`, so pen
+/// strokes never re-run this).
 Future<RetouchMaps> computeRetouchMapsInBackground(
   RgbaBuffer pixels,
   FaceAnalysis faces,
   PortraitSpots spots, {
   BackdropInput? backdrop,
+  List<BrushStroke> skinPen = const [],
 }) => runInBackground(
   () => computeRetouchMaps(
     pixels,
     faces,
     overrides: BlemishOverrides(keepAt: spots.keep, removeAt: spots.remove),
     backdrop: backdrop,
+    skinPen: skinPen,
   ),
 );
 
@@ -190,6 +194,7 @@ class StoredRetouchLoader {
         pixels,
         faces,
         settings.portrait.spots,
+        skinPen: settings.portrait.skinPen,
         backdrop: wantsBackdrop
             ? await (backdrop?.call(assetId) ??
                   Future.value(BackdropInput.missing))

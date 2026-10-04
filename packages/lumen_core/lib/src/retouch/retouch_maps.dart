@@ -109,6 +109,8 @@ class RetouchFaceInfo {
     this.eyeRightY = 0,
     this.eyeLeftX = 0,
     this.eyeLeftY = 0,
+    this.centerX = 0,
+    this.centerY = 0,
   });
 
   final int slot;
@@ -143,6 +145,11 @@ class RetouchFaceInfo {
   final double eyeRightY;
   final double eyeLeftX;
   final double eyeLeftY;
+
+  /// Ownership centre (≈ the nose, map px): overlapping work rects go to
+  /// the face whose centre is nearest in IOD units (`face_ids.dart`).
+  final double centerX;
+  final double centerY;
 }
 
 /// Output of `computeRetouchMaps`: plain data, safe to send between
@@ -190,6 +197,22 @@ class RetouchMaps {
 
   /// Image-scope backdrop maps (neutral unless requested and solid).
   final BackdropMaps backdrop;
+
+  /// These maps with new region atlases (everything else shared, so
+  /// unchanged textures can be reused).
+  RetouchMaps withRegions(Uint8List regionA, Uint8List regionB) => RetouchMaps(
+    width: width,
+    height: height,
+    b1: b1,
+    b2: b2,
+    b3: b3,
+    bh: bh,
+    regionA: regionA,
+    regionB: regionB,
+    faces: faces,
+    blemishes: blemishes,
+    backdrop: backdrop,
+  );
 
   /// Backdrop effects can run ([BackdropState.ready]).
   bool get hasBackdrop => backdrop.isReady;
