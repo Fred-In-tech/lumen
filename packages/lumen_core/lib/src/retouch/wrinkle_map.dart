@@ -148,12 +148,22 @@ Float32List ridgeStrength(
   int h,
   double iod, {
   Float32List? only,
+}) => ridgeStrengthAt(l, w, h, [
+  for (final s in kRidgeScalesIod) math.max(kRidgeMinSigmaPx, s * iod),
+], only: only);
+
+/// [ridgeStrength] at explicit pixel scales [sigmas].
+Float32List ridgeStrengthAt(
+  Float32List l,
+  int w,
+  int h,
+  List<double> sigmas, {
+  Float32List? only,
 }) {
   final out = Float32List(w * h);
   if (w < 3 || h < 3) return out;
   const inv2b2 = 1 / (2 * kRidgeBeta * kRidgeBeta);
-  for (final s in kRidgeScalesIod) {
-    final sigma = math.max(kRidgeMinSigmaPx, s * iod);
+  for (final sigma in sigmas) {
     final g = gaussianBlur(l, w, h, sigma);
     final s2 = sigma * sigma, reach = kRidgeSideSigmas * sigma;
     double at(double x, double y) {

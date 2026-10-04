@@ -71,3 +71,16 @@ const double kLipGlossEnd = 0.08;
 /// local skin reference B3; L darkens slightly.
 const double kBlushChroma = 0.35;
 const double kBlushDarken = 0.03;
+
+/// Red-eye (face scope): search disc around each iris centre (IOD units,
+/// the iris is ≈ 0.093), its soft edge, the redness gate on the source
+/// OkLab a* (and a* − b*, so brown irises and skin never qualify), the
+/// catchlight guard on L, and how far a red pupil is darkened.
+const double kRedEyeRadiusIod = 0.11;
+const double kRedEyeEdge = 0.8;
+const double kRedEyeALo = 0.05;
+const double kRedEyeAHi = 0.10;
+const double kRedEyeHueSpan = 0.04;
+const double kRedEyeCatchLo = 0.80;
+const double kRedEyeCatchHi = 0.92;
+const double kRedEyeDarken = 0.5;

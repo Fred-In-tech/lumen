@@ -26,10 +26,14 @@
 /// the L lift that fills every detected wrinkle; `B1`–`B3` are built from
 /// the wrinkle-filled image (§3.4). `B1`–`B3` are dithered on write
 /// (seeded, deterministic).
+///
+/// The image-scope backdrop atlas (`uBackdropMap`, 8th sampler) is
+/// [BackdropMaps], on its own grid.
 library;
 
 import 'dart:typed_data';
 
+import 'backdrop_maps.dart';
 import 'blemish_types.dart';
 import 'map_rect.dart';
 import 'retouch_uniforms.dart';
@@ -37,8 +41,9 @@ import 'retouch_uniforms.dart';
 /// Faces with their own uniform row (more faces are not retouched).
 const int kMaxRetouchFaces = 8;
 
-/// Floats of [RetouchMaps.packInfo]: `uMapInfo` + 2 vec4 per face.
-const int kRetouchInfoFloats = 4 + 8 * kMaxRetouchFaces;
+/// Floats of [RetouchMaps.packInfo]: `uMapInfo`, 3 vec4 per face, then
+/// the backdrop info (2 vec4).
+const int kRetouchInfoFloats = 4 + 12 * kMaxRetouchFaces + kBackdropInfoFloats;
 
 /// Signed encoding ranges of the heal deltas (OkLab L, a, b).
 const double kHealRangeL = 0.25;
@@ -100,6 +105,10 @@ class RetouchFaceInfo {
     this.blushA = 0,
     this.blushB = 0,
     this.hasForcedSpots = false,
+    this.eyeRightX = 0,
+    this.eyeRightY = 0,
+    this.eyeLeftX = 0,
+    this.eyeLeftY = 0,
   });
 
   final int slot;
@@ -128,6 +137,12 @@ class RetouchFaceInfo {
   /// Blush target OkLab a, b.
   final double blushA;
   final double blushB;
+
+  /// Iris centres (landmarks 468 / 473) in map pixels (red-eye discs).
+  final double eyeRightX;
+  final double eyeRightY;
+  final double eyeLeftX;
+  final double eyeLeftY;
 }
 
 /// Output of `computeRetouchMaps`: plain data, safe to send between
@@ -144,7 +159,8 @@ class RetouchMaps {
     required this.regionB,
     this.faces = const [],
     this.blemishes = const [],
-  }) {
+    BackdropMaps? backdrop,
+  }) : backdrop = backdrop ?? BackdropMaps.none(BackdropState.notRequested) {
     final n = width * height * 4;
     for (final t in [b1, b2, b3]) {
       if (t.length != n) throw ArgumentError('texture ${t.length} != $n');
@@ -156,8 +172,8 @@ class RetouchMaps {
     }
   }
 
-  /// 1×1 neutral maps (no faces).
-  factory RetouchMaps.empty() {
+  /// 1×1 neutral face maps (no faces), optionally with [backdrop] maps.
+  factory RetouchMaps.empty({BackdropMaps? backdrop}) {
     Uint8List px(int v) => Uint8List.fromList([v, v, v, 255]);
     return RetouchMaps(
       width: 1,
@@ -168,8 +184,18 @@ class RetouchMaps {
       bh: Uint8List.fromList([128, 128, 128, 255, 128, 128, 128, 255]),
       regionA: Uint8List.fromList([0, 0, 0, 255, 0, 0, 0, 255]),
       regionB: Uint8List.fromList([0, 0, 0, 255, 0, 0, 0, 255]),
+      backdrop: backdrop,
     );
   }
+
+  /// Image-scope backdrop maps (neutral unless requested and solid).
+  final BackdropMaps backdrop;
+
+  /// Backdrop effects can run ([BackdropState.ready]).
+  bool get hasBackdrop => backdrop.isReady;
+
+  /// Anything to retouch with: faces or a ready backdrop.
+  bool get isUsable => hasFaces || hasBackdrop;
 
   /// Size of one tile (the `Rres` grid).
   final int width;
@@ -258,15 +284,18 @@ class RetouchMaps {
   /// | floats | vec4 | contents |
   /// |---|---|---|
   /// | 0–3 | `uMapInfo` | W, H, face count, 0 |
-  /// | 4 + 8k + 0–3 | `uFaceInfo[2k]` | teethCapL, has maps (0/1), IOD (map px), lipGlossL |
-  /// | 4 + 8k + 4–7 | `uFaceInfo[2k+1]` | lipChromaGain, lipShiftL, blushA, blushB |
+  /// | 4 + 12k + 0–3 | `uFaceInfo[3k]` | teethCapL, has maps (0/1), IOD (map px), lipGlossL |
+  /// | 4 + 12k + 4–7 | `uFaceInfo[3k+1]` | lipChromaGain, lipShiftL, blushA, blushB |
+  /// | 4 + 12k + 8–11 | `uFaceInfo[3k+2]` | right iris x, y, left iris x, y (map px) |
+  /// | 100–103 | `uBackdropInfo0` | backdrop W, H, ready (0/1), τL |
+  /// | 104–107 | `uBackdropInfo1` | median backdrop L, a, b, τC |
   Float32List packInfo() {
     final out = Float32List(kRetouchInfoFloats);
     out[0] = width.toDouble();
     out[1] = height.toDouble();
     out[2] = faces.length.toDouble();
     for (var k = 0; k < kMaxRetouchFaces; k++) {
-      final f = faceInSlot(k), o = 4 + 8 * k;
+      final f = faceInSlot(k), o = 4 + 12 * k;
       out[o] = f?.teethCapL ?? 1;
       out[o + 1] = f == null ? 0 : 1;
       out[o + 2] = f?.iod ?? 0;
@@ -275,7 +304,16 @@ class RetouchMaps {
       out[o + 5] = f?.lipShiftL ?? 0;
       out[o + 6] = f?.blushA ?? 0;
       out[o + 7] = f?.blushB ?? 0;
+      out[o + 8] = f?.eyeRightX ?? 0;
+      out[o + 9] = f?.eyeRightY ?? 0;
+      out[o + 10] = f?.eyeLeftX ?? 0;
+      out[o + 11] = f?.eyeLeftY ?? 0;
     }
+    out.setRange(
+      kRetouchInfoFloats - kBackdropInfoFloats,
+      kRetouchInfoFloats,
+      backdrop.packInfo(),
+    );
     return out;
   }
 }
@@ -285,6 +323,21 @@ class RetouchMaps {
 bool retouchSlotActive(RetouchMaps maps, RetouchUniforms u, int slot) {
   final face = maps.faceInSlot(slot);
   return face != null && (!u.row(slot).isIdentity || face.hasForcedSpots);
+}
+
+/// True when the backdrop maps are ready and a backdrop value is set.
+bool retouchBackdropActive(RetouchMaps maps, RetouchUniforms u) =>
+    maps.hasBackdrop && !u.backdrop.isIdentity;
+
+/// True when pass R changes at least one pixel (otherwise it is skipped
+/// and the source is used bit-exact).
+bool retouchPassActive(RetouchMaps maps, RetouchUniforms u) {
+  if (retouchBackdropActive(maps, u)) return true;
+  if (!maps.hasFaces) return false;
+  for (var k = 0; k < kMaxRetouchFaces; k++) {
+    if (retouchSlotActive(maps, u, k)) return true;
+  }
+  return false;
 }
 
 extension RetouchMapsForced on RetouchMaps {

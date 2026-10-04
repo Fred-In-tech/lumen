@@ -2,11 +2,13 @@
 /// their cache, and the (tiled) pass itself.
 ///
 /// Public API:
-/// * `RetouchTextures.upload(RetouchMaps)`: the six map textures (B1, B2,
-///   B3 at W×H; Bh, regionA, regionB at 2W×H); `maps`, `dispose()`.
+/// * `RetouchTextures.upload(RetouchMaps)`: the seven map textures (B1,
+///   B2, B3 at W×H; Bh, regionA, regionB at 2W×H; the backdrop atlas at
+///   2W'×2H'); `maps`, `dispose()`.
 /// * `RetouchMapsCache`: `obtain(maps)` uploads each `RetouchMaps` instance
-///   once (identity-keyed) and returns null for null maps or maps without
-///   faces. Replaced textures are released after the replacement is ready;
+///   once (identity-keyed) and returns null for null maps or maps with
+///   neither faces nor a ready backdrop (`RetouchMaps.isUsable`).
+///   Replaced textures are released after the replacement is ready;
 ///   `dispose()` releases the current ones. The cache owns the textures.
 /// * `runRetouchPass(shaders, source:, textures:, uniforms:, tileSize:)`:
 ///   pass R over the whole [source] in tiles (one pass when it fits),
@@ -40,6 +42,8 @@ class RetouchTextures {
       ]) {
         images.add(await uploadRgba(bytes, width, h));
       }
+      final bd = maps.backdrop;
+      images.add(await uploadRgba(bd.atlas, 2 * bd.width, 2 * bd.height));
     } on Object {
       images.forEach(EngineImages.dispose);
       rethrow;
@@ -49,7 +53,8 @@ class RetouchTextures {
 
   final RetouchMaps maps;
 
-  /// B1, B2, B3, Bh, regionA, regionB (sampler order of `retouch.frag`).
+  /// B1, B2, B3, Bh, regionA, regionB, backdrop (sampler order of
+  /// `retouch.frag`).
   final List<ui.Image> images;
   bool _disposed = false;
 
@@ -77,7 +82,7 @@ class RetouchMapsCache {
     _maps = maps;
     _ready = null;
     final Future<RetouchTextures?> next;
-    if (maps == null || !maps.hasFaces) {
+    if (maps == null || !maps.isUsable) {
       next = Future.value(null);
     } else {
       _uploads++;

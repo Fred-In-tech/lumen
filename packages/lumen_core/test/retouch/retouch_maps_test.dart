@@ -83,10 +83,10 @@ void main() {
       }
     });
 
-    test('packInfo carries the size, teeth caps and makeup targets', () {
+    test('packInfo carries size, teeth caps, makeup, eyes and backdrop', () {
       final info = maps.packInfo();
       expect(info, hasLength(kRetouchInfoFloats));
-      expect(kRetouchInfoFloats, 68);
+      expect(kRetouchInfoFloats, 108);
       expect(info.sublist(0, 3), [576, 420, 2]);
       final a = maps.faceInSlot(0)!;
       expect(info[4], closeTo(_a.scleraL, 0.02));
@@ -97,9 +97,17 @@ void main() {
       expect(info[9], closeTo(a.lipShiftL, 1e-6));
       expect(info[10], closeTo(a.blushA, 1e-6));
       expect(info[11], closeTo(a.blushB, 1e-6));
-      expect(info[12 + 1], 1, reason: 'slot 1 has maps');
-      expect(info[4 + 8 * 2 + 1], 0, reason: 'slot 2 has no maps');
-      expect(info[4 + 8 * 2 + 4], 1, reason: 'neutral lip gain');
+      // Iris centres (map px = image px here).
+      final r = _a.toPx(-0.5, 0), l = _a.toPx(0.5, 0);
+      expect(info[12], closeTo(r.x, 0.01));
+      expect(info[13], closeTo(r.y, 0.01));
+      expect(info[14], closeTo(l.x, 0.01));
+      expect(info[15], closeTo(l.y, 0.01));
+      expect(info[16 + 1], 1, reason: 'slot 1 has maps');
+      expect(info[4 + 12 * 2 + 1], 0, reason: 'slot 2 has no maps');
+      expect(info[4 + 12 * 2 + 4], 1, reason: 'neutral lip gain');
+      // Backdrop not requested: 1×1, not ready.
+      expect(info.sublist(100, 103), [1, 1, 0]);
     });
 
     test('no faces gives 1×1 neutral maps and a no-op apply', () {

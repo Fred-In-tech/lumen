@@ -97,12 +97,15 @@ RgbaBuffer retouchedSource(
   RetouchMaps? maps,
   FaceAnalysis? faces,
 ) {
-  if (maps == null || faces == null || !settings.portrait.hasFaceEdits) {
+  if (maps == null || !portraitNeedsRetouch(settings.portrait)) {
     return src;
   }
   return applyRetouch(
     src,
     maps,
-    RetouchUniforms.fromSettings(settings.portrait, faces),
+    RetouchUniforms.fromSettings(settings.portrait, faces ?? _noFaces),
   );
 }
+
+/// Backdrop-only retouch on a photo without detected faces.
+const _noFaces = FaceAnalysis(imageWidth: 0, imageHeight: 0, modelVersion: '');

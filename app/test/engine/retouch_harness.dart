@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:lumen/engine/gpu_pass.dart';
 import 'package:lumen/engine/retouch_textures.dart';
 import 'package:lumen/engine/shader_library.dart';
@@ -6,6 +8,7 @@ import 'package:lumen_core/lumen_core.dart';
 import '../../../packages/lumen_core/test/retouch/support/synthetic_portrait.dart';
 import '../support/test_images.dart';
 
+export '../../../packages/lumen_core/test/retouch/support/synthetic_backdrop.dart';
 export '../../../packages/lumen_core/test/retouch/support/synthetic_portrait.dart';
 
 /// Settings with [values] on the All group (or [group]).
@@ -70,4 +73,38 @@ Future<RgbaBuffer> gpuRetouch(
     p: p,
     maps: computeRetouchMaps(p.image, p.analysis, longEdge: mapLongEdge),
   );
+}
+
+/// Settings with image-scope [values] (backdrop, stray hairs) on top of
+/// [base].
+PortraitSettings withImage(
+  Map<String, double> values, [
+  PortraitSettings base = PortraitSettings.empty,
+]) {
+  var s = base;
+  for (final e in values.entries) {
+    s = s.withImageValue(e.key, e.value);
+  }
+  return s;
+}
+
+/// A coarse person raster for a synthetic portrait (the head ellipse of
+/// `_shadeFace`), like the vision pipeline's people plane.
+MaskRaster portraitPeopleRaster(SynthPortrait p) {
+  final w = p.image.width ~/ 2, h = p.image.height ~/ 2;
+  final data = Uint8List(w * h);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var cov = 0.0;
+      for (final f in p.faces) {
+        final q = f.toLocal(2 * x + 1.0, 2 * y + 1.0);
+        final r =
+            (q.x / 1.4) * (q.x / 1.4) +
+            ((q.y - 0.2) / 1.85) * ((q.y - 0.2) / 1.85);
+        if (r <= 1 || (q.y > 0.9 && q.y < 2.3 && q.x.abs() < 1.6)) cov = 1;
+      }
+      data[y * w + x] = (cov * 255).round();
+    }
+  }
+  return MaskRaster(w, h, data);
 }

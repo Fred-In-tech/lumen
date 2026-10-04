@@ -6,6 +6,7 @@ import 'package:lumen/ai/ondevice/ondevice_providers.dart';
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_module.dart';
+import 'package:lumen/features/masks/ai_mask_source.dart';
 import 'package:lumen/features/portrait/retouch_build.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 
@@ -15,14 +16,25 @@ typedef RetouchInputs = ({RetouchMaps maps, FaceAnalysis faces});
 
 /// Retouch maps for one photo, built once per face analysis (slider drags
 /// never rebuild them; they only change shader uniforms) and rebuilt when the
-/// user keeps or removes a spot or a heal on a face changes. Null when the photo has no usable faces.
+/// user keeps or removes a spot, a heal on a face changes, or backdrop edits
+/// are switched on or off (the person / hair rasters are loaded only then).
+/// Null when the photo has no usable faces and no backdrop edits; with
+/// backdrop edits the maps carry `backdrop.state` (and its reason) even
+/// when the backdrop cannot be cleaned.
 final retouchMapsBuildProvider = FutureProvider.family<RetouchInputs?, String>((
   ref,
   assetId,
 ) async {
   final faces = (await ref.watch(faceAnalysisProvider(assetId).future))
       .analysis;
-  if (faces.faces.isEmpty) return null;
+  final wantsBackdrop = ref.watch(
+    editorProvider(assetId).select(
+      (s) => needsBackdropMaps(
+        s.value?.settings.portrait ?? PortraitSettings.empty,
+      ),
+    ),
+  );
+  if (faces.faces.isEmpty && !wantsBackdrop) return null;
   final spots = ref.watch(
     editorProvider(assetId)
         .select((s) => s.value?.settings.portrait.spots ?? PortraitSpots.none),
@@ -46,21 +58,43 @@ final retouchMapsBuildProvider = FutureProvider.family<RetouchInputs?, String>((
     faces: faces,
     patches: () => ref.read(patchStoreProvider.future),
   );
-  final maps = await computeRetouchMapsInBackground(pixels, faces, spots);
-  return maps.hasFaces ? (maps: maps, faces: faces) : null;
+  final backdrop = wantsBackdrop
+      ? await loadBackdropRasters(
+          ref.read(aiMaskSourceProvider),
+          ref.read(aiMaskRasterLoaderProvider),
+          assetId,
+        )
+      : null;
+  final maps = await computeRetouchMapsInBackground(
+    pixels,
+    faces,
+    spots,
+    backdrop: backdrop,
+  );
+  return maps.isUsable || wantsBackdrop ? (maps: maps, faces: faces) : null;
 });
 
 /// Retouch inputs the open editor should use: built when the photo has face
-/// retouch edits or the Portrait module is open (so the first slider drag is
-/// instant), otherwise null and nothing runs.
+/// retouch or backdrop edits or the Portrait module is open (so the first
+/// slider drag is instant), otherwise null and nothing runs.
 final retouchInputsProvider =
     Provider.family<AsyncValue<RetouchInputs?>, String>((ref, assetId) {
       final hasEdits = ref.watch(
-        editorProvider(assetId)
-            .select((s) => s.value?.settings.portrait.hasFaceEdits ?? false),
+        editorProvider(assetId).select(
+          (s) => portraitNeedsRetouch(
+            s.value?.settings.portrait ?? PortraitSettings.empty,
+          ),
+        ),
       );
       final portraitOpen =
           ref.watch(editorModuleProvider(assetId)) == EditorModule.portrait;
       if (!hasEdits && !portraitOpen) return const AsyncData(null);
       return ref.watch(retouchMapsBuildProvider(assetId));
     });
+
+/// Why the backdrop sliders of photo [assetId] do nothing (or null when
+/// they work or were never used): `BackdropState.reason` of its maps.
+final backdropStatusProvider = Provider.family<BackdropState?, String>(
+  (ref, assetId) =>
+      ref.watch(retouchInputsProvider(assetId)).value?.maps.backdrop.state,
+);

@@ -168,6 +168,129 @@ void main() {
     }
   });
 
+  test('red-eye: red pupils fixed, normal eyes untouched', () async {
+    final red = renderSynthPortrait(384, 384, [
+      const SynthFace(id: 'a', cx: 192, cy: 150, iod: 104, redEye: true),
+    ]);
+    final m = computeRetouchMaps(red.image, red.analysis);
+    final u = RetouchUniforms.fromSettings(
+      portraitOf({PortraitIds.redEye: 100}),
+      red.analysis,
+    );
+    final cpu = applyRetouch(red.image, m, u);
+    final gpu = await gpuRetouch(red.image, m, u);
+    final d = diffStats(gpu, cpu);
+    expect(d.max, lessThanOrEqualTo(1));
+    expect(d.mean, lessThanOrEqualTo(1));
+    if (_report) {
+      debugPrint(
+        'retouch parity red-eye: max ${d.max}/255, '
+        'mean ${d.mean.toStringAsFixed(3)}/255',
+      );
+    }
+    await check(
+      'red-eye 100 (normal eyes)',
+      portraitOf({PortraitIds.redEye: 100}),
+    );
+  });
+
+  group('backdrop (image scope)', () {
+    late BackdropScene scene;
+    late RetouchMaps bd;
+    setUpAll(() {
+      scene = renderBackdropScene(w: 320, h: 240);
+      bd = computeRetouchMaps(
+        scene.image,
+        scene.analysis,
+        backdrop: scene.input,
+      );
+    });
+
+    Future<void> checkScene(String name, PortraitSettings s) async {
+      final u = RetouchUniforms.fromSettings(s, scene.analysis);
+      final cpu = applyRetouch(scene.image, bd, u);
+      expect(identical(cpu, scene.image), isFalse, reason: '$name: no effect');
+      final gpu = await gpuRetouch(scene.image, bd, u);
+      final d = diffStats(gpu, cpu);
+      expect(d.max, lessThanOrEqualTo(1), reason: name);
+      expect(d.mean, lessThanOrEqualTo(1), reason: name);
+      if (_report) {
+        debugPrint(
+          'retouch parity backdrop $name: max ${d.max}/255, '
+          'mean ${d.mean.toStringAsFixed(3)}/255',
+        );
+      }
+    }
+
+    test('the scene backdrop is ready', () {
+      expect(bd.backdrop.state, BackdropState.ready);
+      expect(bd.hasFaces, isFalse);
+    });
+
+    for (final e in {
+      'clean 100': {PortraitIds.bgClean: 100.0},
+      'clean 40': {PortraitIds.bgClean: 40.0},
+      'unify 100': {PortraitIds.bgUnify: 100.0},
+      'luminance +100': {PortraitIds.bgUnifyLuminance: 100.0},
+      'luminance -60': {PortraitIds.bgUnifyLuminance: -60.0},
+      'strays 100': {PortraitIds.strayHairs: 100.0},
+      'all': {
+        PortraitIds.bgClean: 100.0,
+        PortraitIds.bgUnify: 70.0,
+        PortraitIds.bgUnifyLuminance: 30.0,
+        PortraitIds.strayHairs: 100.0,
+      },
+    }.entries) {
+      test(e.key, () => checkScene(e.key, withImage(e.value)));
+    }
+
+    test('defaults and textured backdrops are skipped bit-exactly', () async {
+      final u = RetouchUniforms.fromSettings(
+        PortraitSettings.empty,
+        scene.analysis,
+      );
+      expect(
+        identical(await gpuRetouch(scene.image, bd, u), scene.image),
+        isTrue,
+      );
+      final t = renderBackdropScene(w: 320, h: 240, textured: true);
+      final mt = computeRetouchMaps(t.image, t.analysis, backdrop: t.input);
+      final ut = RetouchUniforms.fromSettings(
+        withImage({PortraitIds.bgClean: 100, PortraitIds.strayHairs: 100}),
+        t.analysis,
+      );
+      expect(identical(await gpuRetouch(t.image, mt, ut), t.image), isTrue);
+      expect(EngineImages.live, 0);
+    });
+
+    test('faces and backdrop together, tiled = single pass', () async {
+      final both = computeRetouchMaps(
+        p.image,
+        p.analysis,
+        backdrop: BackdropInput(people: portraitPeopleRaster(p)),
+      );
+      expect(both.backdrop.state, BackdropState.ready);
+      final s = withImage({
+        PortraitIds.bgClean: 100,
+        PortraitIds.bgUnify: 80,
+      }, portraitOf({PortraitIds.skinSoftening: 60, PortraitIds.redEye: 100}));
+      final u = RetouchUniforms.fromSettings(s, p.analysis);
+      final cpu = applyRetouch(p.image, both, u);
+      final gpu = await gpuRetouch(p.image, both, u);
+      final d = diffStats(gpu, cpu);
+      expect(d.max, lessThanOrEqualTo(1));
+      expect(d.mean, lessThanOrEqualTo(1));
+      final tiled = await gpuRetouch(p.image, both, u, tileSize: 100);
+      expect(tiled.data, gpu.data);
+      if (_report) {
+        debugPrint(
+          'retouch parity faces + backdrop: max ${d.max}/255, '
+          'mean ${d.mean.toStringAsFixed(3)}/255',
+        );
+      }
+    });
+  });
+
   test('group and individual rows pick per-face values', () async {
     final two = renderSynthPortrait(512, 320, const [
       SynthFace(id: 'f', cx: 140, cy: 120, iod: 80, group: FaceGroup.female),

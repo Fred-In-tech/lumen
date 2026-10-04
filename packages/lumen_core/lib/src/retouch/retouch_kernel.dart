@@ -1,6 +1,8 @@
 /// CPU reference of `retouch.frag` (research 07 §3.1–3.9). Each numbered
 /// step maps 1:1 to the shader: OkLab of linear sRGB, bands sampled in
-/// source uv, per-face rows selected by the nearest face id.
+/// source uv, per-face rows selected by the nearest face id. The
+/// image-scope backdrop change (`backdrop_kernel.dart`) is added on top of
+/// the face result, both computed from the same source pixel.
 library;
 
 import 'dart:math' as math;
@@ -8,6 +10,7 @@ import 'dart:typed_data';
 
 import '../color/srgb.dart';
 import '../render/rgba_buffer.dart';
+import 'backdrop_kernel.dart';
 import 'blemish_types.dart';
 import 'filters.dart';
 import 'kernel_constants.dart';
@@ -22,12 +25,14 @@ class RetouchKernel {
         kMaxRetouchFaces,
         (k) => retouchSlotActive(maps, uniforms, k),
       ),
-      _info = List.generate(kMaxRetouchFaces, maps.faceInSlot);
+      _info = List.generate(kMaxRetouchFaces, maps.faceInSlot),
+      _bd = BackdropKernel(maps.backdrop, uniforms.backdrop);
 
   final RetouchMaps maps;
   final RetouchUniforms uniforms;
   final List<bool> _active;
   final List<RetouchFaceInfo?> _info;
+  final BackdropKernel _bd;
   final Float64List _t = Float64List(12);
   final Float64List _c = Float64List(3);
   final Float64List _li = Float64List(3);
@@ -39,6 +44,9 @@ class RetouchKernel {
   /// True when face [slot] has maps and a non-identity row.
   bool isActive(int slot) =>
       slot >= 0 && slot < _active.length && _active[slot];
+
+  /// True when backdrop effects run (every pixel must be visited).
+  bool get backdropActive => _bd.active;
 
   /// Shades one pixel with source bytes `(r, g, b)` at source uv `(u, v)`
   /// into `out[o..o+2]`. Returns false (and writes nothing) when no effect
@@ -54,7 +62,26 @@ class RetouchKernel {
   ) {
     // 1. Face row (nearest face id; 0 = no face).
     final slot = maps.nearest(RetouchChannel.faceId, u, v) - 1;
-    if (!isActive(slot)) return false;
+    final face = isActive(slot) && _face(slot, r, g, b, u, v);
+    // 16. Backdrop (image scope), added to the face result.
+    final backdrop = _bd.weights(u, v);
+    if (!face && !backdrop) return false;
+    final oo = _o, li = _li;
+    if (!face) {
+      final lut = kSrgbByteToLinear;
+      linearToOklab(lut[r], lut[g], lut[b], li, 0);
+      oo[0] = li[0];
+      oo[1] = li[1];
+      oo[2] = li[2];
+    }
+    if (backdrop) _bd.apply(u, v, li, oo);
+    oklabToSrgbBytes(oo[0], oo[1], oo[2], out, o, _c);
+    return true;
+  }
+
+  /// Face steps 2–15 into [_o] (and the source OkLab into [_li]); false
+  /// when no face effect touches the pixel.
+  bool _face(int slot, int r, int g, int b, double u, double v) {
     final p = uniforms.row(slot);
     // 2. Regions (bilinear, 0..1).
     final t = _t;
@@ -81,6 +108,18 @@ class RetouchKernel {
     final teeth = mouth * (p.teethBrightness + p.teethDesaturate);
     final sw = p.whites * sclera, rv = p.redVein * sclera;
     final iw = p.iris * irisM, lw = p.lips * lipsM, bw = p.blush * blushM;
+    // Red-eye: analytic discs around the iris centres (map px).
+    var re = 0.0;
+    if (p.redEye > 0) {
+      final f = _info[slot]!;
+      final px = u * maps.width, py = v * maps.height;
+      final rad = kRedEyeRadiusIod * f.iod;
+      final d = math.min(
+        _hypot(px - f.eyeRightX, py - f.eyeRightY),
+        _hypot(px - f.eyeLeftX, py - f.eyeLeftY),
+      );
+      re = p.redEye * (1 - smoothstep(kRedEyeEdge * rad, rad, d));
+    }
     // Wrinkle removal: zone slider (nearest zone code) plus a share of
     // Smooth, capped at kWrinkleMax (§3.4).
     final wEff = dW > 0
@@ -94,7 +133,7 @@ class RetouchKernel {
         : 0.0;
     if (s == 0 && ev == 0 && tex == 0 && dc == 0 && bg == 0 && sh == 0) {
       if (wEff == 0 && teeth == 0 && sw == 0 && rv == 0 && iw == 0) {
-        if (sel == 0 && lw == 0 && bw == 0) return false;
+        if (sel == 0 && lw == 0 && bw == 0 && re == 0) return false;
       }
     }
     // 4. OkLab of the source and the bands; healed low band (§3.3).
@@ -212,33 +251,64 @@ class RetouchKernel {
       oo[2] += bw * kBlushChroma * (f.blushB - l3[2]);
       oo[0] *= 1 - kBlushDarken * bw;
     }
-    oklabToSrgbBytes(oo[0], oo[1], oo[2], out, o, _c);
+    // 15. Red-eye: strongly red pupils in the eye discs lose their colour
+    // and darken; brown irises, skin and the catchlight do not qualify.
+    if (re > 0) {
+      final w =
+          re *
+          smoothstep(kRedEyeALo, kRedEyeAHi, li[1]) *
+          smoothstep(0, kRedEyeHueSpan, li[1] - li[2]) *
+          (1 - smoothstep(kRedEyeCatchLo, kRedEyeCatchHi, li[0]));
+      oo[1] *= 1 - w;
+      oo[2] *= 1 - w;
+      oo[0] *= 1 - kRedEyeDarken * w;
+    }
     return true;
   }
+
+  static double _hypot(double x, double y) => math.sqrt(x * x + y * y);
 
   /// Bilinear band sample (sRGB bytes) → OkLab, like the shader.
   void _bandLab(Uint8List tex, double u, double v, Float64List out) {
     maps.sampleRgb(tex, u, v, _c, 0);
-    linearToOklab(_dec(_c[0]), _dec(_c[1]), _dec(_c[2]), out, 0);
-  }
-
-  static double _dec(double byteValue) {
-    final k = byteValue.round();
-    if (k == byteValue) return kSrgbByteToLinear[k];
-    return srgbToLinear(byteValue / 255);
+    linearToOklab(
+      bandByteToLinear(_c[0]),
+      bandByteToLinear(_c[1]),
+      bandByteToLinear(_c[2]),
+      out,
+      0,
+    );
   }
 }
 
 /// Applies the retouch pass to [src] (any size; maps are sampled in uv).
 ///
-/// Returns [src] itself (bit-exact, same instance) when [u] is the
-/// identity or there are no faces; otherwise a new buffer in which only
+/// Returns [src] itself (bit-exact, same instance) when the pass changes
+/// nothing ([retouchPassActive]); otherwise a new buffer in which only
 /// pixels touched by an effect differ.
 RgbaBuffer applyRetouch(RgbaBuffer src, RetouchMaps maps, RetouchUniforms u) {
-  if (!maps.hasFaces || (u.isIdentity && !maps.hasForcedSpots)) return src;
+  if (!retouchPassActive(maps, u)) return src;
   final kernel = RetouchKernel(maps, u);
   final out = src.copy();
   final w = src.width, h = src.height, d = src.data;
+  if (kernel.backdropActive) {
+    for (var y = 0; y < h; y++) {
+      final v = (y + 0.5) / h;
+      for (var x = 0; x < w; x++) {
+        final o = (y * w + x) * 4;
+        kernel.retouchPixel(
+          d[o],
+          d[o + 1],
+          d[o + 2],
+          (x + 0.5) / w,
+          v,
+          out.data,
+          o,
+        );
+      }
+    }
+    return out;
+  }
   for (final f in maps.faces) {
     if (!kernel.isActive(f.slot)) continue;
     final x0 = (f.rect.x0 * w / maps.width).floor().clamp(0, w);

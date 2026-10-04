@@ -10,9 +10,13 @@ import 'dart:typed_data';
 import '../model/face_analysis.dart';
 import '../render/aux_maps.dart';
 import '../render/rgba_buffer.dart';
+import 'backdrop_build.dart';
+import 'backdrop_maps.dart';
 import 'blemish_types.dart';
 import 'face_frame.dart';
 import 'face_maps.dart';
+import 'face_mesh.dart';
+import 'kernel_constants.dart';
 import 'face_parsing_input.dart';
 import 'lab_planes.dart';
 import 'retouch_maps.dart';
@@ -35,14 +39,18 @@ int retouchMapLongEdge(int srcLong, double minIodSrc) {
 
 /// Computes the retouch maps of [source] for the first
 /// [kMaxRetouchFaces] faces of [analysis]. [parsing] planes are matched by
-/// face id; [longEdge] overrides the `Rres` choice (tests).
+/// face id; [longEdge] overrides the `Rres` choice (tests). With
+/// [backdrop] (person / hair rasters) the image-scope backdrop maps are
+/// built too, even when the photo has no faces.
 RetouchMaps computeRetouchMaps(
   RgbaBuffer source,
   FaceAnalysis analysis, {
   List<FaceParsingPlanes>? parsing,
   int? longEdge,
   BlemishOverrides overrides = BlemishOverrides.none,
+  BackdropInput? backdrop,
 }) {
+  final bd = computeBackdropMaps(source, backdrop);
   final srcLong = math.max(source.width, source.height);
   final slots = math.min(kMaxRetouchFaces, analysis.faces.length);
   final probe = [
@@ -55,7 +63,7 @@ RetouchMaps computeRetouchMaps(
         minIod: kMinFaceIodSourcePx,
       ),
   ].whereType<FaceFrame>().toList();
-  if (probe.isEmpty) return RetouchMaps.empty();
+  if (probe.isEmpty) return RetouchMaps.empty(backdrop: bd);
   final minIod = probe.map((f) => f.iod).reduce(math.min);
   final grid = AuxMaps.proxy(
     source,
@@ -79,13 +87,14 @@ RetouchMaps computeRetouchMaps(
         overrides: overrides,
       ),
   ];
-  return _assemble(grid, frames, planes);
+  return _assemble(grid, frames, planes, bd);
 }
 
 RetouchMaps _assemble(
   RgbaBuffer grid,
   List<FaceFrame> frames,
   List<FaceMapPlanes> planes,
+  BackdropMaps backdrop,
 ) {
   final w = grid.width, h = grid.height, n = w * h * 4;
   final b1 = _opaqueCopy(grid.data), b2 = _opaqueCopy(grid.data);
@@ -129,8 +138,13 @@ RetouchMaps _assemble(
           blushA: p.regions.makeup.blushA,
           blushB: p.regions.makeup.blushB,
           hasForcedSpots: p.hasForcedSpots,
+          eyeRightX: p.frame.xs[FaceMesh.rightIrisCenter],
+          eyeRightY: p.frame.ys[FaceMesh.rightIrisCenter],
+          eyeLeftX: p.frame.xs[FaceMesh.leftIrisCenter],
+          eyeLeftY: p.frame.ys[FaceMesh.leftIrisCenter],
         ),
     ],
+    backdrop: backdrop,
     blemishes: List.unmodifiable([for (final p in planes) ...p.blemishes]),
   );
 }
@@ -210,7 +224,12 @@ void _writeFace(
       rb[right + 2] = wrinkle == 0 ? 0 : wr.zone[i];
       final any =
           skin | under | mouth | sclera | iris | lips | blush | wrinkle | code;
-      if (any != 0 || _healed(bh, left) || _healed(bh, right)) active[i] = 1;
+      if (any != 0 ||
+          _healed(bh, left) ||
+          _healed(bh, right) ||
+          _inEyeDisc(p.frame, x + 0.5, y + 0.5)) {
+        active[i] = 1;
+      }
     }
   }
   final grown = _grow(active, rect.w, rect.h);
@@ -223,6 +242,16 @@ void _writeFace(
       }
     }
   }
+}
+
+/// Inside a red-eye disc ([kRedEyeRadiusIod] around an iris centre).
+bool _inEyeDisc(FaceFrame f, double x, double y) {
+  final r = kRedEyeRadiusIod * f.iod;
+  for (final c in [FaceMesh.rightIrisCenter, FaceMesh.leftIrisCenter]) {
+    final dx = x - f.xs[c], dy = y - f.ys[c];
+    if (dx * dx + dy * dy <= r * r) return true;
+  }
+  return false;
 }
 
 bool _healed(Uint8List bh, int o) =>

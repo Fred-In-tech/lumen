@@ -125,7 +125,7 @@ void main() {
       },
     );
 
-    test('any effect slider breaks identity; shape and backdrop do not', () {
+    test('effect and backdrop sliders break identity; shape does not', () {
       for (final id in [
         PortraitIds.skinSoftening,
         PortraitIds.skinTexture,
@@ -133,6 +133,7 @@ void main() {
         PortraitIds.darkCircles,
         PortraitIds.teethBrightness,
         PortraitIds.redVein,
+        PortraitIds.redEye,
       ]) {
         final s = PortraitSettings.empty.withGroupValue(FaceGroup.all, id, 20);
         expect(
@@ -141,10 +142,26 @@ void main() {
           reason: id,
         );
       }
-      final shape = PortraitSettings.empty
-          .withGroupValue(FaceGroup.all, PortraitIds.faceWidth, 30)
-          .withImageValue(PortraitIds.bgClean, 50);
+      final shape = PortraitSettings.empty.withGroupValue(
+        FaceGroup.all,
+        PortraitIds.faceWidth,
+        30,
+      );
       expect(RetouchUniforms.fromSettings(shape, one).isIdentity, isTrue);
+      for (final (id, v) in [
+        (PortraitIds.bgClean, 50.0),
+        (PortraitIds.bgUnify, 50.0),
+        (PortraitIds.bgUnifyLuminance, -30.0),
+        (PortraitIds.strayHairs, 10.0),
+      ]) {
+        final s = PortraitSettings.empty.withImageValue(id, v);
+        final u = RetouchUniforms.fromSettings(s, one);
+        expect(u.isIdentity, isFalse, reason: id);
+        expect(u.faces.single.isIdentity, isTrue, reason: '$id is image scope');
+        expect(needsBackdropMaps(s), isTrue, reason: id);
+        expect(portraitNeedsRetouch(s), isTrue, reason: id);
+      }
+      expect(needsBackdropMaps(PortraitSettings.empty), isFalse);
     });
 
     test('no faces is identity', () {
@@ -173,13 +190,18 @@ void main() {
         .withGroupValue(FaceGroup.male, PortraitIds.wrinkleForehead, 60)
         .withGroupValue(FaceGroup.male, PortraitIds.wrinkleFrown, 70)
         .withGroupValue(FaceGroup.male, PortraitIds.wrinkleSmile, 80)
-        .withGroupValue(FaceGroup.male, PortraitIds.wrinkleMarionette, 90);
+        .withGroupValue(FaceGroup.male, PortraitIds.wrinkleMarionette, 90)
+        .withGroupValue(FaceGroup.male, PortraitIds.redEye, 40)
+        .withImageValue(PortraitIds.bgClean, 60)
+        .withImageValue(PortraitIds.bgUnify, 25)
+        .withImageValue(PortraitIds.bgUnifyLuminance, -50)
+        .withImageValue(PortraitIds.strayHairs, 80);
     final u = RetouchUniforms.fromSettings(settings, analysis);
     final f = u.pack();
 
     test('has the documented size and header', () {
       expect(f, hasLength(kRetouchUniformFloats));
-      expect(kRetouchUniformFloats, 196);
+      expect(kRetouchUniformFloats, 200);
       expect(kFaceRowFloats, 24);
       expect(f[0], 2);
       expect(f[1], 1);
@@ -191,7 +213,7 @@ void main() {
       final expected = <int, (double, String)>{
         0: (1, 'smooth'),
         1: (1, 'texture gain'),
-        3: (kAmpThresholdStrong, 'amp threshold'),
+        3: (0.4, 'red-eye'),
         6: (1, 'lid protect default'),
         7: (0.7, 'shine'),
         11: (0.5, 'shine fill = (0.7 − 0.5) / 0.4'),
@@ -210,6 +232,13 @@ void main() {
       }
       expect(f[kRetouchHeaderFloats + 0], 0, reason: 'slot 0 smooth');
       expect(f[kRetouchHeaderFloats + 20], 0, reason: 'slot 0 forehead');
+      // uBackdropParams after the rows.
+      expect(f.sublist(196), [
+        closeTo(0.6, 1e-6),
+        closeTo(0.25, 1e-6),
+        closeTo(-0.5 * kBackdropLumMax, 1e-6),
+        closeTo(0.8, 1e-6),
+      ]);
     });
 
     test('shine fill starts above 50 % Shine', () {

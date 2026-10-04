@@ -5,27 +5,33 @@
 /// slot. Dragging any face-scope slider (All / Female / Male / Child /
 /// Senior / one person) re-resolves the rows and changes uniforms only.
 ///
-/// Packed layout ([RetouchUniforms.pack], 196 floats = 49 vec4):
+/// Image-scope backdrop values ([BackdropParams]) follow the face rows.
+///
+/// Packed layout ([RetouchUniforms.pack], 200 floats = 50 vec4):
 ///
 /// | floats | vec4 | contents |
 /// |---|---|---|
 /// | 0–3 | `uRetouch` | face count, any active (0/1), spot ramp, 0 |
-/// | 4 + 24k + 0–3 | `uFace[6k]` | smooth, texture gain, even, amp threshold |
+/// | 4 + 24k + 0–3 | `uFace[6k]` | smooth, texture gain, even, red-eye |
 /// | 4 + 24k + 4–7 | `uFace[6k+1]` | dark circles, bags, lid protect, shine |
 /// | 4 + 24k + 8–11 | `uFace[6k+2]` | eye whites, iris, red vein, shine fill |
 /// | 4 + 24k + 12–15 | `uFace[6k+3]` | teeth bright, teeth desat, acne, freckle |
 /// | 4 + 24k + 16–19 | `uFace[6k+4]` | mole, lips, blush, wrinkle crow's feet |
 /// | 4 + 24k + 20–23 | `uFace[6k+5]` | wrinkle forehead, frown, smile, marionette |
 ///
+/// | 196–199 | `uBackdropParams` | clean, unify, luminance, strays |
+///
 /// for slots k = 0..7 (unused slots hold identity rows). `uFace[6k+5]`
 /// holds the two blend pairs of the wrinkle zone code (forehead ↔ frown,
-/// smile ↔ marionette), see `wrinkle_zones.dart`.
+/// smile ↔ marionette), see `wrinkle_zones.dart`. The amplitude threshold
+/// is derived from smooth (`mapAmpThreshold`), not packed.
 library;
 
 import 'dart:typed_data';
 
 import '../model/face_analysis.dart';
 import '../model/portrait.dart';
+import 'backdrop_params.dart';
 import 'blemish_types.dart';
 import 'retouch_maps.dart';
 import 'slider_mapping.dart';
@@ -37,9 +43,9 @@ const int kFaceRowFloats = 24;
 /// Header floats before the face rows.
 const int kRetouchHeaderFloats = 4;
 
-/// Total packed floats.
+/// Total packed floats (header, face rows, backdrop params).
 const int kRetouchUniformFloats =
-    kRetouchHeaderFloats + kFaceRowFloats * kMaxRetouchFaces;
+    kRetouchHeaderFloats + kFaceRowFloats * kMaxRetouchFaces + 4;
 
 /// Internal retouch parameters of one face (already mapped from 0–100).
 class FaceRetouchParams {
@@ -47,7 +53,7 @@ class FaceRetouchParams {
     this.smooth = 0,
     this.textureGain = 1,
     this.even = 0,
-    this.ampThreshold = kAmpThreshold,
+    this.redEye = 0,
     this.darkCircles = 0,
     this.bags = 0,
     this.lidProtect = 1,
@@ -77,7 +83,7 @@ class FaceRetouchParams {
       smooth: smooth,
       textureGain: mapTextureGain(value(PortraitIds.skinTexture)),
       even: mapEvenTone(value(PortraitIds.skinEven)),
-      ampThreshold: mapAmpThreshold(smooth),
+      redEye: mapLinear(value(PortraitIds.redEye)),
       darkCircles: mapLinear(value(PortraitIds.darkCircles)),
       bags: mapLinear(value(PortraitIds.eyeBags)),
       lidProtect: mapLinear(value(PortraitIds.lidProtect)),
@@ -105,7 +111,12 @@ class FaceRetouchParams {
   final double smooth;
   final double textureGain;
   final double even;
-  final double ampThreshold;
+
+  /// Red-eye fix (0..1).
+  final double redEye;
+
+  /// Amplitude-selective threshold, derived from [smooth] (§3.1).
+  double get ampThreshold => mapAmpThreshold(smooth);
   final double darkCircles;
   final double bags;
   final double lidProtect;
@@ -161,11 +172,12 @@ class FaceRetouchParams {
       wrinkleFrown == 0 &&
       wrinkleCrowsFeet == 0 &&
       wrinkleSmile == 0 &&
-      wrinkleMarionette == 0;
+      wrinkleMarionette == 0 &&
+      redEye == 0;
 
   /// The row's [kFaceRowFloats] floats in [RetouchUniforms] order.
   List<double> toList() => [
-    smooth, textureGain, even, ampThreshold, //
+    smooth, textureGain, even, redEye, //
     darkCircles, bags, lidProtect, shine,
     whites, iris, redVein, shineFill,
     teethBrightness, teethDesaturate, acne, freckle,
@@ -190,7 +202,7 @@ class FaceRetouchParams {
 /// Uniforms of the retouch pass: one [FaceRetouchParams] per face slot
 /// (slot = index in `FaceAnalysis.faces`, at most [kMaxRetouchFaces]).
 class RetouchUniforms {
-  const RetouchUniforms(this.faces);
+  const RetouchUniforms(this.faces, {this.backdrop = BackdropParams.identity});
 
   /// Resolves every face's values through
   /// `PortraitSettings.valueFor(id, group:, personId:)` (individual →
@@ -206,15 +218,20 @@ class RetouchUniforms {
               settings.valueFor(id, group: face.group, personId: face.personId),
         ),
     ]),
+    backdrop: BackdropParams.fromSettings(settings),
   );
 
   static const identity = RetouchUniforms([]);
 
   final List<FaceRetouchParams> faces;
 
-  /// True when no face row changes a pixel: the pass is skipped and
-  /// `applyRetouch` returns its input unchanged.
-  bool get isIdentity => faces.every((f) => f.isIdentity);
+  /// Image-scope backdrop and stray-hair values.
+  final BackdropParams backdrop;
+
+  /// True when no face row and no backdrop value changes a pixel: the
+  /// pass is skipped and `applyRetouch` returns its input unchanged.
+  bool get isIdentity =>
+      backdrop.isIdentity && faces.every((f) => f.isIdentity);
 
   FaceRetouchParams row(int slot) => slot >= 0 && slot < faces.length
       ? faces[slot]
@@ -234,6 +251,11 @@ class RetouchUniforms {
         values,
       );
     }
+    out.setRange(
+      kRetouchUniformFloats - 4,
+      kRetouchUniformFloats,
+      backdrop.toList(),
+    );
     return out;
   }
 
@@ -244,7 +266,8 @@ class RetouchUniforms {
       for (final f in faces)
         f.toList().map((v) => v.toStringAsFixed(4)).join(','),
     ];
-    return 'retouch:v2:${rows.join('|')}';
+    final bd = backdrop.toList().map((v) => v.toStringAsFixed(4)).join(',');
+    return 'retouch:v3:${rows.join('|')}|bd:$bd';
   }
 
   @override

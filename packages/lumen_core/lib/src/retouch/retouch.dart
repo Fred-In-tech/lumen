@@ -1,4 +1,7 @@
 // Barrel for the retouch workstream. Add exports here.
+export 'backdrop_build.dart' show BackdropInput, computeBackdropMaps;
+export 'backdrop_maps.dart';
+export 'backdrop_params.dart';
 export 'blemish_types.dart';
 export 'face_frame.dart' show FaceFrame, kMinFaceIodSourcePx, kFaceRectScale;
 export 'face_mesh.dart';

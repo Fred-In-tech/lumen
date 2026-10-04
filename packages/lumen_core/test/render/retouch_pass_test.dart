@@ -36,7 +36,7 @@ RetouchMaps _maps({List<int> slots = const [0, 2]}) {
 }
 
 void main() {
-  test('packs size, tile, map info, face info and rows (270 floats)', () {
+  test('packs size, tile, map info, face info and rows (314 floats)', () {
     const smooth = FaceRetouchParams(smooth: 0.5);
     const u = RetouchUniforms([smooth, FaceRetouchParams.identity, smooth]);
     final f = RetouchPassUniforms.pack(
@@ -49,14 +49,17 @@ void main() {
       fullWidth: 1000,
       fullHeight: 500,
     );
-    expect(kRetouchPassFloatCount, 270);
-    expect(RetouchPassIndex.header, 74);
-    expect(RetouchPassIndex.rows, 78);
+    expect(kRetouchPassFloatCount, 314);
+    expect(RetouchPassIndex.backdropInfo, 106);
+    expect(RetouchPassIndex.header, 114);
+    expect(RetouchPassIndex.rows, 118);
+    expect(RetouchPassIndex.backdropParams, 310);
     expect(f.length, kRetouchPassFloatCount);
     expect(f.sublist(0, 6), [64, 32, 128, 96, 1000, 500]);
     expect(f.sublist(6, 9), [4, 2, 2]); // map W, H, face count
-    // uFaceInfo[2k] = teethCapL, active, IOD, lip gloss L;
-    // uFaceInfo[2k+1] = lip chroma gain, lip L shift, blush a, blush b.
+    // uFaceInfo[3k] = teethCapL, active, IOD, lip gloss L;
+    // uFaceInfo[3k+1] = lip chroma gain, lip L shift, blush a, blush b;
+    // uFaceInfo[3k+2] = iris centres.
     final i0 = RetouchPassIndex.faceInfo(0);
     expect(f[i0], closeTo(0.8, 1e-6));
     expect(f.sublist(i0 + 1, i0 + 3), [1, 30]);
@@ -84,6 +87,9 @@ void main() {
       ),
       u.pack().sublist(4),
     );
+    // Backdrop not requested: inactive, params identity.
+    expect(f[RetouchPassIndex.backdropInfo + 2], 0);
+    expect(f.sublist(RetouchPassIndex.backdropParams), [0, 0, 0, 0]);
   });
 
   test('a non-identity row without maps is inactive', () {

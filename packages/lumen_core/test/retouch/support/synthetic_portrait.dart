@@ -163,6 +163,9 @@ bool isVein(double dx, double y) =>
     dx.abs() > kIrisRadius * 1.15 &&
     kVeinLines.any((v) => (y - v.$1 * dx - v.$2).abs() < kVeinHalfWidth);
 
+/// Red-eye pupil radius (× the iris radius) when [SynthFace.redEye].
+const kRedPupil = 0.6;
+
 /// Nostril centre (local), the centroid of landmarks 98, 64, 48, 115.
 const kNostrilX = 0.185, kNostrilY = 0.725;
 
@@ -185,6 +188,7 @@ class SynthFace {
     this.poreAmp = 0.012,
     this.veins = false,
     this.clippedShine = false,
+    this.redEye = false,
   });
 
   final String id;
@@ -205,6 +209,9 @@ class SynthFace {
 
   /// A clipped specular core on the lower left cheek (for Shine > 50).
   final bool clippedShine;
+
+  /// Flash red-eye: the dilated pupil (0.6 × the iris) is red.
+  final bool redEye;
 
   ({double x, double y}) toPx(double x, double y) =>
       (x: cx + x * iod, y: cy + y * iod);
@@ -415,6 +422,8 @@ void _features(SynthFace f, _Polys p, double x, double y, Float64List lab) {
     final d = math.sqrt((x - ex) * (x - ex) + y * y);
     if (_g(x - ex - 0.03, y + 0.03, 0.012) > 0.5) {
       set(0.97, 0, 0);
+    } else if (f.redEye && d < kRedPupil * kIrisRadius) {
+      set(0.50, 0.17, 0.08);
     } else if (d < 0.35 * kIrisRadius) {
       set(0.12, 0, 0);
     } else if (d < kIrisRadius) {

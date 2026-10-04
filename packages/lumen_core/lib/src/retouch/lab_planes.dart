@@ -58,6 +58,14 @@ int linearToSrgbByte(double v) {
   return lo + 1;
 }
 
+/// An interpolated sRGB byte value (0..255) → linear, like the shader's
+/// `srgbDecode` of a bilinear tap (exact table for whole bytes).
+double bandByteToLinear(double byteValue) {
+  final k = byteValue.round();
+  if (k == byteValue) return kSrgbByteToLinear[k];
+  return srgbToLinear(byteValue / 255);
+}
+
 /// OkLab → 8-bit sRGB bytes `out[o..o+2]` (clamped, rounded).
 void oklabToSrgbBytes(
   double l,

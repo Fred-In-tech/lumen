@@ -10,6 +10,7 @@ import 'package:lumen/ai/ondevice/ondevice_providers.dart';
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/data/patch_store.dart';
+import 'package:lumen/features/masks/ai_mask_source.dart';
 import 'package:lumen/features/remove/healed_source.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/platform/background.dart';
@@ -17,18 +18,56 @@ import 'package:lumen/platform/background.dart';
 final _log = Logger('RetouchBuild');
 
 /// Builds the retouch maps off the UI isolate. Top-level so the isolate
-/// closure only captures plain data.
+/// closure only captures plain data. [backdrop] (person / hair rasters)
+/// adds the image-scope backdrop maps.
 Future<RetouchMaps> computeRetouchMapsInBackground(
   RgbaBuffer pixels,
   FaceAnalysis faces,
-  PortraitSpots spots,
-) => runInBackground(
+  PortraitSpots spots, {
+  BackdropInput? backdrop,
+}) => runInBackground(
   () => computeRetouchMaps(
     pixels,
     faces,
     overrides: BlemishOverrides(keepAt: spots.keep, removeAt: spots.remove),
+    backdrop: backdrop,
   ),
 );
+
+/// Loads the person and hair rasters the backdrop maps need, through the
+/// AI mask pipeline (segments the photo once if needed; read-only use).
+/// [BackdropInput.missing] when masks are unavailable (web, no model,
+/// offline), so the UI can say why the backdrop sliders do nothing.
+Future<BackdropInput> loadBackdropRasters(
+  AiMaskSource? source,
+  AiMaskRasterLoader? loader,
+  String assetId,
+) async {
+  if (source == null || loader == null || !source.supports(MaskKind.person)) {
+    return BackdropInput.missing;
+  }
+  try {
+    final people = await loader.load(
+      assetId,
+      (await source.segment(assetId, MaskKind.person)).maskRef,
+    );
+    if (people == null) return BackdropInput.missing;
+    MaskRaster? hair;
+    if (source.supports(MaskKind.hair)) {
+      hair = await loader.load(
+        assetId,
+        (await source.segment(assetId, MaskKind.hair)).maskRef,
+      );
+    }
+    return BackdropInput(people: people, hair: hair);
+  } on Exception catch (e) {
+    _log.warning('backdrop masks unavailable for $assetId: $e');
+    return BackdropInput.missing;
+  }
+}
+
+/// Loads the backdrop rasters of a photo (see [loadBackdropRasters]).
+typedef BackdropRasterLoader = Future<BackdropInput> Function(String assetId);
 
 /// How far around a detected face box a heal still counts as "on the face"
 /// (the retouch maps reach the hairline and the jaw).
@@ -109,16 +148,21 @@ class StoredRetouchLoader {
     required this.catalog,
     required this.faceService,
     this.patches,
+    this.backdrop,
   });
 
   final CatalogRepository catalog;
   final Future<FaceAnalysisService> Function() faceService;
   final PatchStoreGetter? patches;
 
+  /// Person / hair rasters for backdrop edits (null: none available).
+  final BackdropRasterLoader? backdrop;
+
   /// Never throws: when analysis cannot run (web, missing models) the
   /// result has no maps and a [kRetouchSkippedNote].
   Future<StoredRetouch> load(String assetId, DevelopSettings settings) async {
-    if (!settings.portrait.hasFaceEdits) return kNoRetouch;
+    if (!portraitNeedsRetouch(settings.portrait)) return kNoRetouch;
+    final wantsBackdrop = needsBackdropMaps(settings.portrait);
     try {
       final service = await faceService();
       var entry = await service.cached(assetId);
@@ -133,7 +177,7 @@ class StoredRetouchLoader {
         );
       }
       final faces = entry.analysis;
-      if (faces.faces.isEmpty) return kNoRetouch;
+      if (faces.faces.isEmpty && !wantsBackdrop) return kNoRetouch;
       decoded ??= await loadAnalysisPixels(catalog, assetId);
       final pixels = await healedAnalysisPixels(
         decoded.pixels,
@@ -146,8 +190,12 @@ class StoredRetouchLoader {
         pixels,
         faces,
         settings.portrait.spots,
+        backdrop: wantsBackdrop
+            ? await (backdrop?.call(assetId) ??
+                  Future.value(BackdropInput.missing))
+            : null,
       );
-      return maps.hasFaces
+      return maps.isUsable
           ? (maps: maps, faces: faces, note: null)
           : kNoRetouch;
     } on Exception catch (e) {
@@ -162,5 +210,10 @@ final storedRetouchLoaderProvider = Provider<StoredRetouchLoader>(
     catalog: ref.watch(catalogRepositoryProvider),
     faceService: () => ref.read(faceAnalysisServiceProvider.future),
     patches: () => ref.read(patchStoreProvider.future),
+    backdrop: (id) => loadBackdropRasters(
+      ref.read(aiMaskSourceProvider),
+      ref.read(aiMaskRasterLoaderProvider),
+      id,
+    ),
   ),
 );
