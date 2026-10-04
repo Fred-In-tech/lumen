@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lumen/ai/ondevice/ondevice_providers.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 /// What the Portrait sliders currently edit: a face group, or one person.
@@ -82,11 +83,34 @@ final portraitUiProvider =
       PortraitUiNotifier.new,
     );
 
-/// Faces found in the open photo, from the on-device analyzer's local cache.
-/// Null while analysis has not run (or no analyzer is available).
+/// Face detection state for the open photo: the local cache when current,
+/// else a fresh on-device analysis (runs the first time it is watched).
+final portraitFacesStatusProvider =
+    Provider.family<AsyncValue<FaceAnalysis?>, String>(
+      (ref, assetId) =>
+          ref.watch(faceAnalysisProvider(assetId)).whenData((e) => e.analysis),
+    );
+
+/// Faces found in the open photo; null while detecting or when unavailable.
 final portraitFacesProvider = Provider.family<FaceAnalysis?, String>(
-  (ref, assetId) => null,
+  (ref, assetId) => ref.watch(portraitFacesStatusProvider(assetId)).value,
 );
+
+/// Tags [face] with [group] in the local face cache and re-selects it, so the
+/// person's sliders resolve through the new group.
+Future<void> tagFace(
+  WidgetRef ref,
+  String assetId,
+  DetectedFace face,
+  FaceGroup group,
+) async {
+  final service = await ref.read(faceAnalysisServiceProvider.future);
+  await service.tag(assetId, face.id, group, personId: face.personId);
+  ref.invalidate(faceAnalysisProvider(assetId));
+  ref
+      .read(portraitUiProvider(assetId).notifier)
+      .selectFace(face.copyWith(group: group, tagSource: TagSource.manual));
+}
 
 /// Reads [id] for [target] from [p] (inherited values included).
 double portraitValue(PortraitSettings p, String id, PortraitTarget target) {

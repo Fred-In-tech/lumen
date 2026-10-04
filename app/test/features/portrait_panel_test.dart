@@ -20,6 +20,7 @@ const _face = DetectedFace(
 Future<ProviderContainer> _pump(
   WidgetTester tester, {
   FaceAnalysis? faces,
+  AsyncValue<FaceAnalysis?>? status,
 }) async {
   final repo = MemoryCatalogRepository();
   await repo.add(
@@ -38,7 +39,8 @@ Future<ProviderContainer> _pump(
   final container = ProviderContainer(
     overrides: [
       catalogRepositoryProvider.overrideWithValue(repo),
-      portraitFacesProvider('a').overrideWithValue(faces),
+      portraitFacesStatusProvider('a')
+          .overrideWithValue(status ?? AsyncData(faces)),
     ],
   );
   addTearDown(container.dispose);
@@ -179,5 +181,36 @@ void main() {
     final target = c.read(portraitUiProvider('a')).target;
     expect(target.isPerson, isTrue);
     expect(target.group, FaceGroup.female);
+  });
+
+  testWidgets('face status reports detecting and unavailable honestly', (
+    tester,
+  ) async {
+    await _pump(tester, status: const AsyncLoading());
+    expect(find.text('Detecting faces…'), findsOneWidget);
+    await _pump(
+      tester,
+      status: AsyncError(StateError('no runtime'), StackTrace.empty),
+    );
+    expect(find.textContaining('isn’t available here'), findsOneWidget);
+  });
+
+  testWidgets('the selected face shows a Tag as row with its group', (
+    tester,
+  ) async {
+    final c = await _pump(
+      tester,
+      faces: const FaceAnalysis(
+        imageWidth: 10,
+        imageHeight: 10,
+        modelVersion: 't',
+        faces: [_face],
+      ),
+    );
+    expect(find.text('Tag as'), findsNothing);
+    c.read(portraitUiProvider('a').notifier).selectFace(_face);
+    await tester.pumpAndSettle();
+    expect(find.text('Tag as'), findsOneWidget);
+    expect(find.text('None'), findsOneWidget);
   });
 }

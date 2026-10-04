@@ -60,7 +60,8 @@ class PortraitPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ui = ref.watch(portraitUiProvider(assetId));
-    final faces = ref.watch(portraitFacesProvider(assetId));
+    final status = ref.watch(portraitFacesStatusProvider(assetId));
+    final selected = status.value?.faceById(ui.selectedFaceId ?? '');
     final portrait = ref.watch(
       editorProvider(assetId)
           .select((s) => s.value?.settings.portrait ?? PortraitSettings.empty),
@@ -76,9 +77,13 @@ class PortraitPanel extends ConsumerWidget {
             children: [
               _FaceStatus(
                 assetId: assetId,
-                faces: faces,
+                status: status,
                 showFaces: ui.showFaces,
               ),
+              if (selected != null) ...[
+                const SizedBox(height: Sp.s3),
+                _TagRow(assetId: assetId, face: selected),
+              ],
               const SizedBox(height: Sp.s3),
               _TargetTabs(assetId: assetId, ui: ui),
               const SizedBox(height: Sp.s3),
@@ -157,20 +162,21 @@ class PortraitPanel extends ConsumerWidget {
 class _FaceStatus extends ConsumerWidget {
   const _FaceStatus({
     required this.assetId,
-    required this.faces,
+    required this.status,
     required this.showFaces,
   });
 
   final String assetId;
-  final FaceAnalysis? faces;
+  final AsyncValue<FaceAnalysis?> status;
   final bool showFaces;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
-    final count = faces?.faces.length;
+    final count = status.value?.faces.length;
     final text = switch (count) {
-      null => 'Face detection runs when the photo opens.',
+      null when status.hasError => 'Face detection isn’t available here. Masks and manual tools still work.',
+      null => 'Detecting faces…',
       0 => 'No faces found. Retouch applies when a face is visible.',
       1 => '1 face. Click it to edit this person only.',
       _ => '$count faces. Click a face to edit one person.',
@@ -249,4 +255,40 @@ class _AutoRetouchButton extends ConsumerWidget {
           );
     },
   );
+}
+
+/// Lets the user correct the selected face's retouch group (Evoto's gender /
+/// age chips). Stored in the local face cache only.
+class _TagRow extends ConsumerWidget {
+  const _TagRow({required this.assetId, required this.face});
+
+  final String assetId;
+  final DetectedFace face;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    return Row(
+      children: [
+        Text(
+          'Tag as',
+          style: LumenType.caption().copyWith(color: t.textTertiary),
+        ),
+        const SizedBox(width: Sp.s2),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Segmented<FaceGroup>(
+              value: face.group,
+              options: {
+                for (final g in FaceGroup.values)
+                  g: g == FaceGroup.all ? 'None' : g.label,
+              },
+              onChanged: (g) => tagFace(ref, assetId, face, g),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
