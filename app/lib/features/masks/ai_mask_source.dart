@@ -15,8 +15,28 @@ abstract interface class AiMaskSource {
 }
 
 /// Null until the on-device model ships: the AI entries then stay disabled
-/// with an honest hint instead of a fake result.
+/// with an honest hint instead of a fake result. The app overrides it with
+/// the on-device implementation (`main.dart`).
 final aiMaskSourceProvider = Provider<AiMaskSource?>((ref) => null);
+
+/// Loads the decoded raster an [AiShape.maskRef] points to, for rendering.
+/// Implementations regenerate it when the local cache was cleared; null
+/// means it cannot be produced (the mask then covers nothing).
+abstract interface class AiMaskRasterLoader {
+  Future<MaskRaster?> load(String assetId, String maskRef);
+}
+
+/// Null when no on-device masks exist (web, tests); overridden in `main.dart`.
+final aiMaskRasterLoaderProvider = Provider<AiMaskRasterLoader?>((ref) => null);
 
 /// Hint shown on disabled AI mask entries.
 const String kAiMaskUnavailableHint = 'Needs the on-device model';
+
+/// Sky has no on-device model; it will come from the cloud.
+const String kSkyMaskHint = 'Sky needs the cloud model, coming later';
+
+/// The hint for a disabled AI entry: specific for sky when a source exists.
+String aiMaskUnavailableHint(AiMaskSource? source, MaskKind kind) =>
+    source != null && kind == MaskKind.sky
+    ? kSkyMaskHint
+    : kAiMaskUnavailableHint;

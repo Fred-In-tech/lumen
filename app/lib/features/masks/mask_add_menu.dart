@@ -85,7 +85,7 @@ class AddMaskMenu extends ConsumerWidget {
         child: _MenuRow(
           kind: k,
           enabled: enabled,
-          hint: enabled ? null : kAiMaskUnavailableHint,
+          hint: enabled ? null : aiMaskUnavailableHint(source, k),
           touch: touch,
         ),
       );

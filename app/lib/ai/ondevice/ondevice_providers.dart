@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lumen_core/lumen_core.dart';
 
+import 'package:lumen/ai/ondevice/analysis_pixels.dart';
 import 'package:lumen/ai/ondevice/face_analysis_service.dart';
 import 'package:lumen/ai/ondevice/face_analyzer.dart';
 import 'package:lumen/ai/ondevice/face_cache.dart';
@@ -12,8 +12,6 @@ import 'package:lumen/ai/ondevice/inference_backend.dart';
 import 'package:lumen/ai/ondevice/model_store.dart';
 import 'package:lumen/ai/ondevice/ondevice_platform.dart';
 import 'package:lumen/app/providers.dart';
-import 'package:lumen/features/editor/renderer/image_bridge.dart';
-import 'package:lumen/import/photo_decoder.dart';
 
 /// Detector for photos: full-range BlazeFace (groups, half-body, wide).
 const kFaceDetectorSpec = ModelManifest.blazeFaceFullRange;
@@ -27,7 +25,7 @@ final Map<String, String> kFaceModels = Map.unmodifiable({
 
 /// Long edge face analysis decodes at; landmarks are normalized, and
 /// reject lengths are rescaled to the original size.
-const kFaceAnalysisLongEdge = 2560;
+const kFaceAnalysisLongEdge = kOnDeviceAnalysisLongEdge;
 
 final inferenceBackendProvider = Provider<InferenceBackend>(
   (ref) => createInferenceBackend(ref.watch(platformInfoProvider)),
@@ -129,24 +127,14 @@ final faceAnalysisProvider = FutureProvider.family<FaceCacheEntry, String>((
   final service = await ref.watch(faceAnalysisServiceProvider.future);
   final cached = await service.cached(assetId);
   if (cached != null) return cached;
-  final catalog = ref.watch(catalogRepositoryProvider);
-  final entry = await catalog.get(assetId);
-  final original = await catalog.readOriginal(assetId);
-  final image = await decodePhoto(original, maxLongEdge: kFaceAnalysisLongEdge);
-  final RgbaBuffer pixels;
-  try {
-    pixels = await rgbaFromImage(image);
-  } finally {
-    image.dispose();
-  }
-  // Keep the decoded orientation; scale up to the original long edge.
-  final srcLong = entry == null ? 0 : math.max(entry.width, entry.height);
-  final decLong = math.max(pixels.width, pixels.height);
-  final k = srcLong > decLong ? srcLong / decLong : 1.0;
+  final decoded = await loadAnalysisPixels(
+    ref.watch(catalogRepositoryProvider),
+    assetId,
+  );
   return service.analyze(
     assetId,
-    pixels: () async => pixels,
-    sourceWidth: (pixels.width * k).round(),
-    sourceHeight: (pixels.height * k).round(),
+    pixels: () async => decoded.pixels,
+    sourceWidth: decoded.sourceWidth,
+    sourceHeight: decoded.sourceHeight,
   );
 });

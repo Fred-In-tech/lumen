@@ -45,3 +45,12 @@ abstract interface class MaskOverlayRenderer {
     MaskTint tint = kDefaultMaskTint,
   });
 }
+
+/// Optional renderer capability: decoded AI mask rasters by `maskRef`
+/// (`AiShape.maskRef`). Without them AI masks cover nothing. Check with
+/// `renderer is MaskRasterSink`.
+abstract interface class MaskRasterSink {
+  /// Replaces the rasters AI masks read and re-renders the last settings
+  /// (frame, thumbnails and mask overlay all use them).
+  void setMaskRasters(Map<String, MaskRaster> rasters);
+}

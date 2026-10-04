@@ -156,11 +156,12 @@ abstract final class ModelManifest {
     license: 'Apache-2.0',
     trainingDataNote: '$_google; fairness-evaluated (Monk 1-10, gender)',
     inputs: [
+      // TFLite metadata: mean 127.5, std 127.5 → [−1, 1].
       ModelTensorSpec(
         name: 'input_29',
         shape: [1, 256, 256, 3],
         role: TensorRoles.image,
-        range: TensorRange.zeroToOne,
+        range: TensorRange.minusOneToOne,
       ),
     ],
     outputs: [

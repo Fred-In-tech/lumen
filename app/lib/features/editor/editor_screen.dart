@@ -10,8 +10,10 @@ import 'package:lumen/features/editor/desktop_editor.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/features/editor/phone_editor.dart';
+import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 import 'package:lumen/features/editor/renderer/renderer_factory.dart';
 import 'package:lumen/features/export/export_dialog.dart';
+import 'package:lumen/features/masks/ai_mask_rasters.dart';
 import 'package:lumen/features/masks/mask_shortcuts.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 
@@ -67,9 +69,23 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
     try {
       await session.open();
       final s = await ref.read(editorProvider(_assetId).future);
+      _pushMaskRasters(
+        session,
+        ref.read(aiMaskRastersProvider(_assetId)).value,
+      );
       session.render(_renderSettings(s));
     } on Exception catch (e) {
       if (mounted) setState(() => _openError = e);
+    }
+  }
+
+  /// Hands AI mask rasters to the renderer (it re-renders with them).
+  static void _pushMaskRasters(
+    EditorSession? session,
+    Map<String, MaskRaster>? rasters,
+  ) {
+    if (session?.renderer case final MaskRasterSink sink) {
+      sink.setMaskRasters(rasters ?? const {});
     }
   }
 
@@ -195,6 +211,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
         if (committed) session.scheduleThumbnail(n.settings);
       }
     });
+    // AI masks read decoded rasters; push them whenever their refs change.
+    ref.listen<AsyncValue<Map<String, MaskRaster>>>(
+      aiMaskRastersProvider(_assetId),
+      (_, next) => _pushMaskRasters(session, next.value),
+    );
     final width = MediaQuery.sizeOf(context).width;
     final phone = width < Layout.phoneBreakpoint;
     Widget body;

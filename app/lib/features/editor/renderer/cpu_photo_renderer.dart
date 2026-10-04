@@ -12,7 +12,8 @@ import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 import 'package:lumen/import/photo_decoder.dart';
 
 /// Reference-pipeline renderer: correct everywhere, slower than the GPU path.
-class CpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
+class CpuPhotoRenderer
+    implements PhotoRenderer, MaskOverlayRenderer, MaskRasterSink {
   CpuPhotoRenderer({
     this.previewLongEdge = 1280,
     this.interactiveLongEdge = 640,
@@ -30,6 +31,8 @@ class CpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
   bool _busy = false;
   bool _disposed = false;
   Timer? _settle;
+  Map<String, MaskRaster> _rasters = const {};
+  DevelopSettings? _last;
 
   @override
   ValueListenable<ui.Image?> get output => _output;
@@ -55,6 +58,7 @@ class CpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
 
   @override
   void update(DevelopSettings settings, {bool interactive = false}) {
+    _last = settings;
     _pending = settings;
     _pendingInteractive = interactive;
     _settle?.cancel();
@@ -74,8 +78,11 @@ class CpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
     if (settings == null || src == null) return;
     _pending = null;
     _busy = true;
+    final rasters = _rasters;
     try {
-      final out = await runInBackground(() => renderReference(src, settings));
+      final out = await runInBackground(
+        () => renderReference(src, settings, maskRasters: rasters),
+      );
       if (_disposed) return;
       final img = await imageFromRgba(out);
       final old = _output.value;
@@ -97,7 +104,10 @@ class CpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
     final small = await resizeImage(before, longEdge);
     final buf = await rgbaFromImage(small);
     small.dispose();
-    final out = await runInBackground(() => renderReference(buf, settings));
+    final rasters = _rasters;
+    final out = await runInBackground(
+      () => renderReference(buf, settings, maskRasters: rasters),
+    );
     final img = await imageFromRgba(out);
     try {
       return await encodePng(img);
@@ -107,8 +117,7 @@ class CpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
   }
 
   /// CPU twin of the GPU overlay (`renderMaskOverlayReference`) at the
-  /// interactive size. AI rasters are not loaded here, so AI masks show no
-  /// tint on this fallback path; vector masks and brush strokes do.
+  /// interactive size, AI masks included (see [setMaskRasters]).
   @override
   Future<ui.Image?> renderMaskOverlay(
     DevelopSettings settings,
@@ -120,11 +129,19 @@ class CpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
       return null;
     }
     final w = src.width, h = src.height;
+    final rasters = _rasters;
     final out = await runInBackground(
-      () => _overlay(w, h, settings, index, tint),
+      () => _overlay(w, h, settings, index, tint, rasters),
     );
     if (_disposed) return null;
     return imageFromRgba(out);
+  }
+
+  @override
+  void setMaskRasters(Map<String, MaskRaster> rasters) {
+    _rasters = Map.unmodifiable(rasters);
+    final last = _last;
+    if (last != null) update(last);
   }
 
   @override
@@ -144,11 +161,12 @@ RgbaBuffer _overlay(
   DevelopSettings settings,
   int index,
   MaskTint tint,
+  Map<String, MaskRaster> rasters,
 ) => renderMaskOverlayReference(
   width,
   height,
   settings,
-  MaskRasterizer.build(settings.masks, width, height),
+  MaskRasterizer.build(settings.masks, width, height, rasters: rasters),
   index,
   tint: tint,
 );

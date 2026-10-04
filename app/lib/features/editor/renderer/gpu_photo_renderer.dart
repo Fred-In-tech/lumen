@@ -21,7 +21,8 @@ final _log = Logger('GpuPhotoRenderer');
 
 /// Fragment-shader renderer (interactive). Falls back to [CpuPhotoRenderer]
 /// when shaders cannot load on this device.
-class GpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
+class GpuPhotoRenderer
+    implements PhotoRenderer, MaskOverlayRenderer, MaskRasterSink {
   GpuPhotoRenderer({required this.assetId, this.previewLongEdge = 2560});
 
   final String assetId;
@@ -33,6 +34,8 @@ class GpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
   RenderScheduler? _scheduler;
   RgbaBuffer? _proxy;
   CpuPhotoRenderer? _fallback;
+  Map<String, MaskRaster> _rasters = const {};
+  DevelopSettings? _last;
 
   /// True when the CPU fallback is in use.
   bool get usingFallback => _fallback != null;
@@ -53,7 +56,7 @@ class GpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
       shaders = await ShaderLibrary.load();
     } on ShaderLoadException catch (e) {
       _log.warning('Shaders unavailable, using CPU renderer: $e');
-      final cpu = _fallback = CpuPhotoRenderer();
+      final cpu = _fallback = CpuPhotoRenderer()..setMaskRasters(_rasters);
       await cpu.open(original);
       return;
     }
@@ -69,7 +72,7 @@ class GpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
       aux: aux,
       assetId: assetId,
       originalSize: (width: size.width, height: size.height),
-    );
+    )..maskRasters = _rasters;
     final scheduler = _scheduler = RenderScheduler(graph);
     scheduler.frame.addListener(() => _output.value = scheduler.frame.value);
     scheduler.errors.listen((e) => _log.warning('render failed: $e'));
@@ -80,9 +83,20 @@ class GpuPhotoRenderer implements PhotoRenderer, MaskOverlayRenderer {
 
   @override
   void update(DevelopSettings settings, {bool interactive = false}) {
+    _last = settings;
     final fb = _fallback;
     if (fb != null) return fb.update(settings, interactive: interactive);
     _scheduler?.update(settings, interactive: interactive);
+  }
+
+  @override
+  void setMaskRasters(Map<String, MaskRaster> rasters) {
+    _rasters = Map.unmodifiable(rasters);
+    final fb = _fallback;
+    if (fb != null) return fb.setMaskRasters(_rasters);
+    _graph?.maskRasters = _rasters;
+    final last = _last;
+    if (last != null) _scheduler?.update(last);
   }
 
   @override

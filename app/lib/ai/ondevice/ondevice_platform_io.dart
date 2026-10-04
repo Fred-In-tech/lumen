@@ -3,6 +3,8 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:lumen/ai/ondevice/ai_raster_store.dart';
+import 'package:lumen/ai/ondevice/ai_raster_store_io.dart';
 import 'package:lumen/ai/ondevice/disk_space_probe_io.dart';
 import 'package:lumen/ai/ondevice/face_cache.dart';
 import 'package:lumen/ai/ondevice/face_cache_io.dart';
@@ -39,4 +41,10 @@ Future<ModelStore> openModelStore(
 Future<FaceCache> openFaceCache() async {
   final support = await getApplicationSupportDirectory();
   return FileFaceCache(p.join(support.path, kBrand.storageId));
+}
+
+/// AI mask rasters next to the catalog (`…/assets/<id>/cache/masks/`).
+Future<AiRasterStore> openAiRasterStore() async {
+  final support = await getApplicationSupportDirectory();
+  return FileAiRasterStore(p.join(support.path, kBrand.storageId));
 }

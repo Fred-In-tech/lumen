@@ -12,3 +12,6 @@ export 'model_manifest.dart';
 export 'ssd_anchors.dart';
 export 'tensor_sampling.dart';
 export 'weighted_nms.dart';
+export 'ai_mask_planes.dart';
+export 'guided_filter.dart';
+export 'segmentation.dart';

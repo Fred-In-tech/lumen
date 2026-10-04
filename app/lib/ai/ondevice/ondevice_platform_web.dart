@@ -1,3 +1,4 @@
+import 'package:lumen/ai/ondevice/ai_raster_store.dart';
 import 'package:lumen/ai/ondevice/face_cache.dart';
 import 'package:lumen/ai/ondevice/inference_backend.dart';
 import 'package:lumen/ai/ondevice/model_store.dart';
@@ -14,3 +15,5 @@ Future<ModelStore> openModelStore(
     Future.error(const InferenceUnavailable('on-device models are not on web'));
 
 Future<FaceCache> openFaceCache() async => MemoryFaceCache();
+
+Future<AiRasterStore> openAiRasterStore() async => MemoryAiRasterStore();

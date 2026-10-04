@@ -6,7 +6,13 @@ import 'package:lumen/ai/ondevice/inference_backend.dart';
 /// Image input of an NHWC model.
 typedef ImageInput = ({String name, int width, int height, TensorRange range});
 
-ImageInput _imageInput(InferenceSession s, ModelSpec spec, TensorRange dflt) {
+/// The NHWC `[1, H, W, 3]` image input of [s], named by [spec] when it
+/// declares one.
+ImageInput resolveImageInput(
+  InferenceSession s,
+  ModelSpec spec,
+  TensorRange dflt,
+) {
   final declared = spec.inputWithRole(TensorRoles.image);
   final t = declared?.name == null
       ? s.inputs.firstOrNull
@@ -59,7 +65,7 @@ class DetectorBinding {
     ModelSpec spec, {
     double minScore = 0.5,
   }) {
-    final input = _imageInput(s, spec, TensorRange.minusOneToOne);
+    final input = resolveImageInput(s, spec, TensorRange.minusOneToOne);
     final reg = _output(
       s,
       spec,
@@ -116,7 +122,7 @@ class MeshBinding {
   MeshBinding._(this.input, this.landmarks, this.presence, this.valuesPerPoint);
 
   factory MeshBinding.resolve(InferenceSession s, ModelSpec spec) {
-    final input = _imageInput(s, spec, TensorRange.zeroToOne);
+    final input = resolveImageInput(s, spec, TensorRange.zeroToOne);
     if (input.width != input.height) {
       throw ModelContractMismatch('${spec.key}: mesh input must be square');
     }
