@@ -69,9 +69,10 @@ HealOp _rebased(HealOp op, String id, String patch) => HealOp(
 );
 
 /// [source] made ready to paste onto [targetAssetId]. When [groups] carry
-/// heal ops from another photo, their patches are copied into the target
-/// under fresh ids first (the paste itself stays one history entry). Without
-/// a [sourceAssetId] the ops cannot be resolved and are all skipped.
+/// heal ops or a background-swap image from another photo, their PNGs are
+/// copied into the target under fresh names first (the paste itself stays
+/// one history entry). Items whose PNG cannot be found (or without a
+/// [sourceAssetId]) are dropped and counted in `skipped`.
 Future<({DevelopSettings settings, int skipped})> prepareHealPaste({
   required DevelopSettings source,
   required Set<SettingsGroup> groups,
@@ -80,23 +81,37 @@ Future<({DevelopSettings settings, int skipped})> prepareHealPaste({
   required EditDocument targetDoc,
   required PatchStoreGetter store,
 }) async {
-  if (!groups.contains(SettingsGroup.heal) ||
-      source.heal.isEmpty ||
-      sourceAssetId == targetAssetId) {
-    return (settings: source, skipped: 0);
+  if (sourceAssetId == targetAssetId) return (settings: source, skipped: 0);
+  final taken = referencedPatchRefs(targetDoc);
+  var settings = source;
+  var skipped = 0;
+  if (groups.contains(SettingsGroup.heal) && source.heal.isNotEmpty) {
+    if (sourceAssetId == null) {
+      settings = settings.copyWith(heal: const []);
+      skipped += source.heal.length;
+    } else {
+      final moved = await transferHealOps(
+        await store(),
+        fromAsset: sourceAssetId,
+        toAsset: targetAssetId,
+        ops: source.heal,
+        takenRefs: taken,
+      );
+      settings = settings.copyWith(heal: moved.ops);
+      skipped += moved.skipped;
+      taken.addAll(moved.ops.map((o) => o.patch));
+    }
   }
-  if (sourceAssetId == null) {
-    return (
-      settings: source.copyWith(heal: const []),
-      skipped: source.heal.length,
+  final image = source.backdrop.imageRef;
+  if (groups.contains(SettingsGroup.backdrop) && image.isNotEmpty) {
+    final ref = '$kRetouchDir/bg${newHealOpIds(taken, 1).single}.png';
+    final copied =
+        sourceAssetId != null &&
+        await (await store()).copy(sourceAssetId, image, targetAssetId, ref);
+    settings = settings.copyWith(
+      backdrop: settings.backdrop.copyWith(imageRef: copied ? ref : ''),
     );
+    if (!copied) skipped++;
   }
-  final moved = await transferHealOps(
-    await store(),
-    fromAsset: sourceAssetId,
-    toAsset: targetAssetId,
-    ops: source.heal,
-    takenRefs: referencedPatchRefs(targetDoc),
-  );
-  return (settings: source.copyWith(heal: moved.ops), skipped: moved.skipped);
+  return (settings: settings, skipped: skipped);
 }

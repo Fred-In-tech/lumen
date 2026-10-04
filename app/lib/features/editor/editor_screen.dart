@@ -22,6 +22,7 @@ import 'package:lumen/features/editor/renderer/renderer_factory.dart';
 import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/masks/ai_mask_rasters.dart';
 import 'package:lumen/features/masks/mask_shortcuts.dart';
+import 'package:lumen/features/portrait/backdrop_inputs.dart';
 import 'package:lumen/features/portrait/retouch_inputs.dart';
 import 'package:lumen/features/remove/healed_source.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
@@ -291,6 +292,17 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
       aiMaskRastersProvider(_assetId),
       (_, next) => _pushMaskRasters(session, next.value),
     );
+    // Background swap: rasters + image while a swap is on.
+    ref.listen<AsyncValue<BackdropInputs>>(backdropInputsProvider(_assetId), (
+      _,
+      next,
+    ) {
+      final v = next.value;
+      if (v == null) return;
+      if (session?.renderer case final BackdropSink sink) {
+        sink.setBackdropInputs(people: v.people, hair: v.hair, image: v.image);
+      }
+    });
     // Face shape sliders warp as soon as faces are known.
     ref.listen<FaceAnalysis?>(warpFacesProvider(_assetId), (_, faces) {
       if (session?.renderer case final WarpSink sink) sink.setWarpFaces(faces);

@@ -85,6 +85,11 @@ class GpuSourceRenderer implements SourceRenderer {
         maskRasters: inputs.maskRasters,
         faceAnalysis: inputs.faces,
         retouchMaps: inputs.retouchMaps,
+        backdropAssets: await exportBackdropAssets(
+          source,
+          settings.backdrop,
+          inputs.backdrop,
+        ),
       );
       return RgbaBuffer(px.width, px.height, px.rgba);
     } finally {

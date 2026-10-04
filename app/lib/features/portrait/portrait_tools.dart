@@ -7,6 +7,7 @@ import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/features/develop/develop_group.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
+import 'package:lumen/features/portrait/backdrop_inputs.dart';
 import 'package:lumen/features/portrait/liquify_canvas.dart';
 import 'package:lumen/features/portrait/portrait_state.dart';
 import 'package:lumen/widgets/buttons.dart';
@@ -287,6 +288,13 @@ class BackgroundSwapGroup extends ConsumerWidget {
               onChanged: (m) =>
                   commit(b.copyWith(mode: m), 'Background ${modes[m]}'),
             ),
+          ),
+          const SizedBox(height: Sp.s2),
+          LumenButton(
+            label: b.imageRef.isEmpty ? 'Choose image…' : 'Change image…',
+            kind: ButtonKind.ghost,
+            icon: const Icon(LucideIcons.image, size: 14),
+            onPressed: () => chooseBackdropImage(ref, assetId),
           ),
           if (b.mode == BackdropMode.blur)
             slider('Blur', b.blur, 0, 100, 50, (v) => b.copyWith(blur: v)),

@@ -8,6 +8,7 @@ import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/features/editor/renderer/gpu_photo_renderer.dart';
 import 'package:lumen/features/export/export_encoder.dart';
+import 'package:lumen/features/export/backdrop_export.dart';
 import 'package:lumen/features/export/export_service.dart';
 import 'package:lumen/features/export/export_targets.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
@@ -32,6 +33,11 @@ final exportServiceProvider = Provider<ExportService>(
     patches: () => ref.read(patchStoreProvider.future),
     maskLoader: ref.watch(aiMaskRasterLoaderProvider),
     retouch: ref.watch(storedRetouchLoaderProvider).load,
+    backdrop: backdropInputsLoader(
+      source: ref.watch(aiMaskSourceProvider),
+      loader: ref.watch(aiMaskRasterLoaderProvider),
+      patches: () => ref.read(patchStoreProvider.future),
+    ),
     sourceRenderer: const GpuSourceRenderer(),
   ),
 );

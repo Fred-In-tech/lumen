@@ -8,6 +8,8 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
+import 'package:lumen/features/editor/renderer/photo_renderer.dart'
+    show kNoBackdropInputs;
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/masks/ai_mask_rasters.dart' show aiMaskRefsKey;
 import 'package:lumen/features/export/source_render.dart';
@@ -110,6 +112,7 @@ class ExportService {
     this.patches,
     this.maskLoader,
     this.retouch,
+    this.backdrop,
     SourceRenderer? sourceRenderer,
   }) : _render = renderer ?? cpuFullResRender,
        _renderSource = sourceRenderer ?? const CpuSourceRenderer();
@@ -125,6 +128,9 @@ class ExportService {
 
   /// Loads portrait retouch inputs (null: portrait edits are not applied).
   final RetouchLoader? retouch;
+
+  /// Loads background-swap inputs (null: the background swap is ignored).
+  final BackdropInputsLoader? backdrop;
   final SourceRenderer _renderSource;
 
   Future<ExportedFile> exportOne(String assetId, ExportOptions o) async {
@@ -140,8 +146,12 @@ class ExportService {
     );
     final faces = await (retouch?.call(assetId, settings) ?? kNoRetouchFuture);
     final heal = patches != null && hasVisibleHeals(settings);
+    final swap = settings.backdrop.isNone || backdrop == null
+        ? kNoBackdropInputs
+        : await backdrop!(assetId, settings.backdrop);
+    final swapped = swap.people != null || swap.hair != null;
     final RgbaBuffer pixels;
-    if (heal || rasters.isNotEmpty || faces.maps != null) {
+    if (heal || rasters.isNotEmpty || faces.maps != null || swapped) {
       final source = await decodeHealedSource(
         original,
         assetId: assetId,
@@ -154,6 +164,7 @@ class ExportService {
         maskRasters: rasters,
         retouchMaps: faces.maps,
         faces: faces.faces,
+        backdrop: swap,
       ), longEdge: o.longEdge);
     } else {
       pixels = await _render(original, settings, o.longEdge, assetId: assetId);

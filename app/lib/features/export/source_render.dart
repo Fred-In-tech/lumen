@@ -12,7 +12,15 @@ typedef SourceInputs = ({
   Map<String, MaskRaster> maskRasters,
   RetouchMaps? retouchMaps,
   FaceAnalysis? faces,
+  BackdropInputs backdrop,
 });
+
+/// Loads a photo's background-swap inputs (person/hair rasters and the
+/// backdrop image) for [change]; [kNoBackdropInputs] when it is off.
+typedef BackdropInputsLoader = Future<BackdropInputs> Function(
+  String assetId,
+  BackdropChange change,
+);
 
 /// Develops decoded source pixels (already healed) for export, in the
 /// order heal → portrait retouch → develop (masks included).
@@ -53,6 +61,7 @@ class CpuSourceRenderer implements SourceRenderer {
       inputs.maskRasters,
       inputs.retouchMaps,
       inputs.faces,
+      backdrop: inputs.backdrop,
     );
   }
 }
@@ -82,10 +91,17 @@ Future<RgbaBuffer> developInBackground(
   DevelopSettings settings,
   Map<String, MaskRaster> rasters,
   RetouchMaps? maps,
-  FaceAnalysis? faces,
-) => runInBackground(
+  FaceAnalysis? faces, {
+  BackdropInputs backdrop = kNoBackdropInputs,
+}) => runInBackground(
   () => renderReference(
-    retouchedSource(src, settings, maps, faces),
+    backdroppedSource(
+      retouchedSource(src, settings, maps, faces),
+      settings.backdrop,
+      people: backdrop.people,
+      hair: backdrop.hair,
+      image: backdrop.image,
+    ),
     settings,
     maskRasters: rasters,
     faces: faces,

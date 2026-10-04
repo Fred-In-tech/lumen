@@ -83,21 +83,36 @@ Set<String> referencedPatchRefs(EditDocument doc) {
     }
   }
 
-  addOps(doc.settings.heal);
+  // Background-swap images live in the same store.
+  void addBackdrop(BackdropChange b) {
+    if (b.imageRef.isNotEmpty) refs.add(b.imageRef);
+  }
+
+  void addSettings(DevelopSettings s) {
+    addOps(s.heal);
+    addBackdrop(s.backdrop);
+  }
+
+  addSettings(doc.settings);
   for (final entry in doc.history.entries) {
     for (final op in entry.ops) {
-      if (op.path != 'heal') continue;
-      addOps(parseHealOps(op.from));
-      addOps(parseHealOps(op.to));
+      if (op.path == 'heal') {
+        addOps(parseHealOps(op.from));
+        addOps(parseHealOps(op.to));
+      } else if (op.path == 'backdrop') {
+        addBackdrop(BackdropChange.fromJson(op.from));
+        addBackdrop(BackdropChange.fromJson(op.to));
+      }
     }
   }
   for (final snap in doc.snapshots) {
-    addOps(snap.settings.heal);
+    addSettings(snap.settings);
   }
   final ai = doc.ai;
   if (ai != null) {
-    addOps(ai.preAi.heal);
-    addOps(ai.postAi?.heal ?? const []);
+    addSettings(ai.preAi);
+    final post = ai.postAi;
+    if (post != null) addSettings(post);
   }
   return refs;
 }

@@ -224,5 +224,57 @@ void main() {
       });
       expect(await store.list('a'), {'retouch/h1.png'});
     });
+
+    test('keeps background-swap images from settings, history, snapshots', () {
+      const a = BackdropChange(
+        mode: BackdropMode.image,
+        imageRef: 'retouch/bg-a.png',
+      );
+      const b = BackdropChange(
+        mode: BackdropMode.image,
+        imageRef: 'retouch/bg-b.png',
+      );
+      final s0 = DevelopSettings.defaults;
+      final s1 = s0.copyWith(backdrop: a);
+      final s2 = s0.copyWith(backdrop: b);
+      final history = HistoryStack.empty
+          .push(
+            HistoryEntry.diff(
+              label: 'Background',
+              kind: HistoryKind.slider,
+              before: s0,
+              after: s1,
+            ),
+          )
+          .push(
+            HistoryEntry.diff(
+              label: 'Background',
+              kind: HistoryKind.slider,
+              before: s1,
+              after: s2,
+            ),
+          );
+      final d = EditDocument.create('a').copyWith(
+        settings: s2,
+        history: history,
+        snapshots: [
+          Snapshot(
+            name: 'studio',
+            settings: s0.copyWith(
+              backdrop: const BackdropChange(
+                mode: BackdropMode.image,
+                imageRef: 'retouch/bg-c.png',
+              ),
+            ),
+            at: DateTime.utc(2026),
+          ),
+        ],
+      );
+      expect(referencedPatchRefs(d), {
+        'retouch/bg-a.png',
+        'retouch/bg-b.png',
+        'retouch/bg-c.png',
+      });
+    });
   });
 }

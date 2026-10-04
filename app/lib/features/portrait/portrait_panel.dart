@@ -130,8 +130,10 @@ class PortraitPanel extends ConsumerWidget {
           ),
         ),
         for (final section in kPortraitSections) ...[
-          if (section.title == 'Background')
+          if (section.title == 'Background') ...[
             LiquifyGroup(assetId: assetId, ui: ui),
+            BackgroundSwapGroup(assetId: assetId),
+          ],
           DevelopGroup(
             key: ValueKey('portrait-${section.title}'),
             title: section.title,
