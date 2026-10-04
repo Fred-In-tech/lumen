@@ -12,6 +12,9 @@ Lumen is a Lightroom-style photo editor for **macOS, Windows, iOS and Android** 
 |---|---|
 | **AI** | One-click **Auto** · 9 AI **Styles** (Natural, Vibrant, Moody, Cinematic, Film, Golden Hour, Clean & Bright, B&W, Portrait Soft) previewed on your photo · **Describe an edit** ("warmer and lift the shadows a bit") · **AI amount** 0–150 % · "What I changed" explanations · auto-edit on import · batch auto-edit |
 | **Develop** | Light (exposure, contrast, highlights, shadows, whites, blacks) · Color (temp, tint, vibrance, saturation, HSL ×8, B&W mix) · Tone curve (RGB/R/G/B points + parametric) · Color grading wheels · Effects (texture, clarity, dehaze, vignette, grain) · Detail (sharpening, noise reduction) · Crop, straighten, rotate, flip |
+| **Portrait retouch** (Evoto-style, on-device) | Face detection with clickable face boxes · group tabs **All / Female / Male / Child / Senior / Individual** with per-group and per-person values · one-click **Auto Retouch** · skin softening that keeps pores, even tone, texture, shine · acne / freckle / mole removal with a click-to-keep-or-remove **spot editor** · 5 wrinkle zones · dark circles, eye bags (lid protection), eye whites, iris, red veins · teeth whitening (never brighter than the eye whites) · lip colour and blush |
+| **Masks** | Up to 8 Lightroom-style masks: linear, radial and brush (paint/erase), plus **AI masks** (Subject, Background, Face skin, Hair, Clothing) · 12 local sliders per mask · red overlay (`O`) |
+| **Remove** | Remove / Heal / Clone brushes (`Q`) · zero-download classical fill (spot heal, wire removal, patch fill) · optional on-device **AI fill** (MI-GAN, 16 MB, downloaded only when you switch it on) · every fix is a non-destructive, hideable step |
 | **Workflow** | Library grouped by date · multi-select batch bar · undo/redo saved with the photo · before/after (hold `\`, split wipe, side by side) · histogram · 12 built-in presets + your own · copy/paste/sync settings · keyboard shortcuts |
 | **Export** | JPEG (quality) / PNG · original or long edge · metadata kept or removed, **location always stripped** · batch to a folder (desktop) or the share sheet (mobile) |
 
@@ -25,9 +28,13 @@ app/                 Flutter app (package `lumen`), all platforms
   lib/design/        design tokens + theme ("Darkroom editorial", docs/DESIGN.md)
   lib/engine/        GPU render engine: fragment shaders, render graph, scheduler, tiled export
   lib/features/      library, editor, develop panel, AI, presets, crop, export, batch, settings
-  shaders/           develop / finish / denoise GLSL
+  lib/ai/ondevice/   on-device AI: LiteRT backend, verified model store, face analyzer, AI masks
+  lib/features/{portrait,masks,remove}/  Phase 2 modules
+  shaders/           develop / finish / denoise / retouch / mask overlay GLSL
+  assets/models/     bundled face models (Apache-2.0, see docs/MODEL_LICENSES.md)
 packages/lumen_core/ Pure Dart: edit model, color science, CPU reference renderer, image analysis,
-                     local auto-tone engine, instruction lexicon, gateway contract
+                     local auto-tone engine, instruction lexicon, gateway contract, retouch engine
+                     (CPU twin of retouch.frag), inpainting, face-pipeline math, model manifest
 server/              Dart (shelf) AI gateway: holds the Anthropic key, calls Claude
 docs/                research, PLAN (architecture + Definition of Done), DESIGN, PROGRESS, LICENSES
 tool/                verify.sh (quality gate), check_licenses.dart
@@ -65,7 +72,8 @@ Notes:
 - Everything: `bash tool/verify.sh`. That runs format, analyze ×3, core tests with ≥80 % coverage, server tests, app tests, licenses and a secrets scan.
 - Core (`packages/lumen_core`): `dart test`. Model, color, renderer, analysis, auto engine.
 - Gateway (`server`): `dart test`, with Claude mocked.
-- App (`app`): `flutter test`. UI, repositories, GPU shader parity, export.
+- App (`app`): `flutter test`. UI, repositories, GPU shader parity (develop, masks, retouch), export.
+- On-device model tests need the dev models in `.dev_models/` (see `docs/MODEL_LICENSES.md`) and the LiteRT host libraries; `tool/verify.sh` sets `TFLITE_LIB_PATH` / `LITERT_LIB_PATH`. Without them those tests skip.
 - End-to-end (`app`): `flutter test integration_test -d macos`. Screenshots are copied to `docs/verification/`.
 
 ## Architecture notes (scale-later)
