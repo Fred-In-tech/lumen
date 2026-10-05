@@ -21,6 +21,14 @@ enum PhotoFormat {
   nef('nef', isRaw: true),
   arw('arw', isRaw: true),
   raf('raf', isRaw: true),
+  orf('orf', isRaw: true),
+  rw2('rw2', isRaw: true),
+  pef('pef', isRaw: true),
+  srw('srw', isRaw: true),
+  nrw('nrw', isRaw: true),
+  erf('erf', isRaw: true),
+  sr2('sr2', isRaw: true),
+  threeFr('3fr', isRaw: true),
   unknown('bin');
 
   const PhotoFormat(this.extension, {this.isRaw = false});
@@ -35,8 +43,9 @@ enum PhotoFormat {
 
 /// Sniffs the format from magic bytes (never trusts the file extension).
 ///
-/// The one exception is TIFF-based RAW (DNG, NEF, ARW): those share the plain
-/// TIFF header, so [fileName] picks between them once the header matches.
+/// The one exception is TIFF-based RAW (DNG, NEF, ARW, PEF, …): those share
+/// the plain TIFF header, so [fileName] picks between them once the header
+/// matches.
 PhotoFormat sniffFormat(Uint8List b, {String? fileName}) {
   if (b.length >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) {
     return PhotoFormat.jpeg;
@@ -84,9 +93,18 @@ PhotoFormat sniffFormat(Uint8List b, {String? fileName}) {
     if (b.length >= 10 && b[8] == 0x43 && b[9] == 0x52) return PhotoFormat.cr2;
     final dot = fileName?.lastIndexOf('.') ?? -1;
     final ext = dot < 0 ? '' : fileName!.substring(dot + 1).toLowerCase();
-    for (final f in const [PhotoFormat.dng, PhotoFormat.nef, PhotoFormat.arw]) {
+    for (final f in _tiffRaw) {
       if (f.extension == ext) return f;
     }
+  }
+  // Olympus ("IIRO", "IIRS", "MMOR") and Panasonic ("IIU\0") use their own
+  // marker where TIFF has its magic number.
+  if (b.length >= 4) {
+    final head = String.fromCharCodes(b.sublist(0, 4));
+    if (head == 'IIRO' || head == 'IIRS' || head == 'MMOR') {
+      return PhotoFormat.orf;
+    }
+    if (head == 'IIU\x00') return PhotoFormat.rw2;
   }
   if (b.length >= 15 &&
       String.fromCharCodes(b.sublist(0, 15)) == 'FUJIFILMCCD-RAW') {
@@ -95,6 +113,19 @@ PhotoFormat sniffFormat(Uint8List b, {String? fileName}) {
   return PhotoFormat.unknown;
 }
 
+/// RAW formats that are plain TIFF containers, told apart by extension.
+const _tiffRaw = [
+  PhotoFormat.dng,
+  PhotoFormat.nef,
+  PhotoFormat.arw,
+  PhotoFormat.pef,
+  PhotoFormat.srw,
+  PhotoFormat.nrw,
+  PhotoFormat.erf,
+  PhotoFormat.sr2,
+  PhotoFormat.threeFr,
+];
+
 /// Little- ("II*\0") or big-endian ("MM\0*") TIFF header.
 bool _isTiff(Uint8List b) =>
     b.length >= 8 &&
@@ -102,7 +133,22 @@ bool _isTiff(Uint8List b) =>
         (b[0] == 0x4D && b[1] == 0x4D && b[2] == 0x00 && b[3] == 0x2A));
 
 /// Camera RAW extensions (developed by the platform, Apple only for now).
-const kRawExtensions = ['cr2', 'cr3', 'dng', 'nef', 'arw', 'raf'];
+const kRawExtensions = [
+  'cr2',
+  'cr3',
+  'dng',
+  'nef',
+  'arw',
+  'raf',
+  'orf',
+  'rw2',
+  'pef',
+  'srw',
+  'nrw',
+  'erf',
+  'sr2',
+  '3fr',
+];
 
 /// Accepted file extensions for the picker.
 const kImportExtensions = [

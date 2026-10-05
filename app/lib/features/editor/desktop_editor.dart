@@ -19,6 +19,7 @@ import 'package:lumen/features/editor/mode_switch.dart';
 import 'package:lumen/features/editor/module_overlay.dart';
 import 'package:lumen/features/editor/photo_canvas.dart';
 import 'package:lumen/features/export/export_dialog.dart';
+import 'package:lumen/features/info/photo_info_dialog.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 import 'package:lumen/widgets/buttons.dart';
 
@@ -213,6 +214,14 @@ class _TopBar extends ConsumerWidget {
                   _CompareButton(assetId: id),
                   const SizedBox(width: Sp.s1),
                   _HistoryButton(assetId: id),
+                  const SizedBox(width: Sp.s1),
+                  LumenIconButton(
+                    icon: LucideIcons.info,
+                    tooltip: 'Photo info  I',
+                    onPressed: session.entry == null
+                        ? null
+                        : () => showPhotoInfo(context, session.entry!),
+                  ),
                   const SizedBox(width: Sp.s3),
                   LumenButton(
                     label: 'Export',

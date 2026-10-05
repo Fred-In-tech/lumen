@@ -20,6 +20,7 @@ import 'package:lumen/features/search/control_search_dialog.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 import 'package:lumen/features/editor/renderer/renderer_factory.dart';
 import 'package:lumen/features/export/export_dialog.dart';
+import 'package:lumen/features/info/photo_info_dialog.dart';
 import 'package:lumen/features/masks/ai_mask_rasters.dart';
 import 'package:lumen/features/masks/mask_shortcuts.dart';
 import 'package:lumen/features/portrait/backdrop_inputs.dart';
@@ -260,6 +261,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
       ctl.setCropMode(true);
     } else if (k == LogicalKeyboardKey.slash) {
       showControlSearch(context, ref, _assetId, session: _session);
+    } else if (k == LogicalKeyboardKey.keyI) {
+      final entry = _session?.entry;
+      if (entry != null) showPhotoInfo(context, entry);
     } else if (k == LogicalKeyboardKey.keyA) {
       final session = _session;
       if (session != null) runAiAuto(ref, session);

@@ -12,6 +12,12 @@ class ExifSummary {
     this.capturedAt,
     this.flash,
     this.orientation,
+    this.exposureBias,
+    this.program,
+    this.metering,
+    this.whiteBalance,
+    this.colorSpace,
+    this.software,
   });
 
   factory ExifSummary.fromJson(Object? json) {
@@ -30,6 +36,12 @@ class ExifSummary {
           : null,
       flash: json['flash'] as bool?,
       orientation: (json['orientation'] as num?)?.toInt(),
+      exposureBias: d('exposureBias'),
+      program: json['program'] as String?,
+      metering: json['metering'] as String?,
+      whiteBalance: json['whiteBalance'] as String?,
+      colorSpace: json['colorSpace'] as String?,
+      software: json['software'] as String?,
     );
   }
 
@@ -48,6 +60,18 @@ class ExifSummary {
   final bool? flash;
   final int? orientation;
 
+  /// Exposure compensation in EV.
+  final double? exposureBias;
+
+  /// Exposure program ("Aperture priority"), metering mode, white balance
+  /// mode ("Auto" / "Manual"), colour space and camera firmware or the
+  /// software that last wrote the file, as the camera worded them.
+  final String? program;
+  final String? metering;
+  final String? whiteBalance;
+  final String? colorSpace;
+  final String? software;
+
   bool get isEmpty =>
       camera == null &&
       iso == null &&
@@ -65,5 +89,11 @@ class ExifSummary {
     if (capturedAt != null) 'capturedAt': capturedAt!.toIso8601String(),
     if (flash != null) 'flash': flash,
     if (orientation != null) 'orientation': orientation,
+    if (exposureBias != null) 'exposureBias': exposureBias,
+    if (program != null) 'program': program,
+    if (metering != null) 'metering': metering,
+    if (whiteBalance != null) 'whiteBalance': whiteBalance,
+    if (colorSpace != null) 'colorSpace': colorSpace,
+    if (software != null) 'software': software,
   };
 }

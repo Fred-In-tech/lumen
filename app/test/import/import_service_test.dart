@@ -80,6 +80,19 @@ void main() {
       PhotoFormat.raf,
     );
 
+    // Olympus and Panasonic carry their own markers; the rest are TIFF.
+    expect(
+      sniffFormat(Uint8List.fromList('IIRO\x08\x00\x00\x00'.codeUnits)),
+      PhotoFormat.orf,
+    );
+    expect(
+      sniffFormat(Uint8List.fromList('IIU\x00\x18\x00\x00\x00'.codeUnits)),
+      PhotoFormat.rw2,
+    );
+    expect(sniffFormat(tiff, fileName: 'a.PEF'), PhotoFormat.pef);
+    expect(sniffFormat(tiff, fileName: 'a.srw'), PhotoFormat.srw);
+    expect(sniffFormat(tiff, fileName: 'a.3fr'), PhotoFormat.threeFr);
+
     for (final f in PhotoFormat.values) {
       expect(f.isRaw, kRawExtensions.contains(f.extension), reason: f.name);
     }

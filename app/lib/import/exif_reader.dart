@@ -54,6 +54,12 @@ Future<ExifSummary> readExifSummary(Uint8List bytes) async {
           ? null
           : !(s('EXIF Flash')!.toLowerCase().contains('no')),
       orientation: (tags['Image Orientation']?.values.firstAsInt()),
+      exposureBias: ratio('EXIF ExposureBiasValue'),
+      program: s('EXIF ExposureProgram'),
+      metering: s('EXIF MeteringMode'),
+      whiteBalance: s('EXIF WhiteBalance'),
+      colorSpace: s('EXIF ColorSpace'),
+      software: s('Image Software'),
     );
   } on Exception catch (e) {
     _log.fine('EXIF read failed: $e');

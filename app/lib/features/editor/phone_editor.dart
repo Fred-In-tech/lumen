@@ -18,6 +18,7 @@ import 'package:lumen/features/editor/mode_switch.dart';
 import 'package:lumen/features/editor/module_overlay.dart';
 import 'package:lumen/features/editor/photo_canvas.dart';
 import 'package:lumen/features/export/export_dialog.dart';
+import 'package:lumen/features/info/photo_info_dialog.dart';
 import 'package:lumen/features/masks/masks_panel.dart';
 import 'package:lumen/features/presets/presets_panel.dart';
 import 'package:lumen/features/portrait/portrait_panel.dart';
@@ -232,18 +233,30 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
                   onPressed: (state?.canRedo ?? false) ? ctl.redo : null,
                 ),
                 const Spacer(),
-                LumenIconButton(
-                  icon: LucideIcons.search,
-                  tooltip: 'Search controls',
-                  size: 44,
-                  iconSize: 20,
-                  onPressed: () => showControlSearch(
-                    context,
-                    ref,
-                    id,
-                    session: widget.session,
+                // Room for one: info in Auto, control search in Manual.
+                if (auto)
+                  LumenIconButton(
+                    icon: LucideIcons.info,
+                    tooltip: 'Photo info',
+                    size: 44,
+                    iconSize: 20,
+                    onPressed: widget.session.entry == null
+                        ? null
+                        : () => showPhotoInfo(context, widget.session.entry!),
+                  )
+                else
+                  LumenIconButton(
+                    icon: LucideIcons.search,
+                    tooltip: 'Search controls',
+                    size: 44,
+                    iconSize: 20,
+                    onPressed: () => showControlSearch(
+                      context,
+                      ref,
+                      id,
+                      session: widget.session,
+                    ),
                   ),
-                ),
                 LumenIconButton(
                   icon: LucideIcons.squareSplitHorizontal,
                   tooltip: 'Compare',
