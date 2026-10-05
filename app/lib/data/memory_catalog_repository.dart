@@ -9,6 +9,7 @@ import 'package:lumen/data/catalog_repository.dart';
 class MemoryCatalogRepository implements CatalogRepository {
   final Map<String, CatalogEntry> _entries = {};
   final Map<String, Uint8List> _originals = {};
+  final Map<String, Uint8List> _renditions = {};
   final Map<String, EditDocument> _edits = {};
   final Map<String, Uint8List> _thumbs = {};
   final StreamController<List<CatalogEntry>> _changes =
@@ -29,11 +30,16 @@ class MemoryCatalogRepository implements CatalogRepository {
   Future<CatalogEntry?> get(String assetId) async => _entries[assetId];
 
   @override
-  Future<CatalogEntry> add(CatalogEntry entry, Uint8List originalBytes) async {
+  Future<CatalogEntry> add(
+    CatalogEntry entry,
+    Uint8List originalBytes, {
+    Uint8List? rendition,
+  }) async {
     final existing = _entries[entry.assetId];
     if (existing != null) return existing;
     _entries[entry.assetId] = entry;
     _originals[entry.assetId] = originalBytes;
+    if (rendition != null) _renditions[entry.assetId] = rendition;
     _emit();
     return entry;
   }
@@ -51,6 +57,7 @@ class MemoryCatalogRepository implements CatalogRepository {
   Future<void> delete(String assetId) async {
     _entries.remove(assetId);
     _originals.remove(assetId);
+    _renditions.remove(assetId);
     _edits.remove(assetId);
     _thumbs.remove(assetId);
     _emit();
@@ -62,6 +69,10 @@ class MemoryCatalogRepository implements CatalogRepository {
     if (bytes == null) throw CatalogException('Original missing for $assetId');
     return bytes;
   }
+
+  @override
+  Future<Uint8List> readPixelSource(String assetId) async =>
+      _renditions[assetId] ?? await readOriginal(assetId);
 
   @override
   Future<EditDocument> loadEdit(String assetId) async =>

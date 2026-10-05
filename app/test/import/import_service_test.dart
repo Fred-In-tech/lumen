@@ -49,6 +49,43 @@ void main() {
     expect(sniffFormat(Uint8List.fromList([1, 2, 3])), PhotoFormat.unknown);
   });
 
+  test('sniffs camera RAW without confusing it with TIFF or HEIC', () {
+    expect(sniffFormat(Fixtures.cr3()), PhotoFormat.cr3);
+    expect(sniffFormat(Fixtures.cr2()), PhotoFormat.cr2);
+    // The extension never overrides a signature.
+    expect(sniffFormat(Fixtures.cr3(), fileName: 'a.heic'), PhotoFormat.cr3);
+    expect(sniffFormat(Fixtures.cr2(), fileName: 'a.dng'), PhotoFormat.cr2);
+    expect(sniffFormat(Fixtures.jpeg(), fileName: 'a.cr3'), PhotoFormat.jpeg);
+
+    // A plain TIFF is not RAW; TIFF-based RAW is told apart by extension.
+    final tiff = Fixtures.tiffHeader();
+    expect(sniffFormat(tiff), PhotoFormat.unknown);
+    expect(sniffFormat(tiff, fileName: 'scan.tif'), PhotoFormat.unknown);
+    expect(sniffFormat(tiff, fileName: 'IMG_1.DNG'), PhotoFormat.dng);
+    expect(sniffFormat(tiff, fileName: 'a.nef'), PhotoFormat.nef);
+    expect(
+      sniffFormat(Fixtures.tiffHeader(bigEndian: true), fileName: 'a.arw'),
+      PhotoFormat.arw,
+    );
+    // The extension alone is never enough.
+    expect(
+      sniffFormat(
+        Uint8List.fromList('not a raw file'.codeUnits),
+        fileName: 'a.dng',
+      ),
+      PhotoFormat.unknown,
+    );
+    expect(
+      sniffFormat(Uint8List.fromList('FUJIFILMCCD-RAW 0201'.codeUnits)),
+      PhotoFormat.raf,
+    );
+
+    for (final f in PhotoFormat.values) {
+      expect(f.isRaw, kRawExtensions.contains(f.extension), reason: f.name);
+    }
+    expect(kImportExtensions, containsAll(['jpg', 'heic', 'cr2', 'cr3']));
+  });
+
   test('imports JPEG and PNG, dedupes, writes thumbs, rejects junk', () async {
     final repo = MemoryCatalogRepository();
     final service = ImportService(repo, clock: () => DateTime.utc(2026, 10, 3));

@@ -94,7 +94,7 @@ Future<bool> autoEditStoredAsset({
   try {
     final entry = await repo.get(assetId);
     if (entry == null) return false;
-    final original = await repo.readOriginal(assetId);
+    final original = await repo.readPixelSource(assetId);
     final doc = await repo.loadEdit(assetId);
     Future<RgbaBuffer> source(int longEdge) => decodeHealedSource(
       original,
@@ -266,7 +266,7 @@ Future<void> refreshThumbnail(
   RetouchLoader? retouch,
 }) async {
   try {
-    final original = await repo.readOriginal(assetId);
+    final original = await repo.readPixelSource(assetId);
     final src = await decodeHealedSource(
       original,
       assetId: assetId,

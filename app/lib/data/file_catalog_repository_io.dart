@@ -13,7 +13,8 @@ import 'package:lumen/data/catalog_repository.dart';
 final _log = Logger('FileCatalogRepository');
 
 /// JSON-file catalog under `<root>/`:
-/// `catalog.json`, `originals/<id>.<ext>`, `assets/<id>/{edit.json,thumb.jpg}`.
+/// `catalog.json`, `originals/<id>.<ext>`, `assets/<id>/{edit.json,thumb.jpg}`
+/// and, for camera RAW only, the developed `renditions/<id>.jpg`.
 class FileCatalogRepository implements CatalogRepository {
   FileCatalogRepository(this.root);
 
@@ -25,6 +26,7 @@ class FileCatalogRepository implements CatalogRepository {
 
   String get _indexPath => p.join(root, 'catalog.json');
   String _assetDir(String id) => p.join(root, 'assets', id);
+  String _renditionPath(String id) => p.join(root, 'renditions', '$id.jpg');
 
   Future<Map<String, CatalogEntry>> _load() async {
     final cached = _cache;
@@ -80,11 +82,18 @@ class FileCatalogRepository implements CatalogRepository {
   Future<CatalogEntry?> get(String assetId) async => (await _load())[assetId];
 
   @override
-  Future<CatalogEntry> add(CatalogEntry entry, Uint8List originalBytes) async {
+  Future<CatalogEntry> add(
+    CatalogEntry entry,
+    Uint8List originalBytes, {
+    Uint8List? rendition,
+  }) async {
     final map = await _load();
     final existing = map[entry.assetId];
     if (existing != null) return existing;
     await atomicWrite(p.join(root, entry.originalPath), originalBytes);
+    if (rendition != null) {
+      await atomicWrite(_renditionPath(entry.assetId), rendition);
+    }
     map[entry.assetId] = entry;
     await _persist();
     return entry;
@@ -108,6 +117,8 @@ class FileCatalogRepository implements CatalogRepository {
     await _persist();
     final original = File(p.join(root, entry.originalPath));
     if (await original.exists()) await original.delete();
+    final rendition = File(_renditionPath(assetId));
+    if (await rendition.exists()) await rendition.delete();
     final dir = Directory(_assetDir(assetId));
     if (await dir.exists()) await dir.delete(recursive: true);
   }
@@ -121,6 +132,15 @@ class FileCatalogRepository implements CatalogRepository {
       throw CatalogException('Original file missing for ${entry.fileName}');
     }
     return file.readAsBytes();
+  }
+
+  @override
+  Future<Uint8List> readPixelSource(String assetId) async {
+    // Only RAW imports have a rendition; every other photo (and every
+    // catalog from before RAW support) decodes its original.
+    final rendition = File(_renditionPath(assetId));
+    if (await rendition.exists()) return rendition.readAsBytes();
+    return readOriginal(assetId);
   }
 
   @override

@@ -24,7 +24,7 @@ Future<AnalysisPixels> loadAnalysisPixels(
   int longEdge = kOnDeviceAnalysisLongEdge,
 }) async {
   final entry = await catalog.get(assetId);
-  final original = await catalog.readOriginal(assetId);
+  final original = await catalog.readPixelSource(assetId);
   final image = await decodePhoto(original, maxLongEdge: longEdge);
   final RgbaBuffer pixels;
   try {

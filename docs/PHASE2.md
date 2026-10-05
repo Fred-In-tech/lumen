@@ -77,3 +77,5 @@ original ──► RETOUCH STAGE (pixel layer, cached) ──► DEVELOP (GPU ub
 
 ### Studio redesign and RAW (2026-10-04)
 - **UI:** light "Studio" look and the Auto / Manual split, specified in `docs/DESIGN.md` §0. Portrait panel regrouped into Skin / Face / Shape / Scene with Auto Retouch on top. Screenshots: `docs/verification/studio/`.
+- **Camera RAW import (macOS, iOS):** CR3, CR2, DNG, NEF, ARW and RAF import through Apple's built-in RAW decoder (`CIRAWFilter`, channel `lumen/raw`); nothing was installed. The untouched RAW is kept in `originals/`, and a developed sRGB JPEG (quality 0.98, camera EXIF kept, GPS and serial numbers dropped) in `renditions/` feeds the editor and export through `CatalogRepository.readPixelSource`. Checked with a real 45 MP Canon R5 `.cr3` (`integration_test/raw_import_test.dart`, run with `--dart-define=LUMEN_RAW_SAMPLE=<path inside the app container>`).
+  - Limits: the pipeline is 8-bit, so RAW adds no highlight or shadow headroom yet. Android and Windows show "RAW photos aren't supported on this device yet"; they need a bundled decoder such as LibRaw (needs install approval). CR2 is covered by unit tests only (no sample file).

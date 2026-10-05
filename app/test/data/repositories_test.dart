@@ -62,6 +62,38 @@ void _contract(String name, Future<CatalogRepository> Function() make) {
       expect(() => repo.readOriginal('a'), throwsA(isA<CatalogException>()));
     });
 
+    test(
+      'pixel source is the original unless a rendition was stored',
+      () async {
+        final repo = await make();
+        await repo.add(_entry('a'), Uint8List.fromList([1, 2, 3]));
+        expect(await repo.readPixelSource('a'), [1, 2, 3]);
+
+        // Camera RAW: the untouched file stays the original, pixels come from
+        // the developed rendition.
+        await repo.add(
+          _entry('r'),
+          Uint8List.fromList([9, 9]),
+          rendition: Uint8List.fromList([4, 5, 6]),
+        );
+        expect(await repo.readOriginal('r'), [9, 9]);
+        expect(await repo.readPixelSource('r'), [4, 5, 6]);
+        // A duplicate add never replaces the stored rendition.
+        await repo.add(_entry('r'), Uint8List(1), rendition: Uint8List(1));
+        expect(await repo.readPixelSource('r'), [4, 5, 6]);
+
+        await repo.delete('r');
+        expect(
+          () => repo.readPixelSource('r'),
+          throwsA(isA<CatalogException>()),
+        );
+        expect(
+          () => repo.readPixelSource('nope'),
+          throwsA(isA<CatalogException>()),
+        );
+      },
+    );
+
     test('watch emits after changes', () async {
       final repo = await make();
       final emitted = <int>[];
@@ -104,6 +136,26 @@ void main() {
       );
     },
   );
+
+  test('renditions live in renditions/ and go away with the photo', () async {
+    final repo = FileCatalogRepository(tmp.path);
+    await repo.add(_entry('a'), Uint8List.fromList([1]));
+    await repo.add(
+      _entry('r'),
+      Uint8List.fromList([9]),
+      rendition: Uint8List.fromList([4, 5]),
+    );
+    final rendition = File('${tmp.path}/renditions/r.jpg');
+    expect(rendition.readAsBytesSync(), [4, 5]);
+    expect(File('${tmp.path}/renditions/a.jpg').existsSync(), isFalse);
+    // A reopened catalog (and so any catalog from before RAW support, which
+    // has no renditions folder) resolves pixel sources the same way.
+    final reopened = FileCatalogRepository(tmp.path);
+    expect(await reopened.readPixelSource('r'), [4, 5]);
+    expect(await reopened.readPixelSource('a'), [1]);
+    await reopened.delete('r');
+    expect(rendition.existsSync(), isFalse);
+  });
 
   test('corrupt edit.json yields a fresh document', () async {
     final repo = FileCatalogRepository(tmp.path);

@@ -107,7 +107,7 @@ class ColorMatchService {
 
   Future<RgbaBuffer> _proxy(String assetId, DevelopSettings settings) async =>
       decodeHealedSource(
-        await catalog.readOriginal(assetId),
+        await catalog.readPixelSource(assetId),
         assetId: assetId,
         ops: settings.heal,
         patches: patches,

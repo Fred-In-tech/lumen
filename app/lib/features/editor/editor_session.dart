@@ -38,7 +38,7 @@ class EditorSession {
 
   Future<void> open() async {
     entry = await repo.get(assetId);
-    final Uint8List bytes = await repo.readOriginal(assetId);
+    final Uint8List bytes = await repo.readPixelSource(assetId);
     await renderer.open(bytes);
     if (_disposed) return;
     renderer.output.addListener(_scheduleHistogram);

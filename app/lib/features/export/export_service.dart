@@ -16,6 +16,7 @@ import 'package:lumen/features/export/source_render.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
 import 'package:lumen/features/portrait/retouch_build.dart';
 import 'package:lumen/features/remove/healed_source.dart';
+import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/photo_decoder.dart';
 
 final _log = Logger('ExportService');
@@ -136,7 +137,7 @@ class ExportService {
   Future<ExportedFile> exportOne(String assetId, ExportOptions o) async {
     final entry = await _catalog.get(assetId);
     if (entry == null) throw const CatalogException('Photo not found');
-    final original = await _catalog.readOriginal(assetId);
+    final original = await _catalog.readPixelSource(assetId);
     final doc = await _catalog.loadEdit(assetId);
     final settings = doc.settings;
     final rasters = await loadAiMaskRasters(
@@ -173,7 +174,9 @@ class ExportService {
       pixels,
       format: o.format,
       quality: o.quality,
-      sourceJpeg: entry.format == 'jpeg' ? original : null,
+      // Sniffed, not entry.format: a RAW photo's pixel source is its JPEG
+      // rendition, which carries the camera EXIF.
+      sourceJpeg: sniffFormat(original) == PhotoFormat.jpeg ? original : null,
       keepMetadata: o.keepMetadata,
     );
     return ExportedFile(

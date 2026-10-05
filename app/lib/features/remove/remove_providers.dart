@@ -31,7 +31,7 @@ Future<RgbaBuffer> loadFullResSource(
   CatalogRepository catalog,
   String assetId,
 ) async {
-  final bytes = await catalog.readOriginal(assetId);
+  final bytes = await catalog.readPixelSource(assetId);
   final image = await decodePhoto(bytes);
   try {
     return await rgbaFromImage(image);

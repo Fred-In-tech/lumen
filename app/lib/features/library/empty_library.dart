@@ -90,7 +90,9 @@ class EmptyLibrary extends ConsumerWidget {
                   ),
                   const SizedBox(height: Sp.s1),
                   Text(
-                    'JPEG · PNG · WebP · HEIC',
+                    platform.isApple
+                        ? 'JPEG · PNG · WebP · HEIC · Camera RAW'
+                        : 'JPEG · PNG · WebP · HEIC',
                     style: LumenType.caption().copyWith(color: t.textTertiary),
                   ),
                   const SizedBox(height: Sp.s5),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:logging/logging.dart';
@@ -8,6 +9,7 @@ import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/import/exif_reader.dart';
 import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/photo_decoder.dart';
+import 'package:lumen/import/raw_developer.dart';
 
 final _log = Logger('ImportService');
 
@@ -32,13 +34,18 @@ final class ImportFailed extends ImportResult {
   final String reason;
 }
 
-/// Hash → dedupe → probe → EXIF → store → thumbnail.
+/// Hash → dedupe → (RAW: develop) → probe → EXIF → store → thumbnail.
 class ImportService {
-  ImportService(this._catalog, {DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now;
+  ImportService(
+    this._catalog, {
+    DateTime Function()? clock,
+    RawDeveloper rawDeveloper = const PlatformRawDeveloper(),
+  }) : _clock = clock ?? DateTime.now,
+       _raw = rawDeveloper;
 
   final CatalogRepository _catalog;
   final DateTime Function() _clock;
+  final RawDeveloper _raw;
 
   static const int thumbLongEdge = 384;
 
@@ -58,19 +65,25 @@ class ImportService {
   }
 
   Future<ImportResult> importOne(ImportFile file) async {
-    final format = sniffFormat(file.bytes);
+    final format = sniffFormat(file.bytes, fileName: file.name);
     if (!format.isSupported) {
       return ImportFailed(
         file.name,
-        'Not a supported photo (JPEG, PNG, WebP or HEIC).',
+        'Not a supported photo (JPEG, PNG, WebP, HEIC or camera RAW).',
       );
     }
     final id = assetIdFor(file.bytes);
     final existing = await _catalog.get(id);
     if (existing != null) return Duplicate(file.name, existing);
     try {
-      final size = await probeSize(file.bytes);
-      final exif = await readExifSummary(file.bytes);
+      // RAW keeps its untouched file as the original; everything that reads
+      // pixels (and EXIF) works from the developed rendition instead.
+      final rendition = format.isRaw
+          ? await _raw.develop(file.bytes, extension: format.extension)
+          : null;
+      final pixels = rendition ?? file.bytes;
+      final size = await probeSize(pixels);
+      final exif = await readExifSummary(pixels);
       final entry = CatalogEntry(
         assetId: id,
         fileName: file.name,
@@ -83,9 +96,16 @@ class ImportService {
         exif: exif,
       );
       // Thumbnail first, so the library never shows the entry without one.
-      await _writeThumb(entry, file);
-      final stored = await _catalog.add(entry, file.bytes);
+      await _writeThumb(entry, pixels);
+      final stored = await _catalog.add(
+        entry,
+        file.bytes,
+        rendition: rendition,
+      );
       return Imported(file.name, stored);
+    } on RawDevelopException catch (e) {
+      _log.warning('RAW import of ${file.name} failed: $e');
+      return ImportFailed(file.name, e.message);
     } on DecodeException catch (e) {
       final hint = format == PhotoFormat.heic
           ? ' HEIC needs the system HEIF codec (on Windows: install "HEIF Image Extensions").'
@@ -97,8 +117,8 @@ class ImportService {
     }
   }
 
-  Future<void> _writeThumb(CatalogEntry entry, ImportFile file) async {
-    final img = await decodePhoto(file.bytes, maxLongEdge: thumbLongEdge);
+  Future<void> _writeThumb(CatalogEntry entry, Uint8List pixels) async {
+    final img = await decodePhoto(pixels, maxLongEdge: thumbLongEdge);
     try {
       await _catalog.writeThumb(entry.assetId, await encodePng(img));
     } finally {

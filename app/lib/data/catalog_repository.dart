@@ -25,14 +25,27 @@ abstract interface class CatalogRepository {
 
   /// Adds a new photo with its original bytes. Returns the existing entry if
   /// the asset id is already present (dedupe).
-  Future<CatalogEntry> add(CatalogEntry entry, Uint8List originalBytes);
+  ///
+  /// [rendition] is the developed image of a camera RAW original (encoded,
+  /// engine-decodable); see [readPixelSource].
+  Future<CatalogEntry> add(
+    CatalogEntry entry,
+    Uint8List originalBytes, {
+    Uint8List? rendition,
+  });
 
   Future<void> update(CatalogEntry entry);
 
   /// Removes an entry and its files.
   Future<void> delete(String assetId);
 
+  /// The untouched imported file (for RAW: the RAW itself, which the engine
+  /// codec cannot decode).
   Future<Uint8List> readOriginal(String assetId);
+
+  /// The encoded bytes the pixel pipeline decodes: the developed rendition
+  /// for camera RAW, the original for everything else.
+  Future<Uint8List> readPixelSource(String assetId);
 
   Future<EditDocument> loadEdit(String assetId);
 
