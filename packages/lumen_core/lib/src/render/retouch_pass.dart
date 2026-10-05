@@ -9,7 +9,7 @@
 /// | 2–5 | `uTile` | pass offset x, y in the source; full source w, h |
 /// | 6–9 | `uMapInfo` | map grid W, H, face count (`RetouchMaps.packInfo`), **source is the pass window** (0/1) |
 /// | 10 + 12k | `uFaceInfo{3k}` | teeth cap L, **active**, IOD (map px), lip gloss L |
-/// | 14 + 12k | `uFaceInfo{3k+1}` | lip chroma gain, lip L shift, blush a, blush b |
+/// | 14 + 12k | `uFaceInfo{3k+1}` | lip chroma gain, lip L shift, blush Δa, blush Δb |
 /// | 18 + 12k | `uFaceInfo{3k+2}` | right iris x, y, left iris x, y (map px) |
 /// | 106–109 | `uBackdropInfo0` | backdrop W, H, **active**, τL |
 /// | 110–113 | `uBackdropInfo1` | median backdrop L, a, b, τC |

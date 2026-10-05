@@ -114,3 +114,55 @@ The one-click (and on-import) edit was rebuilt on how professionals work (resear
 - **Info panel:** "Bit depth" (from the file header, recorded at import as `CatalogEntry.bitDepth`; a RAW that does not declare it shows "RAW") and "Editing: 32-bit float" / "8-bit".
 - **Tests:** CPU twins in `lumen_core` (`float_develop_test.dart`), GPU-vs-CPU parity and windowed export (`app/test/engine/float_*_test.dart`: run with `flutter test --enable-impeller`; skipped, not failed, under default headless Skia), on device `integration_test/float_engine_on_device_test.dart` and `integration_test/float_raw_test.dart` (real RAW with `--dart-define=LUMEN_RAW_SAMPLE=…`).
 - **Limits:** Apple ProRAW gets float precision but no extra headroom; healed pixels and retouch maps are 8-bit; output files are 8-bit; iOS not built or run yet.
+
+## Retouch engine v2 (2026-10-04)
+
+Rebuilt to `docs/research/09-pro-editing-workflows.md` §3–§5 after the diagnosis in `docs/research/10-auto-diagnosis.md`. The architecture is unchanged (per-photo maps built once off the UI thread, pass R in source space, slider drags are uniform-only, CPU twin with parity tests). What the maps hold and what the pass does are new.
+
+### Design
+- **The pass is a sum.** `out = src + Σ slider · mask · Δ`. Every skin slider has a precomputed OkLab delta (its change at 100) in a signed 8-bit atlas: Smooth, Shine, heal, dark circles, eye bags, Even tone, iris, veins (`RetouchDelta`, `retouch_maps.dart`). The shader (`retouch.frag`) and its CPU twin (`retouch_kernel.dart`) only add them. The deltas are built from the bands above the pore band, so **no slider value can attenuate pores**, and they are smooth, so preview and export sample the same field.
+- **Skin masks are decided by the pixels** (`skin_mask.dart`). The 478-point mesh is a loose prior only: on turned or tilted heads it sits several millimetres off. A pixel is skin when its colour fits this face's own skin (robust per-face fit, any tone), it is not clearly darker than the skin around it (hair, brows, lashes, nostrils), it is not hair-textured, and it is connected to the middle of the face. The effect mask is eroded, then feathered with a guided filter. Toward the hairline the lightness reference is carried outward from the inner face, so dark hair next to deep skin of the same hue is still rejected.
+- **Bands** (`band_split.dart`): five components by difference of low-passes at σ = 0.006 / 0.020 / 0.065 / 0.22 IOD. The two widest are masked (normalised) blurs over skin, which removes halos at the hairline, jaw and nostrils. Amplitude selectivity per band keeps strong structure (creases, shadows).
+- **Smooth** (`skin_deltas.dart`): at 100 removes at most 30 % of B1, 75 % of B2, 40 % of B3 (lightness), scaled by region (nose 0.6, upper lip 0.5, chin 0.8, under-eye 0.7), by hair texture and by face size. The slider is `(v/100)^1.2`.
+- **Shine** (`shine_model.dart`): the specular layer is separated with the dichromatic model (`I = d·skin + m·light`, light colour fitted per face) and removed up to 75 % at 100, never below the surrounding skin, with the colour underneath pulled to the skin around it. Clipped cores are still filled by push-pull (from Shine 20 on).
+- **Even tone**: chroma only, excursions from the local skin colour (red 75 %, other 50 %, cheek blush guarded), mean face colour preserved. **Under-eye**: lift toward the cheek below the zone with its colour (70 % / 60 % on light skin, 55 % / 70 % on dark skin), crease kept, only on skin-like pixels.
+- **Eyes, teeth**: limits of 09 §4.9 (iris +15 % chroma, sclera a −50 % b −40 % near the iris only, teeth b −60 % and never above `min(sclera P90, 0.92)`). Closed or squinting eyes get no eye work.
+- **Blemishes** (`blemish_detect.dart`): 3 σ floor plus absolute contrast, on the skin core only, never inside a highlight; red spots heal, dark marks need more evidence and heal from slider 30, moles and freckles are kept, at most 40 heals per face. The keep / remove spot model is unchanged.
+- **Auto Retouch** (`auto/retouch_needs.dart`, `PortraitPresets.valuesFor`): values = measured need × the top of each range, 0 when nothing is needed. Iris is never automatic. Small faces are gated in the maps (Smooth off below 32 px of IOD, colour work off below 20 px).
+
+### Deviations from research 09
+- One slider value per group, set from the **neediest** face, instead of one value per face: effects are proportional to what they correct (band amplitude, specular amount, colour excursion), so faces that need less change less, and the All tab keeps working as a master.
+- Shine uses the dichromatic split instead of an L / chroma pull, and one cap (75 %) for every tone instead of 60 % / 40 %: with the colour restored the dark-skin result is not ashy (see the metrics), and 40 % left the primary test photo visibly shiny.
+- No demographic or make-up classifiers, no smile detection, no verify-and-retry loop. Wrinkle softening has one ceiling (65 %) instead of a per-zone table.
+- Skin outside the face oval (neck, ears, hands) is not retouched: without a segmentation model there is no safe way to find it.
+- The Smooth need reads the working band (B2) only; the constants of §4.4 were recalibrated on the synthetic set and the real photo.
+
+### Evaluation
+`packages/lumen_core/test/retouch/retouch_quality_test.dart` runs the §5.2 metrics on synthetic faces of light, medium and deep skin with specular highlights, make-up shimmer, pimples, a mole and continuous unevenness (generator: `test/retouch/support/synthetic_portrait.dart`, metrics incl. CIEDE2000: `support/quality_metrics.dart`). Results (all sliders at 100 / Auto):
+
+| Metric | Gate | Light | Medium | Deep |
+|---|---|---|---|---|
+| Pore-band retention TR0 (100 / Auto) | ≥ 0.85 / ≥ 0.92 | 0.978 / 0.994 | 0.980 / 0.993 | 0.980 / 0.993 |
+| Mid-band reduction (100 / Auto) | ≤ 0.78 | 0.40 / 0.12 | 0.55 / 0.24 | 0.64 / 0.40 |
+| ΔE00 of mean skin colour, Smooth + Even at 100 | ≤ 1.0 | 0.07 | 0.02 | 0.11 |
+| ΔE00 of mean skin colour, everything at 100 | ≤ 3.0 | 0.25 | 0.94 | 2.66 |
+| Mean skin ΔL (Smooth + Even) | −0.005…+0.003 | −0.0006 | +0.0002 | +0.0016 |
+| Halo: hair ring outside the hairline | ≤ 0.3 L* | 0.000 | 0.000 | 0.000 |
+| Halo: skin edge vs skin inside | ≤ 1.0 L* | 0.19 | 0.04 | 0.18 |
+| Shine: hot-spot excess removed at 100 | 30–85 % | 51 % | 69 % | 67 % |
+| Shine: hue of the spot vs matte skin | ≤ 6° | 0.3° | 0.0° | 0.8° |
+| Blemish precision / recall (4 pimples, 1 mole) | ≥ 0.9 / ≥ 0.75 | 1.0 / 1.0 | 1.0 / 1.0 | 1.0 / 1.0 |
+| Clean skin, sliders at 60: mean ΔE00 | ≤ 0.3 | 0.012 | 0.020 | 0.004 |
+
+The mean-colour limit of 2.0 in 09 §4.13 holds for everything except Shine at 100 on deep skin with large highlights (2.66): taking a hot patch down is a change of the mean by design.
+
+Real photo (the user's Canon R5 RAW, two deep-skin faces, make-up, forehead and nose shine; not in the repo): `integration_test` on the real GPU confirmed the retouch is drawn on the first settled frame, Auto Retouch after Reset all sets values, 7 spot candidates instead of 101 (none healed by Auto), forehead highlight L 0.835 → 0.754 on Auto and 0.718 at Shine 100 with chroma moving toward the skin, lashes / brows / lips / hair / earrings unchanged, export at 5464×8192 matching the preview (mean abs difference 1.4 / 255 after JPEG and resampling).
+
+### Performance
+Real photo, 2 faces, maps 1366×2048: map build 0.85 s (AOT, one isolate; 0.9 s in a debug build). A portrait slider change re-records pass R + develop in 1–2 ms on the UI thread; new maps upload in about 35 ms. CPU twin over the 2560 px preview: 37 ms.
+
+### Limits
+- Analysis runs on the 2560 px decode, so on a 45 MP file a face that is 15 % of the frame is analysed at about 70 px of IOD: bands finer than about 0.03 IOD and blemishes under about 8 full-resolution pixels are not seen (they are left untouched, never blurred). Analysing each face from a full-resolution crop would lift this.
+- Tuned by eye on one real portrait (deep skin). Light and medium skin are covered by the synthetic set and the drawn sample only.
+- Hair, beard and glasses are rejected by colour, darkness and texture, not by a parser: blond or grey hair close to the skin's colour and lightness can still be taken for skin (effects there are small: bands of hair are high-amplitude and kept).
+- A dedicated face-parsing model would remove most of the mask heuristics (see the engine report).
