@@ -469,7 +469,12 @@ cached float intermediates 228 MB + 8-bit output 15 MB ≈ 300 MB GPU, plus the
   scales the target down, `snapshot_controller_impeller.cc:31-48`).
 - Wide-gamut output to the display (the final image here is 8-bit sRGB).
 
-## Spike files to remove later
+## Spike files (removed)
+
+Removed when the float path landed (`docs/HIGH_BIT_DEPTH.md`); the float
+suites in `app/test/engine/float_path_test.dart` and
+`app/integration_test/float_engine_on_device_test.dart` now cover what the
+spike measured.
 
 - `app/shaders/spike_passthrough.frag`
 - its line in `app/pubspec.yaml` under `flutter: shaders:`
