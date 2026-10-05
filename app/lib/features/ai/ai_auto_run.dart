@@ -4,6 +4,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'package:lumen/ai/ai_providers.dart';
 import 'package:lumen/ai/auto_edit_service.dart';
 import 'package:lumen/app/providers.dart';
+import 'package:lumen/features/ai/auto_faces.dart';
 import 'package:lumen/features/ai/auto_retouch.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_session.dart';
@@ -20,8 +21,11 @@ Future<AiRunResult?> runAiAuto(
   final ctl = ref.read(editorProvider(id).notifier);
   final state = ref.read(editorProvider(id)).value;
   if (state == null) return null;
-  final base = await session.aiContext(state);
-  if (base == null) return null;
+  final photo = await session.aiContext(state);
+  if (photo == null) return null;
+  // Faces anchor exposure and white balance on skin (local cache only).
+  final faces = ref.read(autoEnhanceFacesProvider);
+  final base = photo.copyWith(faces: () => faces(id));
   final retouchFaces =
       ref.read(settingsProvider).value?.retouchFacesAutomatically ?? true;
   final planner = ref.read(autoRetouchPlannerProvider);

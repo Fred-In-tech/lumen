@@ -26,6 +26,7 @@ class AiPhotoContext {
     this.visionJpeg,
     this.cachedStats,
     this.retouch,
+    this.faces,
   });
 
   /// 512 px unedited analysis proxy.
@@ -42,16 +43,24 @@ class AiPhotoContext {
   /// starts with the colour edit and both land as one AI step.
   final Future<RetouchPlan> Function()? retouch;
 
-  AiPhotoContext copyWith({Future<RetouchPlan> Function()? retouch}) =>
-      AiPhotoContext(
-        proxy: proxy,
-        current: current,
-        exif: exif,
-        locked: locked,
-        visionJpeg: visionJpeg,
-        cachedStats: cachedStats,
-        retouch: retouch ?? this.retouch,
-      );
+  /// Loads the photo's face boxes (normalised to the unedited frame) for
+  /// the local engine's face-aware exposure and white balance. Null or
+  /// empty: the edit is solved from the whole frame.
+  final Future<List<FaceBox>> Function()? faces;
+
+  AiPhotoContext copyWith({
+    Future<RetouchPlan> Function()? retouch,
+    Future<List<FaceBox>> Function()? faces,
+  }) => AiPhotoContext(
+    proxy: proxy,
+    current: current,
+    exif: exif,
+    locked: locked,
+    visionJpeg: visionJpeg,
+    cachedStats: cachedStats,
+    retouch: retouch ?? this.retouch,
+    faces: faces ?? this.faces,
+  );
 }
 
 /// Final AI result plus the record that powers Explain and AI Amount.
@@ -104,6 +113,7 @@ class AutoEditService {
   }) async {
     // Faces are measured while the colour edit runs (never throws).
     final retouchPlan = _awaitPlan(ctx.retouch?.call());
+    final faceBoxes = _awaitFaces(ctx.faces?.call());
     final stats = ctx.cachedStats ?? await computeStats(ctx.proxy);
     final input = AutoEditInput(
       stats: stats,
@@ -112,6 +122,7 @@ class AutoEditService {
       current: ctx.current,
       locked: ctx.locked,
       proxy: ctx.proxy,
+      faces: await faceBoxes,
     );
     final engine = local;
     final localOutcome = isolateLocal
@@ -177,6 +188,17 @@ class AutoEditService {
           '${portrait != null ? ' + Retouch' : ''}',
       note: retouch?.note,
     );
+  }
+
+  /// Face boxes, or none when they cannot be had (never throws).
+  static Future<List<FaceBox>> _awaitFaces(Future<List<FaceBox>>? faces) async {
+    if (faces == null) return const [];
+    try {
+      return await faces;
+    } on Exception catch (e) {
+      _log.warning('faces unavailable, enhancing from the whole frame: $e');
+      return const [];
+    }
   }
 
   static Future<RetouchPlan?> _awaitPlan(Future<RetouchPlan>? plan) async {

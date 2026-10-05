@@ -14,6 +14,7 @@ import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/export/export_service.dart'
     show loadAiMaskRasters;
+import 'package:lumen/features/ai/auto_faces.dart';
 import 'package:lumen/features/ai/auto_retouch.dart';
 import 'package:lumen/features/export/source_render.dart';
 import 'package:lumen/features/library/library_tile.dart';
@@ -77,6 +78,8 @@ final batchProvider = NotifierProvider<BatchNotifier, BatchProgress?>(
 ///
 /// Heal ops are drawn into the analysis proxy and the thumbnail (from
 /// [patches]), so removed objects neither steer the edit nor reappear.
+/// With [faceBoxes], exposure and white balance are anchored on the skin of
+/// the photo's faces (boxes from the local face cache).
 /// With [retouchPlanner], faces also get need-scaled Auto Retouch in the
 /// same AI history entry; a photo whose faces cannot be analyzed keeps its
 /// colour edit and reports [onNote] (non-fatal).
@@ -89,6 +92,7 @@ Future<bool> autoEditStoredAsset({
   AiMaskRasterLoader? maskLoader,
   RetouchLoader? retouch,
   AutoRetouchPlanner? retouchPlanner,
+  FaceBoxLoader? faceBoxes,
   ValueChanged<String>? onNote,
 }) async {
   try {
@@ -113,6 +117,7 @@ Future<bool> autoEditStoredAsset({
         retouch: retouchPlanner == null
             ? null
             : () => retouchPlanner.plan(assetId, doc),
+        faces: faceBoxes == null ? null : () => faceBoxes(assetId),
       ),
       style: style,
     );
@@ -186,6 +191,7 @@ Future<(int, int)> batchAutoEdit(
       ref.read(settingsProvider).value?.retouchFacesAutomatically ??
       true;
   final planner = faces ? ref.read(autoRetouchPlannerProvider) : null;
+  final faceBoxes = ref.read(autoEnhanceFacesProvider);
   final batch = ref.read(batchProvider.notifier)
     ..start(faces ? 'Editing + retouching' : 'Auto-editing', assetIds.length);
   final busy = ref.read(busyAssetsProvider.notifier)..add(assetIds);
@@ -202,6 +208,7 @@ Future<(int, int)> batchAutoEdit(
         maskLoader: maskLoader,
         retouch: retouch,
         retouchPlanner: planner,
+        faceBoxes: faceBoxes,
         onNote: onNote == null ? null : (note) => onNote(id, note),
       );
       success ? ok++ : failed++;
