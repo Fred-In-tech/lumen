@@ -8,6 +8,7 @@ import '../model/mask.dart';
 import '../model/param_registry.dart';
 import '../model/treatment.dart';
 import 'engine_constants.dart';
+import 'float_buffer.dart';
 
 /// Per-render context for [DevelopUniforms.pack] (sizes and analysis data).
 class DevelopContext {
@@ -29,6 +30,11 @@ class DevelopContext {
     this.warpWidth = 1,
     this.warpHeight = 1,
     this.warpRange = 0,
+    this.profile = HbdProfile.none,
+    this.windowX = 0,
+    this.windowY = 0,
+    this._windowWidth,
+    this._windowHeight,
   });
 
   /// Size of the image this pass renders (a tile during export).
@@ -64,6 +70,21 @@ class DevelopContext {
   final int warpWidth;
   final int warpHeight;
   final double warpRange;
+
+  /// Float-source rendering profile (shoulder, extra highlight range);
+  /// [HbdProfile.none] for 8-bit sources.
+  final HbdProfile profile;
+
+  /// The part of the [sourceWidth]×[sourceHeight] source the bound source
+  /// texture holds (export windows of the float path), in source pixels.
+  /// Default: the whole source. Aux maps, masks and the warp field always
+  /// cover the whole source.
+  final int windowX;
+  final int windowY;
+  final int? _windowWidth;
+  final int? _windowHeight;
+  int get windowWidth => _windowWidth ?? sourceWidth;
+  int get windowHeight => _windowHeight ?? sourceHeight;
 }
 
 /// One uniform of `develop.frag`, in declaration order.
@@ -103,6 +124,17 @@ abstract final class DevelopIndex {
 
   /// `vec4 uWarpInfo`: warp grid w, h, range (uv), enabled (0/1).
   static const warpInfo = 194;
+
+  /// `vec4 uSrcWin`: source window origin (source uv) and 1 / its size
+  /// (source uv): texture uv = (source uv − origin) × inverse size.
+  /// Identity 0, 0, 1, 1 when the texture holds the whole source.
+  static const srcWin = 198;
+
+  /// `uGradeParams.z`: highlight shoulder knee of a float source (0 = off).
+  static const shoulderKnee = gradeParams + 2;
+
+  /// `uGradeParams.w`: extra Highlights EV per stop above white (0 = off).
+  static const highlightGain = gradeParams + 3;
 }
 
 /// Packs [DevelopSettings] into the `develop.frag` float uniforms.
@@ -142,6 +174,7 @@ abstract final class DevelopUniforms {
       (name: 'uMask${i}C', index: 106 + 12 * i, length: 4),
     ],
     (name: 'uWarpInfo', index: 194, length: 4),
+    (name: 'uSrcWin', index: 198, length: 4),
   ]);
 
   static Float32List pack(DevelopSettings s, DevelopContext ctx) {
@@ -236,8 +269,8 @@ abstract final class DevelopUniforms {
     put(DevelopIndex.gradeParams, [
       n(P.gradeBlending),
       n(P.gradeBalance),
-      0,
-      0,
+      ctx.profile.shoulderKnee,
+      ctx.profile.highlightGain,
     ]);
     put(DevelopIndex.vignette, [
       n(P.vignetteAmount),
@@ -256,7 +289,11 @@ abstract final class DevelopUniforms {
       ..[DevelopIndex.warpInfo] = ctx.warpWidth.toDouble()
       ..[DevelopIndex.warpInfo + 1] = ctx.warpHeight.toDouble()
       ..[DevelopIndex.warpInfo + 2] = ctx.warpRange
-      ..[DevelopIndex.warpInfo + 3] = ctx.warpRange > 0 ? 1 : 0;
+      ..[DevelopIndex.warpInfo + 3] = ctx.warpRange > 0 ? 1 : 0
+      ..[DevelopIndex.srcWin] = ctx.windowX / ctx.sourceWidth
+      ..[DevelopIndex.srcWin + 1] = ctx.windowY / ctx.sourceHeight
+      ..[DevelopIndex.srcWin + 2] = ctx.sourceWidth / ctx.windowWidth
+      ..[DevelopIndex.srcWin + 3] = ctx.sourceHeight / ctx.windowHeight;
     return f;
   }
 

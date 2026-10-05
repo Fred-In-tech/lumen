@@ -166,6 +166,20 @@ void main() {
     );
     expect(f.length, kBackdropFloatCount);
     expect(f.sublist(0, 6), [10, 20, 0, 0, 10, 20]);
+    expect(f[16], 0);
+    final window = BackdropUniforms.pack(
+      BackdropAssets.build(base, b),
+      b,
+      width: 10,
+      height: 20,
+      tileX: 4,
+      tileY: 6,
+      fullWidth: 100,
+      fullHeight: 80,
+      sourceIsWindow: true,
+    );
+    expect(window.sublist(2, 6), [4, 6, 100, 80]);
+    expect(window[16], 1); // uPlateB.z: the source is the pass window
   });
 }
 

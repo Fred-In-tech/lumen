@@ -158,6 +158,26 @@ void main() {
     });
   });
 
+  test('sourceIsWindow sets uMapInfo.w (float export windows)', () {
+    const u = RetouchUniforms([FaceRetouchParams(smooth: 0.5)]);
+    final whole = RetouchPassUniforms.pack(_maps(), u, width: 8, height: 8);
+    final window = RetouchPassUniforms.pack(
+      _maps(),
+      u,
+      width: 8,
+      height: 8,
+      tileX: 16,
+      tileY: 24,
+      fullWidth: 100,
+      fullHeight: 50,
+      sourceIsWindow: true,
+    );
+    expect(RetouchPassIndex.sourceIsWindow, 9);
+    expect(whole[9], 0);
+    expect(window[9], 1);
+    expect(window.sublist(2, 6), [16, 24, 100, 50]);
+  });
+
   test('a non-identity row without maps is inactive', () {
     const u = RetouchUniforms([
       FaceRetouchParams.identity,

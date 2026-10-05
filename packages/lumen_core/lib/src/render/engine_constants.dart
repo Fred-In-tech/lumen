@@ -12,8 +12,13 @@ const String kEngineVersion = 'lumen-1';
 // ---- Layout -----------------------------------------------------------------
 
 /// Number of floats in `develop.frag` uniforms (PLAN.md §1.6 table + mask
-/// grid vec4 + 8 masks × 3 vec4 + `uWarpInfo`).
-const int kDevelopFloatCount = 198;
+/// grid vec4 + 8 masks × 3 vec4 + `uWarpInfo` + `uSrcWin`).
+const int kDevelopFloatCount = 202;
+
+/// Stops above display white the guided base can represent
+/// (`normalizedLogLuma` tops out at 4× white) and the Highlights slider of
+/// a float source with headroom acts on (`HbdProfile.highlightGain`).
+const double kHbdMaxStops = 2;
 
 /// Number of floats in `finish.frag` uniforms.
 const int kFinishFloatCount = 18;

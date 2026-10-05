@@ -10,7 +10,7 @@ precision highp float;
 uniform vec2 uSize;  // 0-1 image size (px)
 uniform vec4 uNr;    // 2-5 luminance 0-1, color 0-1, 0, 0
 
-uniform sampler2D uImage;  // sRGB source (FilterQuality.none)
+uniform sampler2D uImage;  // sRGB source, 8-bit or float (FilterQuality.none)
 
 out vec4 fragColor;
 
@@ -38,5 +38,7 @@ void main() {
   }
   float y = uNr.x > 0.0 ? mix(y0, ySum / yW, min(1.0, uNr.x * 2.0)) : y0;
   vec3 chroma = mix(c0 - y0, cSum / cW, uNr.y);
-  fragColor = vec4(clamp(vec3(y) + chroma, 0.0, 1.0), 1.0);
+  // No clamp: a float target keeps highlights above white (an 8-bit target
+  // clamps on store, exactly as the explicit clamp did).
+  fragColor = vec4(vec3(y) + chroma, 1.0);
 }

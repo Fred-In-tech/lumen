@@ -14,9 +14,9 @@ const _ctx = DevelopContext(
 
 void main() {
   group('DevelopUniforms', () {
-    test('packs exactly kDevelopFloatCount (198) floats', () {
-      expect(kDevelopFloatCount, 198);
-      expect(DevelopUniforms.pack(DevelopSettings.defaults, _ctx).length, 198);
+    test('packs exactly kDevelopFloatCount (202) floats', () {
+      expect(kDevelopFloatCount, 202);
+      expect(DevelopUniforms.pack(DevelopSettings.defaults, _ctx).length, 202);
     });
 
     test('index table matches PLAN.md §1.6 and is contiguous', () {
@@ -52,6 +52,7 @@ void main() {
           'uMask${i}C': (106 + 12 * i, 4),
         },
         'uWarpInfo': (194, 4),
+        'uSrcWin': (198, 4),
       };
       var next = 0;
       for (final u in DevelopUniforms.table) {
@@ -84,6 +85,7 @@ void main() {
       expect(f.sublist(94, 98), [1, 1, 0, 0]);
       expect(f.sublist(98, 194).every((v) => v == 0), isTrue);
       expect(f.sublist(194, 198), [1, 1, 0, 0]); // no warp
+      expect(f.sublist(198, 202), [0, 0, 1, 1]); // whole source
     });
 
     test('maps slider units to shader units', () {

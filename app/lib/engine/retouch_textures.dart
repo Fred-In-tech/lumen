@@ -14,10 +14,12 @@
 ///   pass R over the whole [source] in tiles (one pass when it fits),
 ///   returning a new source-size image (caller owns), or null when the
 ///   uniforms change no pixel (`RetouchPassUniforms.isActive`): the caller
-///   keeps using the source, bit-exact.
+///   keeps using the source, bit-exact. `float: true` renders into a
+///   float32 image (float sources); `window:` says [source] is a window of
+///   the full source (float export): one pass over the window, maps sampled
+///   at the full-source uv.
 library;
 
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -159,10 +161,33 @@ ui.Image? runRetouchPass(
   required RetouchTextures textures,
   required RetouchUniforms uniforms,
   int tileSize = 4096,
+  bool float = false,
+  SourceWindow? window,
 }) {
   final maps = textures.maps;
   if (!RetouchPassUniforms.isActive(maps, uniforms)) return null;
   final w = source.width, h = source.height;
+  if (window != null) {
+    return runRetouch(
+      shaders,
+      floats: RetouchPassUniforms.pack(
+        maps,
+        uniforms,
+        width: w,
+        height: h,
+        tileX: window.x.toDouble(),
+        tileY: window.y.toDouble(),
+        fullWidth: window.fullWidth.toDouble(),
+        fullHeight: window.fullHeight.toDouble(),
+        sourceIsWindow: true,
+      ),
+      source: source,
+      maps: textures.images,
+      width: w,
+      height: h,
+      float: float,
+    );
+  }
   ui.Image tile(int x0, int y0, int tw, int th) => runRetouch(
     shaders,
     floats: RetouchPassUniforms.pack(
@@ -179,28 +204,8 @@ ui.Image? runRetouchPass(
     maps: textures.images,
     width: tw,
     height: th,
+    float: float,
   );
-  if (w <= tileSize && h <= tileSize) return tile(0, 0, w, h);
   // Tiles are composed 1:1 into one source-size image (exact copies).
-  final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
-  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
-  final parts = <ui.Image>[];
-  for (var y0 = 0; y0 < h; y0 += tileSize) {
-    for (var x0 = 0; x0 < w; x0 += tileSize) {
-      final part = tile(
-        x0,
-        y0,
-        math.min(tileSize, w - x0),
-        math.min(tileSize, h - y0),
-      );
-      parts.add(part);
-      canvas.drawImage(part, ui.Offset(x0.toDouble(), y0.toDouble()), paint);
-    }
-  }
-  final picture = recorder.endRecording();
-  final out = EngineImages.track(picture.toImageSync(w, h));
-  picture.dispose();
-  parts.forEach(EngineImages.dispose);
-  return out;
+  return renderTiled(w, h, tileSize, tile, float: float);
 }

@@ -29,6 +29,15 @@
 ///   over the full-res source in tiles after R; develop then uses the
 ///   composite's aux maps when it needs spatial maps.
 /// * Encode the result with `encodeImage(EncodeRequest(...))`.
+/// * Float sources (docs/HIGH_BIT_DEPTH.md): `renderFloat({source, aux,
+///   settings, ...})` exports a `FloatSource` without ever holding the
+///   whole photo in float on the GPU. For each output tile it asks the
+///   source for the window that tile samples (`sourceWindowFor`: crop,
+///   rotation, warp range, filter halos), uploads it as float32, runs heal
+///   overlay → denoise → retouch → backdrop on the window and develops the
+///   tile from it (`uSrcWin`). `floatSourceSize` is the size the source is
+///   rendered at (its "virtual" full size); `FloatExportStats` reports the
+///   windows and the estimated peak GPU memory.
 library;
 
 import 'dart:math' as math;
@@ -40,6 +49,8 @@ import 'package:lumen_core/lumen_core.dart';
 
 import 'aux_cache.dart';
 import 'backdrop_stage.dart';
+import 'backdrop_textures.dart';
+import 'float_source.dart';
 import 'gpu_pass.dart';
 import 'lut_texture.dart';
 import 'mask_atlas_cache.dart';
@@ -76,10 +87,89 @@ class ExportPixels {
   final Uint8List rgba;
 }
 
+/// What a windowed float export used (reported once, at the end).
+class FloatExportStats {
+  const FloatExportStats({
+    required this.sourceWidth,
+    required this.sourceHeight,
+    required this.tileSize,
+    required this.tiles,
+    required this.largestWindow,
+    required this.peakGpuBytes,
+    required this.decodeMs,
+    required this.renderMs,
+  });
+
+  /// Size the float source was rendered at (see
+  /// [ExportRenderer.floatSourceSize]).
+  final int sourceWidth;
+  final int sourceHeight;
+  final int tileSize;
+  final int tiles;
+
+  /// Pixels of the largest source window.
+  final int largestWindow;
+
+  /// Estimated peak GPU memory of one tile: live float32 images (16 B/px
+  /// plus the mip chain the engine always allocates) and the 8-bit tile
+  /// targets. Computed, not read from the GPU.
+  final int peakGpuBytes;
+
+  /// Time spent in the source decoder and in upload + passes + readback.
+  final int decodeMs;
+  final int renderMs;
+
+  @override
+  String toString() =>
+      'FloatExportStats(source ${sourceWidth}x$sourceHeight, $tiles tiles of '
+      '$tileSize, largest window ${(largestWindow / 1e6).toStringAsFixed(1)} '
+      'MP, peak GPU ~${(peakGpuBytes / (1 << 20)).round()} MB, decode '
+      '$decodeMs ms, render $renderMs ms)';
+}
+
+/// Bytes of a float32 image on the GPU: 16 B/px plus the full mip chain
+/// every `toImageSync` float target gets (research 08 §3).
+int floatImageBytes(int pixels) => pixels * 16 * 4 ~/ 3;
+
 class ExportRenderer {
   const ExportRenderer(this.shaders);
 
   final ShaderLibrary shaders;
+
+  /// Pixels around a source window that the passes may read beyond what
+  /// the tile maps to: bilinear (1) + texture 3×3 (1) + denoise 5×5 (2),
+  /// with slack.
+  static const int kWindowMargin = 6;
+
+  /// Largest source window (pixels) of a float export; tiles shrink until
+  /// their windows fit (a float32 window of this size is 256 MB plus mips).
+  static const int kMaxWindowPixels = 16 * 1024 * 1024;
+
+  /// The size a float source is rendered at for an export of [fullWidth]×
+  /// [fullHeight] with [geometry]: the full size, capped at [maxLongEdge],
+  /// scaled down so the output long edge is [longEdge] (never up). The
+  /// source and the output then have the same pixel density, so a tile's
+  /// window is about as large as the tile.
+  static ({int width, int height}) floatSourceSize(
+    int fullWidth,
+    int fullHeight,
+    Geometry geometry, {
+    int? longEdge,
+    int maxLongEdge = kMaxExportEdge,
+  }) {
+    final le = math.max(fullWidth, fullHeight);
+    final cap = le > maxLongEdge ? maxLongEdge / le : 1.0;
+    final cw = math.max(1, (fullWidth * cap).round());
+    final ch = math.max(1, (fullHeight * cap).round());
+    final out = outputSizeFor(cw, ch, geometry);
+    final ole = math.max(out.width, out.height);
+    if (longEdge == null || longEdge >= ole) return (width: cw, height: ch);
+    final s = longEdge / ole;
+    return (
+      width: math.max(1, (cw * s).round()),
+      height: math.max(1, (ch * s).round()),
+    );
+  }
 
   static Future<ui.Image> decodeOriginal(
     Uint8List bytes, {
@@ -285,6 +375,389 @@ class ExportRenderer {
       if (!identical(ax, aux)) ax.dispose();
     }
     return ExportPixels(size.width, size.height, frame);
+  }
+
+  /// Windowed export of a float [source]; see the library doc. [aux] are
+  /// the photo's float aux maps (resolution independent). [healOverlay] is
+  /// the premultiplied heal overlay at exactly [floatSourceSize] (from
+  /// `composeHealOverlay`), null without heals. Everything else as in
+  /// [render]. Throws [FloatSourceException] when the source cannot be
+  /// decoded.
+  Future<ExportPixels> renderFloat({
+    required FloatSource source,
+    required AuxTextures aux,
+    required DevelopSettings settings,
+    String assetId = '',
+    int? longEdge,
+    int tileSize = 2048,
+    int maxLongEdge = kMaxExportEdge,
+    void Function(double progress)? onProgress,
+    CancelToken? cancel,
+    MaskAtlasTextures? masks,
+    Map<String, MaskRaster> maskRasters = const {},
+    FaceAnalysis? faceAnalysis,
+    RetouchMaps? retouchMaps,
+    RetouchTextures? retouchTextures,
+    WarpField? warp,
+    BackdropAssets? backdropAssets,
+    RgbaBuffer? healOverlay,
+    void Function(FloatExportStats stats)? onStats,
+  }) async {
+    final virt = floatSourceSize(
+      source.width,
+      source.height,
+      settings.geometry,
+      longEdge: longEdge,
+      maxLongEdge: maxLongEdge,
+    );
+    if (healOverlay != null &&
+        (healOverlay.width != virt.width ||
+            healOverlay.height != virt.height)) {
+      throw ArgumentError('heal overlay must be ${virt.width}x${virt.height}');
+    }
+    final size = outputSizeFor(virt.width, virt.height, settings.geometry);
+    final le = math.max(source.width, source.height);
+    final capped = le > maxLongEdge ? maxLongEdge / le : 1.0;
+    final full = outputSizeFor(
+      math.max(1, (source.width * capped).round()),
+      math.max(1, (source.height * capped).round()),
+      settings.geometry,
+    );
+    final finish = !FinishUniforms.isIdentity(settings);
+    final apron = finish ? 4 : 0;
+    final ownMasks = masks == null;
+    final atlases =
+        masks ??
+        await MaskAtlasTextures.upload(
+          MaskRasterizer.build(
+            settings.masks,
+            virt.width,
+            virt.height,
+            rasters: maskRasters,
+          ),
+        );
+    final field =
+        warp ??
+        (hasWarpEdits(settings, faceAnalysis)
+            ? await compute(
+                buildWarpField,
+                WarpRequest.fromSettings(
+                  settings,
+                  faceAnalysis,
+                  sourceWidth: virt.width,
+                  sourceHeight: virt.height,
+                ),
+              )
+            : null);
+    final warpTex = field == null || field.isIdentity
+        ? null
+        : await WarpTexture.upload(field);
+    final lut = await LutTexture.upload(ToneLut.bake(settings));
+    final maps = retouchTextures?.maps ?? retouchMaps;
+    final ru = faceAnalysis == null
+        ? null
+        : RetouchUniforms.fromSettings(settings.portrait, faceAnalysis);
+    RetouchTextures? retouch;
+    BackdropTextures? swap;
+    AuxTextures? swapAux;
+    final b = settings.backdrop;
+    try {
+      if (ru != null &&
+          maps != null &&
+          RetouchPassUniforms.isActive(maps, ru)) {
+        retouch = retouchTextures ?? await RetouchTextures.upload(maps);
+      }
+      if (backdropAssets != null && backdropAssets.canRender(b)) {
+        swap = await BackdropTextures.upload(backdropAssets);
+        if (needsAuxMaps(settings)) {
+          swapAux = await backdropAuxTextures(backdropAssets, b);
+        }
+      }
+    } on Object {
+      lut.dispose();
+      warpTex?.dispose();
+      if (ownMasks) atlases.dispose();
+      if (!identical(retouch, retouchTextures)) retouch?.dispose();
+      swap?.dispose();
+      rethrow;
+    }
+    final ax = swapAux ?? aux;
+    final denoise = !DenoiseUniforms.isIdentity(settings);
+
+    DevelopContext context(
+      ({int x, int y, int x1, int y1}) r, [
+      ({int x, int y, int width, int height})? window,
+    ]) => DevelopContext(
+      outWidth: r.x1 - r.x,
+      outHeight: r.y1 - r.y,
+      tileX: r.x.toDouble(),
+      tileY: r.y.toDouble(),
+      fullWidth: size.width.toDouble(),
+      fullHeight: size.height.toDouble(),
+      sourceWidth: virt.width,
+      sourceHeight: virt.height,
+      auxWidth: ax.width,
+      auxHeight: ax.height,
+      airlight: ax.maps.airlight,
+      maskWidth: atlases.width,
+      maskHeight: atlases.height,
+      warpWidth: warpTex?.field.width ?? 1,
+      warpHeight: warpTex?.field.height ?? 1,
+      warpRange: warpTex?.field.range ?? 0,
+      profile: source.profile,
+      windowX: window?.x ?? 0,
+      windowY: window?.y ?? 0,
+      windowWidth: window?.width,
+      windowHeight: window?.height,
+    );
+
+    // A tile's render rectangle: the tile plus the finish apron, clipped.
+    ({int x, int y, int x1, int y1}) rectOf(int x0, int y0, int ts) => (
+      x: math.max(0, x0 - apron),
+      y: math.max(0, y0 - apron),
+      x1: math.min(size.width, x0 + ts + apron),
+      y1: math.min(size.height, y0 + ts + apron),
+    );
+
+    ({int x, int y, int width, int height}) windowOf(
+      ({int x, int y, int x1, int y1}) r,
+    ) => sourceWindowFor(
+      DevelopUniforms.pack(settings, context(r)),
+      x0: r.x.toDouble(),
+      y0: r.y.toDouble(),
+      x1: r.x1.toDouble(),
+      y1: r.y1.toDouble(),
+      margin: kWindowMargin,
+    );
+
+    // Shrink the tiles until every source window fits the budget (strong
+    // rotations and large warp ranges widen the windows).
+    var ts = tileSize;
+    int largest(int t) {
+      var worst = 0;
+      for (var y0 = 0; y0 < size.height; y0 += t) {
+        for (var x0 = 0; x0 < size.width; x0 += t) {
+          final w = windowOf(rectOf(x0, y0, t));
+          worst = math.max(worst, w.width * w.height);
+        }
+      }
+      return worst;
+    }
+
+    var largestWindow = largest(ts);
+    while (largestWindow > kMaxWindowPixels && ts > 256) {
+      ts ~/= 2;
+      largestWindow = largest(ts);
+    }
+
+    final frame = Uint8List(size.width * size.height * 4);
+    final tilesX = (size.width / ts).ceil();
+    final tilesY = (size.height / ts).ceil();
+    final decode = Stopwatch(), work = Stopwatch();
+    try {
+      for (var ty = 0; ty < tilesY; ty++) {
+        for (var tx = 0; tx < tilesX; tx++) {
+          if (cancel?.isCancelled ?? false) throw const ExportCancelled();
+          final x0 = tx * ts, y0 = ty * ts;
+          final tile = (
+            x: x0,
+            y: y0,
+            w: math.min(ts, size.width - x0),
+            h: math.min(ts, size.height - y0),
+          );
+          final r = rectOf(x0, y0, ts);
+          final rw = r.x1 - r.x, rh = r.y1 - r.y;
+          final win = windowOf(r);
+          decode.start();
+          final px = await source.render(
+            fullWidth: virt.width,
+            fullHeight: virt.height,
+            x: win.x,
+            y: win.y,
+            width: win.width,
+            height: win.height,
+          );
+          decode.stop();
+          work.start();
+          final src = await _preparedWindow(
+            await uploadFloat(px.rgba, win.width, win.height),
+            SourceWindow(
+              x: win.x,
+              y: win.y,
+              fullWidth: virt.width,
+              fullHeight: virt.height,
+            ),
+            settings,
+            healOverlay: healOverlay,
+            denoise: denoise,
+            retouch: retouch,
+            retouchUniforms: ru,
+            backdrop: swap,
+          );
+          ui.Image image;
+          try {
+            image = runDevelop(
+              shaders,
+              floats: DevelopUniforms.pack(settings, context(r, win)),
+              source: src,
+              auxA: ax.auxA,
+              auxB: ax.auxB,
+              lut: lut.image,
+              width: rw,
+              height: rh,
+              masks0: atlases.atlas0,
+              masks1: atlases.atlas1,
+              warp: warpTex?.image,
+            );
+          } finally {
+            // The recorded pass keeps the texture alive until it is drawn.
+            EngineImages.dispose(src);
+          }
+          if (finish) {
+            final developed = image;
+            image = runFinish(
+              shaders,
+              floats: FinishUniforms.pack(
+                settings,
+                FinishContext(
+                  width: rw,
+                  height: rh,
+                  tileX: r.x.toDouble(),
+                  tileY: r.y.toDouble(),
+                  fullWidth: size.width.toDouble(),
+                  fullHeight: size.height.toDouble(),
+                  seed: FinishUniforms.seedFor(assetId),
+                  previewScale: math.max(1.0, full.width / size.width),
+                ),
+              ),
+              image: developed,
+            );
+            EngineImages.dispose(developed);
+          }
+          final bytes = await readRgba(image);
+          EngineImages.dispose(image);
+          work.stop();
+          _blit(bytes, rw, tile.x - r.x, tile.y - r.y, tile, frame, size.width);
+          onProgress?.call((ty * tilesX + tx + 1) / (tilesX * tilesY));
+        }
+      }
+    } finally {
+      lut.dispose();
+      warpTex?.dispose();
+      if (ownMasks) atlases.dispose();
+      if (!identical(retouch, retouchTextures)) retouch?.dispose();
+      swap?.dispose();
+      swapAux?.dispose();
+    }
+    // Live at once: the uploaded window plus one pass output (each pass
+    // releases its input), then the 8-bit develop and finish tiles.
+    final tilePixels = (ts + 2 * apron) * (ts + 2 * apron);
+    onStats?.call(
+      FloatExportStats(
+        sourceWidth: virt.width,
+        sourceHeight: virt.height,
+        tileSize: ts,
+        tiles: tilesX * tilesY,
+        largestWindow: largestWindow,
+        peakGpuBytes:
+            2 * floatImageBytes(largestWindow) +
+            (finish ? 2 : 1) * tilePixels * 4 * 4 ~/ 3,
+        decodeMs: decode.elapsedMilliseconds,
+        renderMs: work.elapsedMilliseconds,
+      ),
+    );
+    return ExportPixels(size.width, size.height, frame);
+  }
+
+  /// Heal overlay → denoise → retouch → backdrop over one float source
+  /// window; takes ownership of [window] and returns the image develop
+  /// samples (the caller disposes it).
+  Future<ui.Image> _preparedWindow(
+    ui.Image window,
+    SourceWindow at,
+    DevelopSettings settings, {
+    required RgbaBuffer? healOverlay,
+    required bool denoise,
+    required RetouchTextures? retouch,
+    required RetouchUniforms? retouchUniforms,
+    required BackdropTextures? backdrop,
+  }) async {
+    var src = window;
+    void replace(ui.Image? next) {
+      if (next == null) return;
+      EngineImages.dispose(src);
+      src = next;
+    }
+
+    try {
+      if (healOverlay != null) {
+        final crop = _cropRgba(healOverlay, at.x, at.y, src.width, src.height);
+        if (crop != null) {
+          final overlay = await uploadRgba(crop, src.width, src.height);
+          try {
+            replace(compositeOverlay(src, overlay));
+          } finally {
+            EngineImages.dispose(overlay);
+          }
+        }
+      }
+      if (denoise) {
+        replace(
+          runDenoise(
+            shaders,
+            floats: DenoiseUniforms.pack(settings, src.width, src.height),
+            image: src,
+            float: true,
+          ),
+        );
+      }
+      if (retouch != null && retouchUniforms != null) {
+        replace(
+          runRetouchPass(
+            shaders,
+            source: src,
+            textures: retouch,
+            uniforms: retouchUniforms,
+            float: true,
+            window: at,
+          ),
+        );
+      }
+      if (backdrop != null) {
+        replace(
+          runBackdropPass(
+            shaders,
+            source: src,
+            textures: backdrop,
+            change: settings.backdrop,
+            float: true,
+            window: at,
+          ),
+        );
+      }
+      return src;
+    } on Object {
+      EngineImages.dispose(src);
+      rethrow;
+    }
+  }
+
+  /// The [w]×[h] rectangle at ([x], [y]) of [b], or null when it is fully
+  /// transparent (nothing to draw).
+  static Uint8List? _cropRgba(RgbaBuffer b, int x, int y, int w, int h) {
+    final out = Uint8List(w * h * 4);
+    var any = false;
+    for (var row = 0; row < h; row++) {
+      final from = b.offset(x, y + row);
+      out.setRange(row * w * 4, (row + 1) * w * 4, b.data, from);
+    }
+    for (var i = 3; i < out.length; i += 4) {
+      if (out[i] != 0) {
+        any = true;
+        break;
+      }
+    }
+    return any ? out : null;
   }
 
   /// Denoise (N) then retouch (R) over the full source; returns [source]

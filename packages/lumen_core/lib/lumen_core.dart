@@ -17,6 +17,7 @@ export 'src/model/treatment.dart';
 export 'src/model/exif_summary.dart';
 export 'src/render/reference_pipeline.dart';
 export 'src/render/rgba_buffer.dart';
+export 'src/render/float_buffer.dart';
 // Workstream barrels (each workstream owns its own barrel file):
 export 'src/model/model.dart';
 export 'src/render/render.dart';

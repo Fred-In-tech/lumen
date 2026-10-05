@@ -3,6 +3,7 @@ library;
 
 import 'dart:math' as math;
 
+import '../render/float_buffer.dart';
 import '../render/rgba_buffer.dart';
 import 'heal_op.dart';
 import 'pixel_box.dart';
@@ -48,6 +49,67 @@ RgbaBuffer composeHealed(
     } else {
       _blendScaled(out, p, op.bbox, sx, sy);
     }
+  }
+  return out;
+}
+
+/// The patches of [ops] alone, as a **premultiplied** RGBA overlay of
+/// [width]×[height]: drawing it source-over any rendition of the photo
+/// gives that rendition healed. The float editing path uses it to heal a
+/// float source (whose pixels [composeHealed] cannot hold): the 8-bit
+/// patches replace what they cover, everything else keeps its float
+/// values. Transparent where no patch draws.
+///
+/// The overlay is exactly what [composeHealed] adds: it is derived from
+/// compositing the same ops over black and over white.
+RgbaBuffer composeHealOverlay(
+  int width,
+  int height,
+  List<HealOp> ops,
+  PatchLookup lookup,
+) {
+  final black = composeHealed(
+    RgbaBuffer.filled(width, height, 0, 0, 0),
+    ops,
+    lookup,
+  );
+  final white = composeHealed(
+    RgbaBuffer.filled(width, height, 255, 255, 255),
+    ops,
+    lookup,
+  );
+  final out = black.data, w = white.data;
+  for (var i = 0; i < out.length; i += 4) {
+    // Over black: P·a. Over white: P·a + 255·(1 − a). The difference of
+    // the least covered channel gives the coverage.
+    var miss = w[i] - out[i];
+    final mg = w[i + 1] - out[i + 1], mb = w[i + 2] - out[i + 2];
+    if (mg > miss) miss = mg;
+    if (mb > miss) miss = mb;
+    final a = 255 - miss.clamp(0, 255);
+    out[i + 3] = a;
+    // Premultiplied colours never exceed alpha.
+    for (var c = 0; c < 3; c++) {
+      if (out[i + c] > a) out[i + c] = a;
+    }
+  }
+  return black;
+}
+
+/// [source] with a premultiplied [overlay] (see [composeHealOverlay]) drawn
+/// source-over: the CPU twin of the float heal composite.
+FloatBuffer composeOverlayFloat(FloatBuffer source, RgbaBuffer overlay) {
+  if (overlay.width != source.width || overlay.height != source.height) {
+    throw ArgumentError('overlay and source sizes differ');
+  }
+  final out = FloatBuffer(source.width, source.height);
+  final s = source.data, o = overlay.data, d = out.data;
+  for (var i = 0; i < s.length; i += 4) {
+    final a = o[i + 3] / 255;
+    d[i] = o[i] / 255 + s[i] * (1 - a);
+    d[i + 1] = o[i + 1] / 255 + s[i + 1] * (1 - a);
+    d[i + 2] = o[i + 2] / 255 + s[i + 2] * (1 - a);
+    d[i + 3] = 1;
   }
   return out;
 }

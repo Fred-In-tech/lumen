@@ -19,6 +19,7 @@ class CatalogEntry {
     this.thumbVersion = 0,
     this.rating = 0,
     this.flag = 'none',
+    this.bitDepth,
   });
 
   factory CatalogEntry.fromJson(Map<String, Object?> json) {
@@ -42,6 +43,7 @@ class CatalogEntry {
       thumbVersion: (json['thumbVersion'] as num?)?.toInt() ?? 0,
       rating: (json['rating'] as num?)?.toInt() ?? 0,
       flag: json['flag'] as String? ?? 'none',
+      bitDepth: (json['bitDepth'] as num?)?.toInt(),
     );
   }
 
@@ -63,6 +65,12 @@ class CatalogEntry {
   final int thumbVersion;
   final int rating;
   final String flag;
+
+  /// Bits per channel the file stores (8, 10, 12, 14, 16), read at import;
+  /// null when unknown (older catalogs, RAW formats that do not declare
+  /// it). Sources above 8 bits are edited on the float path where the
+  /// device supports it (docs/HIGH_BIT_DEPTH.md).
+  final int? bitDepth;
 
   DateTime get sortDate => exif.capturedAt ?? importedAt;
 
@@ -93,6 +101,7 @@ class CatalogEntry {
     thumbVersion: thumbVersion ?? this.thumbVersion,
     rating: rating ?? this.rating,
     flag: flag ?? this.flag,
+    bitDepth: bitDepth,
   );
 
   Map<String, Object?> toJson() => {
@@ -111,5 +120,6 @@ class CatalogEntry {
     'thumbVersion': thumbVersion,
     'rating': rating,
     'flag': flag,
+    if (bitDepth != null) 'bitDepth': bitDepth,
   };
 }

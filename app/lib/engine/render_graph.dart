@@ -30,6 +30,12 @@
 ///   the B output is cached by change + textures + upstream image. While B
 ///   runs and develop uses spatial maps (`needsAuxMaps`), develop samples
 ///   the composite's aux maps (`backdrop.auxBuilds`) instead of [aux].
+/// * Float sources (docs/HIGH_BIT_DEPTH.md): with `float: true` the source
+///   is a float32 image holding extended-range encoded values. Denoise,
+///   retouch and backdrop then render into float32 targets, so develop
+///   decodes real highlight headroom and shadow precision; develop and
+///   finish still write the 8-bit frame. `profile` is the source's
+///   rendering profile (highlight shoulder, extra Highlights range).
 /// * `renderMaskOverlay(settings, index, {scale, tint})`: one mask's
 ///   coverage as a premultiplied tint (default 50 % red), same size and
 ///   geometry as `render` (draw it over the frame for "show overlay").
@@ -69,6 +75,8 @@ class RenderGraph implements FrameRenderer {
     required AuxTextures aux,
     this.assetId = '',
     ({int width, int height})? originalSize,
+    this.float = false,
+    this.profile = HbdProfile.none,
   }) : _source = source,
        // The public name `aux` stays the named parameter (a private field
        // cannot be an initializing formal of a named parameter).
@@ -80,9 +88,15 @@ class RenderGraph implements FrameRenderer {
          sourceWidth: source.width,
          sourceHeight: source.height,
        ),
-       backdrop = BackdropStage(shaders);
+       backdrop = BackdropStage(shaders, float: float);
 
   final ShaderLibrary shaders;
+
+  /// The source is a float32 image (the float editing path).
+  final bool float;
+
+  /// Rendering profile of a float source.
+  final HbdProfile profile;
 
   /// Preview-resolution source (borrowed). Swap with [replaceSource].
   ui.Image get source => _source;
@@ -243,6 +257,7 @@ class RenderGraph implements FrameRenderer {
           warpWidth: warpTex?.field.width ?? 1,
           warpHeight: warpTex?.field.height ?? 1,
           warpRange: warpTex?.field.range ?? 0,
+          profile: profile,
         ),
       ),
       source: src,
@@ -369,6 +384,7 @@ class RenderGraph implements FrameRenderer {
       source: denoised,
       textures: textures,
       uniforms: u,
+      float: float,
     );
     if (out == null) return denoised;
     _retouchRuns++;
@@ -393,6 +409,7 @@ class RenderGraph implements FrameRenderer {
       shaders,
       floats: DenoiseUniforms.pack(s, source.width, source.height),
       image: source,
+      float: float,
     );
   }
 

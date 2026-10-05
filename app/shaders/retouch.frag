@@ -17,7 +17,7 @@ precision highp float;
 uniform vec2 uSize;            // 0-1   pass size (px)
 uniform vec4 uVec0[79];
 #define uTile uVec0[0]  // 2-5   pass offset xy in the source, full wh
-#define uMapInfo uVec0[1]  // 6-9   map grid W, H, face count, 0
+#define uMapInfo uVec0[1]  // 6-9   map grid W, H, face count, source is the pass window
 #define uFaceInfo0 uVec0[2]  // 10-13 face 0: teeth cap L, active, IOD, lip gloss L
 #define uFaceInfo1 uVec0[3]  // 14-17 face 0: lip chroma gain, lip L shift, blush da, blush db
 #define uFaceInfo2 uVec0[4]  // 18-21 face 0: right iris x, y, left iris x, y (map px)
@@ -405,7 +405,9 @@ bool backdropRetouch(vec2 uv, vec3 li, inout vec3 o) {
 
 void main() {
   vec2 uv = (FlutterFragCoord().xy + uTile.xy) / uTile.zw;
-  vec3 src = texture(uSource, uv).rgb;
+  // Float export: the source texture holds exactly the pass rectangle.
+  vec2 sv = uMapInfo.w > 0.5 ? FlutterFragCoord().xy / uSize : uv;
+  vec3 src = texture(uSource, sv).rgb;
   fragColor = vec4(src, 1.0);
   if (uRetouch.y < 0.5 || uSize.x < 0.5) return;
   vec3 li = bandLab(src);
@@ -413,5 +415,6 @@ void main() {
   bool face = faceRetouch(uv, li, o);
   bool backdrop = backdropRetouch(uv, li, o);
   if (!face && !backdrop) return;
-  fragColor = vec4(srgbEncode(oklabToLinSrgb(o)), 1.0);
+  // Unclamped encode: a float target keeps highlights above white.
+  fragColor = vec4(srgbEncodeExt(oklabToLinSrgb(o)), 1.0);
 }

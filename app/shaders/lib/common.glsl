@@ -14,7 +14,30 @@ vec3 srgbEncode(vec3 c) {
   return vec3(srgbEncode1(c.r), srgbEncode1(c.g), srgbEncode1(c.b));
 }
 
-// sRGB decode of an encoded value in 0..1 (srgb.dart srgbToLinear).
+// Extended sRGB encode: srgbEncode1 without the upper clamp, so values
+// above display white keep their range in a float target (srgb.dart
+// linearToSrgbExtended). Equal to srgbEncode1 inside 0..1; an 8-bit target
+// clamps the rest itself.
+float srgbEncodeExt1(float x) {
+  float c = max(x, 0.0);
+  return c <= 0.0031308 ? 12.92 * c : 1.055 * pow(c, 1.0 / 2.4) - 0.055;
+}
+
+vec3 srgbEncodeExt(vec3 c) {
+  return vec3(srgbEncodeExt1(c.r), srgbEncodeExt1(c.g), srgbEncodeExt1(c.b));
+}
+
+// Base highlight shoulder of a float source (float_buffer.dart
+// highlightShoulder): identity up to the knee, quadratic roll-off reaching
+// 1.0 at 2 - knee, 1.0 beyond. e >= 0, 0 < knee < 1.
+float shoulder(float e, float knee) {
+  if (e <= knee) return e;
+  float t = (e - knee) / (2.0 * (1.0 - knee));
+  return t >= 1.0 ? 1.0 : knee + (1.0 - knee) * (2.0 * t - t * t);
+}
+
+// sRGB decode of an encoded value (srgb.dart srgbToLinear). Values above
+// 1.0 (float sources) continue on the same curve; negatives give 0.
 float srgbDecode1(float e) {
   float c = max(e, 0.0);
   return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);

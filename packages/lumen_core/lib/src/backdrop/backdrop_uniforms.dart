@@ -7,7 +7,7 @@
 /// | 2–5 | `uTile` | pass offset in the source, full source w, h |
 /// | 6–9 | `uMatte` | matte w, h, mode (1 blur, 2 colour, 3 gradient, 4 image), letterbox |
 /// | 10–13 | `uFill` | fill w, h, plate A w, h |
-/// | 14–17 | `uPlateB` | plate B w, h, 0, 0 |
+/// | 14–17 | `uPlateB` | plate B w, h, source is the pass window (0/1), 0 |
 /// | 18–21 | `uColorA` | colour (sRGB-encoded 0..1), 0 |
 /// | 22–25 | `uColorB` | colour 2 |
 /// | 26–29 | `uGrad` | direction x, y, frame aspect, extent |
@@ -45,6 +45,7 @@ abstract final class BackdropUniforms {
     double tileY = 0,
     double? fullWidth,
     double? fullHeight,
+    bool sourceIsWindow = false,
   }) {
     final fw = fullWidth ?? width.toDouble(),
         fh = fullHeight ?? height.toDouble();
@@ -64,7 +65,13 @@ abstract final class BackdropUniforms {
       a.plateA.width.toDouble(),
       a.plateA.height.toDouble(),
     ]);
-    put(14, [a.plateB.width.toDouble(), a.plateB.height.toDouble()]);
+    // z: the source texture holds exactly the pass rectangle (a window of
+    // the full source, float export) instead of the whole source.
+    put(14, [
+      a.plateB.width.toDouble(),
+      a.plateB.height.toDouble(),
+      sourceIsWindow ? 1 : 0,
+    ]);
     put(18, _encoded(b.color));
     put(22, _encoded(b.color2));
     final t = b.angle * math.pi / 180, aspect = fw / fh;

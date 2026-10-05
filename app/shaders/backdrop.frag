@@ -13,7 +13,7 @@ uniform vec4 uVec0[11];
 #define uTile uVec0[0]  // 2-5   pass offset in the source, full wh
 #define uMatte uVec0[1]  // 6-9   matte wh, mode (1 blur 2 colour 3 gradient 4 image), letterbox
 #define uFill uVec0[2]  // 10-13 fill wh, plate A wh
-#define uPlateB uVec0[3]  // 14-17 plate B wh, 0, 0
+#define uPlateB uVec0[3]  // 14-17 plate B wh, source is the pass window, 0
 #define uColorA uVec0[4]  // 18-21 colour (sRGB 0..1)
 #define uColorB uVec0[5]  // 22-25 colour 2
 #define uGrad uVec0[6]  // 26-29 direction xy, frame aspect, extent
@@ -51,7 +51,9 @@ BILINEAR(samplePlateB, uPlateBTex)
 
 void main() {
   vec2 uv = (FlutterFragCoord().xy + uTile.xy) / uTile.zw;
-  vec3 src = texture(uSrcTex, uv).rgb;
+  // Float export: the source texture holds exactly the pass rectangle.
+  vec2 sv = uPlateB.z > 0.5 ? FlutterFragCoord().xy / uSize : uv;
+  vec3 src = texture(uSrcTex, sv).rgb;
   fragColor = vec4(src, 1.0);
   if (uMatte.z < 0.5 || uSize.x < 0.5) return;
   // 1-2. Matte; the subject interior keeps the source bit-exact.
@@ -94,7 +96,8 @@ void main() {
     float q = 1.0 - al;
     float inv = 1.0 / max(al, 0.15);
     float w = spill * smoothstep(0.02, 0.25, al);
-    F += (clamp((F - q * old) * inv, 0.0, 1.0) - F) * w;
+    // Upper bound max(1, F): a float source keeps its highlights.
+    F += (clamp((F - q * old) * inv, vec3(0.0), max(vec3(1.0), F)) - F) * w;
   }
   float we = spill * e;
   if (we > 0.0) {
@@ -104,5 +107,6 @@ void main() {
   }
   // 5. Brightness match and the composite.
   float gain = 1.0 + uMatch.x * (uMatch.y - 1.0);
-  fragColor = vec4(srgbEncode(F * gain * al + bg * (1.0 - al)), 1.0);
+  // Unclamped encode: a float target keeps highlights above white.
+  fragColor = vec4(srgbEncodeExt(F * gain * al + bg * (1.0 - al)), 1.0);
 }

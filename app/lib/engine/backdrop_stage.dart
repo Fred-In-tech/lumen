@@ -40,9 +40,12 @@ Future<AuxTextures> backdropAuxTextures(
 ) async => AuxTextures.fromMaps(await compute(_auxMaps, (a, b)));
 
 class BackdropStage {
-  BackdropStage(this.shaders);
+  BackdropStage(this.shaders, {this.float = false});
 
   final ShaderLibrary shaders;
+
+  /// The upstream image is float: pass B renders into a float32 target.
+  final bool float;
 
   /// Uploaded textures of [assets] (owned).
   final BackdropTexturesCache textures = BackdropTexturesCache();
@@ -99,6 +102,7 @@ class BackdropStage {
       source: upstream,
       textures: frame.textures,
       change: b,
+      float: float,
     );
     if (out == null) return upstream;
     _runs++;

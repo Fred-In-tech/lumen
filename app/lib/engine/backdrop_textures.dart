@@ -71,13 +71,38 @@ ui.Image? runBackdropPass(
   required BackdropTextures textures,
   required BackdropChange change,
   int tileSize = 4096,
+  bool float = false,
+  SourceWindow? window,
 }) {
   if (change.isNone) return null;
   final w = source.width, h = source.height;
+  if (window != null) {
+    // [source] is a window of the full source (float export): one pass.
+    return runBackdrop(
+      shaders,
+      floats: BackdropUniforms.pack(
+        textures.assets,
+        change,
+        width: w,
+        height: h,
+        tileX: window.x.toDouble(),
+        tileY: window.y.toDouble(),
+        fullWidth: window.fullWidth.toDouble(),
+        fullHeight: window.fullHeight.toDouble(),
+        sourceIsWindow: true,
+      ),
+      source: source,
+      maps: textures.images,
+      width: w,
+      height: h,
+      float: float,
+    );
+  }
   return renderTiled(
     w,
     h,
     tileSize,
+    float: float,
     (x0, y0, tw, th) => runBackdrop(
       shaders,
       floats: BackdropUniforms.pack(
@@ -94,6 +119,7 @@ ui.Image? runBackdropPass(
       maps: textures.images,
       width: tw,
       height: th,
+      float: float,
     ),
   );
 }

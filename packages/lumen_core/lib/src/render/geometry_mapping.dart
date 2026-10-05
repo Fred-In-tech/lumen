@@ -72,3 +72,45 @@ import 'uniform_layout.dart';
   );
   return sourceUvFor(u, v, f);
 }
+
+/// The source pixels an output rectangle needs: the bounding box, in pixels
+/// of the `uSrc`-sized source of the packed develop uniforms [f], of the
+/// output rectangle [x0]..[x1] × [y0]..[y1] (pixels of the full output,
+/// `uTile.zw`), grown by [margin] pixels (filter taps) and by the warp
+/// range when a warp is on, clipped to the source.
+///
+/// The float export decodes one such window per output tile instead of
+/// the whole photo. The geometry mapping is affine, so the four corners
+/// bound it. A rectangle that maps entirely outside the source gives the
+/// nearest edge pixels (the tile renders transparent anyway).
+({int x, int y, int width, int height}) sourceWindowFor(
+  Float32List f, {
+  required double x0,
+  required double y0,
+  required double x1,
+  required double y1,
+  int margin = 0,
+}) {
+  const t = DevelopIndex.tile, s = DevelopIndex.src, wi = DevelopIndex.warpInfo;
+  final fw = f[t + 2], fh = f[t + 3];
+  final sw = f[s].round(), sh = f[s + 1].round();
+  var uMin = double.infinity, uMax = double.negativeInfinity;
+  var vMin = double.infinity, vMax = double.negativeInfinity;
+  for (final (px, py) in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)]) {
+    final (u, v) = sourceUvFor(px / fw, py / fh, f);
+    uMin = math.min(uMin, u);
+    uMax = math.max(uMax, u);
+    vMin = math.min(vMin, v);
+    vMax = math.max(vMax, v);
+  }
+  final range = f[wi + 3] > 0.5 ? f[wi + 2] : 0.0;
+  var l = ((uMin - range) * sw).floor() - margin;
+  var r = ((uMax + range) * sw).ceil() + margin;
+  var top = ((vMin - range) * sh).floor() - margin;
+  var bottom = ((vMax + range) * sh).ceil() + margin;
+  l = l.clamp(0, sw - 1);
+  top = top.clamp(0, sh - 1);
+  r = r.clamp(l + 1, sw);
+  bottom = bottom.clamp(top + 1, sh);
+  return (x: l, y: top, width: r - l, height: bottom - top);
+}

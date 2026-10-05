@@ -5,6 +5,7 @@ import '../color/luminance.dart';
 import '../color/rgb.dart';
 import '../color/srgb.dart';
 import 'engine_constants.dart';
+import 'float_buffer.dart';
 import 'lut_packing.dart';
 import 'rgba_buffer.dart';
 
@@ -41,8 +42,7 @@ class AuxMaps {
 
   /// Computes the maps from an analysis-size image (see [proxy]).
   factory AuxMaps.compute(RgbaBuffer img) {
-    final w = img.width, h = img.height, n = w * h;
-    final longEdge = math.max(w, h);
+    final n = img.width * img.height;
     final lumaN = Float32List(n);
     final darkPix = Float32List(n);
     for (var i = 0; i < n; i++) {
@@ -57,6 +57,67 @@ class AuxMaps {
       );
       darkPix[i] = math.min(r, math.min(g, b)) / 255;
     }
+    return AuxMaps._build(
+      img.width,
+      img.height,
+      lumaN,
+      darkPix,
+      (i) => kSrgbByteToLinear[img.data[i]],
+    );
+  }
+
+  /// [compute] for a float source (see [proxyFloat]): log luma keeps
+  /// highlights above display white (up to 4×, the range of
+  /// [normalizedLogLuma]), so the guided base and the clarity base
+  /// represent them. Equal to [compute] for 8-bit-equivalent input.
+  factory AuxMaps.computeFloat(FloatBuffer img) {
+    final n = img.width * img.height;
+    final lumaN = Float32List(n);
+    final darkPix = Float32List(n);
+    final d = img.data;
+    for (var i = 0; i < n; i++) {
+      final o = i * 4;
+      lumaN[i] = normalizedLogLuma(
+        relativeLuminance(
+          _floatToLinear(d[o]),
+          _floatToLinear(d[o + 1]),
+          _floatToLinear(d[o + 2]),
+        ),
+      );
+      darkPix[i] = math.min(d[o], math.min(d[o + 1], d[o + 2])).clamp(0.0, 1.0);
+    }
+    // The airlight stays inside display range, like the 8-bit one.
+    return AuxMaps._build(
+      img.width,
+      img.height,
+      lumaN,
+      darkPix,
+      (i) => math.min(_floatToLinear(d[i]), 1.0),
+    );
+  }
+
+  /// Extended-sRGB float → linear, exact for byte-equivalent values.
+  static double _floatToLinear(double e) {
+    if (e <= 0) return 0;
+    if (e <= 1) {
+      final k = e * 255, r = k.roundToDouble();
+      if ((k - r).abs() < 1e-5) return kSrgbByteToLinear[r.toInt()];
+    }
+    return srgbToLinear(e);
+  }
+
+  /// The maps from normalized log luma and the dark-channel input (min of
+  /// the encoded channels, 0..1); [linear] reads channel value `i` of the
+  /// interleaved RGBA image in linear light (airlight).
+  factory AuxMaps._build(
+    int w,
+    int h,
+    Float32List lumaN,
+    Float32List darkPix,
+    double Function(int i) linear,
+  ) {
+    final n = w * h;
+    final longEdge = math.max(w, h);
     // Clarity base: Gaussian (3 box passes) with sigma = 1.2 % long edge.
     final sigma = 0.012 * longEdge;
     final rb = math.max(
@@ -88,7 +149,7 @@ class AuxMaps {
       h,
       packPlane16(baseMid, blue: _bytes(darkSmooth)),
       packPlane16(meanB, blue: _bytes(meanA)),
-      _airlight(img, dark),
+      _airlight(linear, dark),
     );
   }
 
@@ -117,6 +178,39 @@ class AuxMaps {
         }
         final c = (x1 - x0) * (y1 - y0);
         out.setPixel(x, y, (r / c).round(), (g / c).round(), (b / c).round());
+      }
+    }
+    return out;
+  }
+
+  /// [proxy] for a float source: area average of the encoded values.
+  static FloatBuffer proxyFloat(
+    FloatBuffer src, {
+    int longEdge = kAnalysisLongEdge,
+  }) {
+    final le = math.max(src.width, src.height);
+    if (le <= longEdge) return src;
+    final scale = longEdge / le;
+    final w = math.max(1, (src.width * scale).round());
+    final h = math.max(1, (src.height * scale).round());
+    final out = FloatBuffer(w, h);
+    for (var y = 0; y < h; y++) {
+      final y0 = y * src.height ~/ h;
+      final y1 = math.max(y0 + 1, (y + 1) * src.height ~/ h);
+      for (var x = 0; x < w; x++) {
+        final x0 = x * src.width ~/ w;
+        final x1 = math.max(x0 + 1, (x + 1) * src.width ~/ w);
+        var r = 0.0, g = 0.0, b = 0.0;
+        for (var sy = y0; sy < y1; sy++) {
+          var o = src.offset(x0, sy);
+          for (var sx = x0; sx < x1; sx++, o += 4) {
+            r += src.data[o];
+            g += src.data[o + 1];
+            b += src.data[o + 2];
+          }
+        }
+        final c = (x1 - x0) * (y1 - y0);
+        out.setPixel(x, y, r / c, g / c, b / c);
       }
     }
     return out;
@@ -181,7 +275,7 @@ class AuxMaps {
   ]);
 
   /// Mean linear color of the top 0.1 % dark-channel pixels.
-  static Rgb _airlight(RgbaBuffer img, Float32List dark) {
+  static Rgb _airlight(double Function(int i) linear, Float32List dark) {
     final hist = List<int>.filled(256, 0);
     for (final d in dark) {
       hist[(d * 255).round()]++;
@@ -196,9 +290,9 @@ class AuxMaps {
     for (var i = 0; i < dark.length; i++) {
       if ((dark[i] * 255).round() < thr) continue;
       final o = i * 4;
-      r += kSrgbByteToLinear[img.data[o]];
-      g += kSrgbByteToLinear[img.data[o + 1]];
-      b += kSrgbByteToLinear[img.data[o + 2]];
+      r += linear(o);
+      g += linear(o + 1);
+      b += linear(o + 2);
       c++;
     }
     double fl(double x) => math.max(x / c, 0.05);

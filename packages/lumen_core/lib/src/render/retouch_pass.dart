@@ -7,7 +7,7 @@
 /// |---|---|---|
 /// | 0–1 | `uSize` | pass size (px) |
 /// | 2–5 | `uTile` | pass offset x, y in the source; full source w, h |
-/// | 6–9 | `uMapInfo` | map grid W, H, face count, 0 (`RetouchMaps.packInfo`) |
+/// | 6–9 | `uMapInfo` | map grid W, H, face count (`RetouchMaps.packInfo`), **source is the pass window** (0/1) |
 /// | 10 + 12k | `uFaceInfo{3k}` | teeth cap L, **active**, IOD (map px), lip gloss L |
 /// | 14 + 12k | `uFaceInfo{3k+1}` | lip chroma gain, lip L shift, blush a, blush b |
 /// | 18 + 12k | `uFaceInfo{3k+2}` | right iris x, y, left iris x, y (map px) |
@@ -38,6 +38,9 @@ abstract final class RetouchPassIndex {
   static const size = 0;
   static const tile = 2;
   static const mapInfo = 6;
+
+  /// `uMapInfo.w`: 1 when the source texture is the pass window itself.
+  static const sourceIsWindow = 9;
   static int faceInfo(int slot) => 10 + 12 * slot;
   static int makeupInfo(int slot) => 14 + 12 * slot;
   static int eyeInfo(int slot) => 18 + 12 * slot;
@@ -59,6 +62,10 @@ abstract final class RetouchPassUniforms {
 
   /// Packs the pass uniforms for a [width]×[height] pass at ([tileX],
   /// [tileY]) of a [fullWidth]×[fullHeight] source (defaults: whole image).
+  ///
+  /// [sourceIsWindow]: the source texture holds exactly the pass rectangle
+  /// (a window of the full source, as in the float export) instead of the
+  /// whole source; the maps are still sampled at the full-source uv.
   static Float32List pack(
     RetouchMaps maps,
     RetouchUniforms u, {
@@ -68,6 +75,7 @@ abstract final class RetouchPassUniforms {
     double tileY = 0,
     double? fullWidth,
     double? fullHeight,
+    bool sourceIsWindow = false,
   }) {
     final f = Float32List(kRetouchPassFloatCount)
       ..[0] = width.toDouble()
@@ -81,6 +89,7 @@ abstract final class RetouchPassUniforms {
       RetouchPassIndex.header,
       maps.packInfo(),
     );
+    f[RetouchPassIndex.sourceIsWindow] = sourceIsWindow ? 1 : 0;
     var any = false;
     for (var k = 0; k < kMaxRetouchFaces; k++) {
       final active = slotActive(maps, u, k);

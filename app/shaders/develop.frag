@@ -2,14 +2,16 @@
 // Lumen develop uber pass (engine lumen-1). Every per-pixel op in float.
 // CPU twin: packages/lumen_core/lib/src/render/develop_kernel.dart and
 // color_ops.dart; local masks: local_adjust.dart; uniform layout:
-// uniform_layout.dart (198 floats). Warp: warp/warp_field.dart.
+// uniform_layout.dart (202 floats). Warp: warp/warp_field.dart.
+// Float sources (docs/HIGH_BIT_DEPTH.md): uSource may be a float32 texture
+// with values above 1.0 and may hold only a window of the source (uSrcWin).
 #include <flutter/runtime_effect.glsl>
 #include "lib/common.glsl"
 
 precision highp float;
 
 uniform vec2 uOutSize;          // 0-1   pass size (px)
-uniform vec4 uVec0[49];
+uniform vec4 uVec0[50];
 #define uTile uVec0[0]  // 2-5   tile offset xy, full output wh
 #define uCrop uVec0[1]  // 6-9   l, t, r, b (normalized, oriented)
 #define uGeom uVec0[2]  // 10-13 angle rad, rotate90, flipH, flipV
@@ -28,7 +30,7 @@ uniform vec4 uVec0[49];
 #define uGradeMidtones uVec0[15]  // 62-65
 #define uGradeHighlights uVec0[16]  // 66-69
 #define uGradeGlobal uVec0[17]  // 70-73
-#define uGradeParams uVec0[18]  // 74-77 blending, balance, 0, 0
+#define uGradeParams uVec0[18]  // 74-77 blending, balance, shoulder knee, highlight gain (float sources; 0 = off)
 #define uBwMix0 uVec0[19]  // 78-81
 #define uBwMix1 uVec0[20]  // 82-85
 #define uVignette uVec0[21]  // 86-89 amount, midpoint, roundness, feather
@@ -59,8 +61,9 @@ uniform vec4 uVec0[49];
 #define uMask7B uVec0[46]  //   highlights, shadows, clarity, texture
 #define uMask7C uVec0[47]  //   dehaze, contrast, whites, blacks
 #define uWarpInfo uVec0[48]  // 194-197 warp grid wh, range (uv), enabled
+#define uSrcWin uVec0[49]  // 198-201 source window origin (source uv), 1 / size; 0, 0, 1, 1 = whole source
 
-uniform sampler2D uSource;      // 0: sRGB source (FilterQuality.low)
+uniform sampler2D uSource;      // 0: sRGB source, 8-bit or float (FilterQuality.low)
 uniform sampler2D uAuxA;        // 1: RG baseMid, B dark (FilterQuality.none)
 uniform sampler2D uAuxB;        // 2: RG meanB, B meanA (FilterQuality.none)
 uniform sampler2D uCurveLut;    // 3: 1024x4 packed LUT (FilterQuality.none)
@@ -169,12 +172,22 @@ float lutLookup(float row, float x) {
   return mix(lutTap(i0, row), lutTap(i1, row), f);
 }
 
+// A float source with a shoulder rolls highlights above the knee off into
+// 0..1 before the LUT instead of clipping them at white.
 float tone(float x) {
-  return srgbDecode1(lutLookup(0.0, srgbEncode1(x)));
+  float knee = uGradeParams.z;
+  float e = knee > 0.0 ? shoulder(srgbEncodeExt1(x), knee) : srgbEncode1(x);
+  return srgbDecode1(lutLookup(0.0, e));
+}
+
+// Source uv -> uv of the bound source texture (identity unless the texture
+// holds a window of the source).
+vec2 srcTex(vec2 suv) {
+  return (suv - uSrcWin.xy) * uSrcWin.zw;
 }
 
 float lumaAt(vec2 uv) {
-  return normLogLuma(dot(srgbDecode(texture(uSource, uv).rgb), REC709));
+  return normLogLuma(dot(srgbDecode(texture(uSource, srcTex(uv)).rgb), REC709));
 }
 
 // ---- Color stages (color_ops.dart) ----------------------------------------
@@ -278,7 +291,7 @@ void main() {
     return;
   }
   // 2. Source -> linear.
-  vec3 c = srgbDecode(texture(uSource, suv).rgb);
+  vec3 c = srgbDecode(texture(uSource, srcTex(suv)).rgb);
   float iSrc = normLogLuma(dot(c, REC709));
   vec4 ax = sampleAux(suv);
   // Local (mask) sums: effective value = global + sum(coverage * local).
@@ -316,7 +329,9 @@ void main() {
     float bn = srgbEncode1(exp2(base));
     float dEv = 1.5 * (sh * (1.0 - smoothstep(0.0, 0.55, bn)) +
                        hl * smoothstep(0.45, 1.0, bn));
-    c *= exp2(dEv);
+    // Float sources with headroom: Highlights reaches further where the
+    // base sits above display white (kHbdMaxStops).
+    c *= exp2(dEv + hl * uGradeParams.w * clamp(base, 0.0, 2.0));
   }
   // 6. Clarity and texture.
   if (cl != 0.0 || tx != 0.0) {

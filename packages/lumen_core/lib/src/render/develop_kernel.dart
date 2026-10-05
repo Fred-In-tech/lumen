@@ -12,6 +12,7 @@ import '../color/srgb.dart';
 import 'aux_maps.dart';
 import 'color_ops.dart';
 import 'engine_constants.dart';
+import 'float_buffer.dart';
 import 'geometry_mapping.dart';
 import 'local_adjust.dart';
 import 'mask_rasterizer.dart';
@@ -22,18 +23,47 @@ import '../warp/warp_field.dart';
 
 class DevelopKernel {
   DevelopKernel(
-    this.src,
+    RgbaBuffer this.src,
     this.f,
     this.lut,
     this.aux, [
     MaskAtlases? masks,
     this.warp,
-  ]) : masks = masks ?? MaskAtlases.empty(),
+  ]) : floatSrc = null,
+       _w = src.width,
+       _h = src.height,
+       masks = masks ?? MaskAtlases.empty(),
        _colorActive = colorOpsActive(f),
        _toneIdentity = _isIdentityRow(lut),
        _hasLocal = activeMaskCount(f) > 0;
 
-  final RgbaBuffer src;
+  /// The float path: [source] holds extended-range encoded values (a
+  /// [FloatBuffer]); it may be a window of the full source (`uSrcWin`).
+  /// With an 8-bit-equivalent source and [HbdProfile.none] uniforms the
+  /// result equals the 8-bit kernel's.
+  DevelopKernel.float(
+    FloatBuffer source,
+    this.f,
+    this.lut,
+    this.aux, [
+    MaskAtlases? masks,
+    this.warp,
+  ]) : src = null,
+       floatSrc = source,
+       _w = source.width,
+       _h = source.height,
+       masks = masks ?? MaskAtlases.empty(),
+       _colorActive = colorOpsActive(f),
+       _toneIdentity = _isIdentityRow(lut),
+       _hasLocal = activeMaskCount(f) > 0;
+
+  /// 8-bit source (null on the float path).
+  final RgbaBuffer? src;
+
+  /// Float source (null on the 8-bit path).
+  final FloatBuffer? floatSrc;
+  final int _w;
+  final int _h;
   final Float32List f;
   final ToneLut lut;
   final AuxMaps aux;
@@ -59,18 +89,32 @@ class DevelopKernel {
     return true;
   }
 
-  /// Bilinear source sample (encoded 0..1), like `FilterQuality.low`.
+  /// Bilinear source sample (encoded; 0..1 for bytes, extended for float),
+  /// like `FilterQuality.low`. [u], [v] are source uv; the window transform
+  /// (`uSrcWin`) maps them into the bound buffer.
   void _sample(double u, double v, Float64List out) {
-    final w = src.width, h = src.height, d = src.data;
-    final px = u * w - 0.5, py = v * h - 0.5;
+    const sw = DevelopIndex.srcWin;
+    final w = _w, h = _h;
+    final px = (u - f[sw]) * f[sw + 2] * w - 0.5;
+    final py = (v - f[sw + 1]) * f[sw + 3] * h - 0.5;
     final fx0 = px.floorToDouble(), fy0 = py.floorToDouble();
     final fx = px - fx0, fy = py - fy0;
     final x0 = fx0.toInt().clamp(0, w - 1);
     final y0 = fy0.toInt().clamp(0, h - 1);
+    final List<num> d;
+    final double k;
+    final bytes = src;
+    if (bytes != null) {
+      d = bytes.data;
+      k = 255;
+    } else {
+      d = floatSrc!.data;
+      k = 1;
+    }
     if (fx == 0 && fy == 0) {
       final o = (y0 * w + x0) * 4;
       for (var c = 0; c < 3; c++) {
-        out[c] = d[o + c] / 255;
+        out[c] = d[o + c] / k;
       }
       return;
     }
@@ -81,14 +125,22 @@ class DevelopKernel {
     for (var c = 0; c < 3; c++) {
       final top = d[o00 + c] + (d[o10 + c] - d[o00 + c]) * fx;
       final bot = d[o01 + c] + (d[o11 + c] - d[o01 + c]) * fx;
-      out[c] = (top + (bot - top) * fy) / 255;
+      out[c] = (top + (bot - top) * fy) / k;
     }
   }
 
-  static double _decode(double e) {
+  /// Encoded → linear. Byte values decode exactly (on the float path also
+  /// when they arrive as float32 `b / 255`); float values above 1.0 keep
+  /// their extended range, negative ones give 0.
+  double _decode(double e) {
     final k = e * 255;
     final r = k.roundToDouble();
-    if (k == r && r >= 0 && r <= 255) return kSrgbByteToLinear[r.toInt()];
+    if (src != null) {
+      if (k == r && r >= 0 && r <= 255) return kSrgbByteToLinear[r.toInt()];
+      return _fastDecode(e);
+    }
+    if (e > 1) return srgbToLinear(e);
+    if ((k - r).abs() < 1e-5 && r >= 0) return kSrgbByteToLinear[r.toInt()];
     return _fastDecode(e);
   }
 
@@ -99,7 +151,19 @@ class DevelopKernel {
     );
   }
 
-  double _tone(double x) => _fastDecode(lut.lookup(0, _fastEncode(x)));
+  /// Composite tone of one linear value. A float source with a shoulder
+  /// rolls highlights above the knee off into 0..1 before the LUT instead
+  /// of clipping them at 1.0.
+  double _tone(double x) {
+    final knee = f[DevelopIndex.shoulderKnee];
+    final e = knee > 0
+        ? highlightShoulder(
+            x > 1 ? linearToSrgbExtended(x) : _fastEncode(x),
+            knee,
+          )
+        : _fastEncode(x);
+    return _fastDecode(lut.lookup(0, e));
+  }
 
   /// Shades output pixel ([x], [y]) of this pass into [out] (encoded RGBA).
   void shade(int x, int y, Float64List out) {
@@ -176,7 +240,11 @@ class DevelopKernel {
           kShStops *
           (sh * (1 - smoothstep(kShShadowEdge1, kShShadowEdge0, bn)) +
               hl * smoothstep(kShHighlightEdge0, kShHighlightEdge1, bn));
-      final k = math.pow(2, dEv).toDouble();
+      // Float sources with headroom: Highlights reaches further where the
+      // base sits above display white (up to two stops).
+      final extra =
+          hl * f[DevelopIndex.highlightGain] * base.clamp(0.0, kHbdMaxStops);
+      final k = math.pow(2, dEv + extra).toDouble();
       r *= k;
       g *= k;
       b *= k;
@@ -211,7 +279,11 @@ class DevelopKernel {
       ..[0] = r
       ..[1] = g
       ..[2] = b;
-    if (!_toneIdentity || mx > 1 || mn < 0) {
+    final shoulder = f[DevelopIndex.shoulderKnee];
+    if (!_toneIdentity ||
+        mx > 1 ||
+        mn < 0 ||
+        (shoulder > 0 && mx > srgbToLinear(shoulder))) {
       _hueTone(_rgb, mx, mn, _tone(mx), _tone(mn));
     }
     // 7b. Local contrast / whites / blacks (analytic, hue-preserving).
