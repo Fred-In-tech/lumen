@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/features/info/photo_info.dart';
+import 'package:lumen/import/float_sources.dart';
 import 'package:lumen/widgets/buttons.dart';
 
 /// Shows the file, camera and exposure details of [entry].
@@ -14,15 +16,54 @@ Future<void> showPhotoInfo(BuildContext context, CatalogEntry entry) =>
       builder: (_) => _PhotoInfoDialog(entry: entry),
     );
 
-class _PhotoInfoDialog extends StatelessWidget {
+class _PhotoInfoDialog extends StatefulWidget {
   const _PhotoInfoDialog({required this.entry});
 
   final CatalogEntry entry;
 
   @override
-  Widget build(BuildContext context) {
+  State<_PhotoInfoDialog> createState() => _PhotoInfoDialogState();
+}
+
+class _PhotoInfoDialogState extends State<_PhotoInfoDialog> {
+  /// Whether this photo is edited on the float path (false until known,
+  /// and without a provider scope).
+  Future<bool>? _floatEditing;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _floatEditing ??= _lookUp();
+  }
+
+  Future<bool> _lookUp() async {
+    final ProviderContainer container;
+    try {
+      container = ProviderScope.containerOf(context, listen: false);
+      // ignore: avoid_catching_errors, the documented way to probe a scope
+    } on StateError {
+      return false; // No provider scope (plain widget tests).
+    }
+    try {
+      return await container.read(
+        floatEditingProvider(widget.entry.assetId).future,
+      );
+    } on Exception {
+      return false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<bool>(
+    future: _floatEditing,
+    builder: (context, float) => _content(
+      context,
+      photoInfo(widget.entry, floatEditing: float.data ?? false),
+    ),
+  );
+
+  Widget _content(BuildContext context, List<InfoSection> sections) {
     final t = context.tokens;
-    final sections = photoInfo(entry);
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420, maxHeight: 620),

@@ -15,7 +15,7 @@ final _log = Logger('FileCatalogRepository');
 /// JSON-file catalog under `<root>/`:
 /// `catalog.json`, `originals/<id>.<ext>`, `assets/<id>/{edit.json,thumb.jpg}`
 /// and, for camera RAW only, the developed `renditions/<id>.jpg`.
-class FileCatalogRepository implements CatalogRepository {
+class FileCatalogRepository implements CatalogRepository, OriginalFileLocator {
   FileCatalogRepository(this.root);
 
   final String root;
@@ -132,6 +132,14 @@ class FileCatalogRepository implements CatalogRepository {
       throw CatalogException('Original file missing for ${entry.fileName}');
     }
     return file.readAsBytes();
+  }
+
+  @override
+  Future<String?> originalFilePath(String assetId) async {
+    final entry = (await _load())[assetId];
+    if (entry == null) return null;
+    final file = File(p.join(root, entry.originalPath));
+    return await file.exists() ? file.path : null;
   }
 
   @override

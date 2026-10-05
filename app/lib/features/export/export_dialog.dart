@@ -6,6 +6,7 @@ import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
+import 'package:lumen/features/editor/renderer/gpu_float_export.dart';
 import 'package:lumen/features/editor/renderer/gpu_photo_renderer.dart';
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/export/backdrop_export.dart';
@@ -14,6 +15,7 @@ import 'package:lumen/features/export/export_targets.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
 import 'package:lumen/features/portrait/retouch_build.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
+import 'package:lumen/import/float_sources.dart';
 import 'package:lumen/widgets/buttons.dart';
 import 'package:lumen/widgets/lumen_slider.dart';
 import 'package:lumen/widgets/segmented.dart';
@@ -39,6 +41,7 @@ final exportServiceProvider = Provider<ExportService>(
       patches: () => ref.read(patchStoreProvider.future),
     ),
     sourceRenderer: const GpuSourceRenderer(),
+    floatExport: gpuFloatExport(ref.watch(floatSourcesProvider).open),
   ),
 );
 

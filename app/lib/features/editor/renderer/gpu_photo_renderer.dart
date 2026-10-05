@@ -9,7 +9,9 @@ import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/engine/aux_cache.dart';
 import 'package:lumen/engine/backdrop_service.dart';
+import 'package:lumen/engine/float_source.dart';
 import 'package:lumen/engine/gpu_pass.dart';
+import 'package:lumen/engine/hbd_capability.dart';
 import 'package:lumen/engine/render_graph.dart';
 import 'package:lumen/engine/render_scheduler.dart';
 import 'package:lumen/engine/shader_library.dart';
@@ -26,6 +28,14 @@ final _log = Logger('GpuPhotoRenderer');
 
 /// Fragment-shader renderer (interactive). Falls back to [CpuPhotoRenderer]
 /// when shaders cannot load on this device.
+///
+/// Float path (docs/HIGH_BIT_DEPTH.md): when [floatSource] finds a float
+/// source for the photo (camera RAW, 16-bit PNG, 10-bit HEIC) and the
+/// device passes the float probe, the render graph develops a float32
+/// preview of it, so exposure, white balance, highlights and shadows work
+/// on real headroom and precision. The 8-bit decode stays for [before],
+/// the analysis proxy, heal patches and backdrop mattes. Any failure on
+/// the way keeps the 8-bit path.
 class GpuPhotoRenderer
     implements
         PhotoRenderer,
@@ -35,10 +45,25 @@ class GpuPhotoRenderer
         HealSink,
         WarpSink,
         BackdropSink {
-  GpuPhotoRenderer({required this.assetId, this.previewLongEdge = 2560});
+  GpuPhotoRenderer({
+    required this.assetId,
+    this.previewLongEdge = 2560,
+    this.floatSource,
+  });
 
   final String assetId;
   final int previewLongEdge;
+
+  /// Finds the photo's float source (null: always the 8-bit path).
+  final FloatSourceLoader? floatSource;
+  FloatSource? _float;
+  ui.Image? _floatImage;
+
+  /// True when the open photo is edited on the float path.
+  bool get usingFloat => _floatImage != null;
+
+  /// The graph's unhealed source: the float preview, else the 8-bit one.
+  ui.Image? get _base => _floatImage ?? _source;
   final ValueNotifier<ui.Image?> _output = ValueNotifier(null);
   ui.Image? _source;
   AuxTextures? _aux;
@@ -105,14 +130,20 @@ class GpuPhotoRenderer
       original,
       maxLongEdge: previewLongEdge,
     );
-    final aux = _aux = await AuxTextures.build(source);
+    final float = await _openFloat(shaders, source.width, source.height);
+    _float = float?.source;
+    _floatImage = float?.image;
+    final base = float?.image ?? source;
+    final aux = _aux = await AuxTextures.build(base, float: float != null);
     final graph = _graph =
         RenderGraph(
             shaders: shaders,
-            source: source,
+            source: base,
             aux: aux,
             assetId: assetId,
             originalSize: (width: size.width, height: size.height),
+            float: float != null,
+            profile: float?.source.profile ?? HbdProfile.none,
           )
           ..maskRasters = _rasters
           ..retouchMaps = _retouchMaps
@@ -147,6 +178,40 @@ class GpuPhotoRenderer
     final proxyImg = await resizeImage(source, 512);
     _proxy = await rgbaFromImage(proxyImg);
     proxyImg.dispose();
+  }
+
+  /// The float preview of this photo at exactly [width]×[height] (the size
+  /// of the 8-bit preview, so heals, masks and maps line up), or null when
+  /// the photo has no float source, the device fails the float probe or
+  /// the decode fails.
+  Future<({ui.Image image, FloatSource source})?> _openFloat(
+    ShaderLibrary shaders,
+    int width,
+    int height,
+  ) async {
+    final loader = floatSource;
+    if (loader == null) return null;
+    try {
+      if (!await HbdCapability.probe(shaders)) return null;
+      final source = await loader(assetId);
+      if (source == null) return null;
+      // Both decodes must be the same upright picture.
+      final skew = (source.width * height - source.height * width).abs();
+      if (skew > source.width + source.height) {
+        _log.warning(
+          'float source is ${source.width}x${source.height}, preview '
+          '${width}x$height: keeping the 8-bit path',
+        );
+        return null;
+      }
+      final px = await source.render(fullWidth: width, fullHeight: height);
+      final image = await uploadFloat(px.rgba, width, height);
+      _log.info('float path on for $assetId (${width}x$height)');
+      return (image: image, source: source);
+    } on Exception catch (e) {
+      _log.warning('float source unavailable, using the 8-bit path: $e');
+      return null;
+    }
   }
 
   @override
@@ -198,7 +263,10 @@ class GpuPhotoRenderer
 
   Future<void> _swapSource(List<HealOp> ops, int gen) async {
     final graph = _graph, source = _source, baseAux = _aux;
-    if (graph == null || source == null || baseAux == null) return;
+    final base = _base, floatBase = _floatImage;
+    if (graph == null || source == null || baseAux == null || base == null) {
+      return;
+    }
     final healer = _healer;
     final visible = ops.any((o) => !o.hidden && o.isRenderable);
     HealedSource? h;
@@ -208,13 +276,26 @@ class GpuPhotoRenderer
     }
     if (_disposed || gen != _healGen) return;
     if (h == null || !h.healed) {
-      graph.replaceSource(source, aux: baseAux);
+      graph.replaceSource(base, aux: baseAux);
       _releaseHealed();
     } else if (!identical(h.buffer, _healedBuffer)) {
-      final img = await imageFromRgba(h.buffer);
-      final aux = h.needsAuxRecompute ? await AuxTextures.build(img) : null;
+      final ui.Image img;
+      if (floatBase != null) {
+        // The float source keeps its values; the 8-bit patches replace
+        // what they cover.
+        final overlay = await healer!.overlay(source.width, source.height, ops);
+        if (_disposed || gen != _healGen || overlay == null) return;
+        final patches = await imageFromRgba(overlay);
+        img = compositeOverlay(floatBase, patches);
+        patches.dispose();
+      } else {
+        img = await imageFromRgba(h.buffer);
+      }
+      final aux = h.needsAuxRecompute
+          ? await AuxTextures.build(img, float: floatBase != null)
+          : null;
       if (_disposed || gen != _healGen) {
-        img.dispose();
+        EngineImages.dispose(img);
         aux?.dispose();
         return;
       }
@@ -231,7 +312,7 @@ class GpuPhotoRenderer
 
   void _releaseHealed() {
     // Frames already recorded keep their images alive in the engine.
-    _healedImage?.dispose();
+    EngineImages.dispose(_healedImage);
     _healedAux?.dispose();
     _healedImage = null;
     _healedBuffer = null;
@@ -355,6 +436,11 @@ class GpuPhotoRenderer
     _releaseHealed();
     _aux?.dispose();
     EngineImages.dispose(_source);
+    EngineImages.dispose(_floatImage);
+    _floatImage = null;
+    // The native decoder keeps the RAW decode cached while the photo is open.
+    unawaited(_float?.release());
+    _float = null;
     _output.dispose();
   }
 }

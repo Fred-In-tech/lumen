@@ -56,6 +56,17 @@ abstract interface class CatalogRepository {
   Future<void> writeThumb(String assetId, Uint8List bytes);
 }
 
+/// Optional catalog capability: originals that are files on disk. The
+/// float decoder reads RAW (and other high-bit-depth) originals by path,
+/// so the 30–80 MB file never crosses a platform channel. Check with
+/// `catalog is OriginalFileLocator`; catalogs without it (web, tests) keep
+/// every photo on the 8-bit path.
+abstract interface class OriginalFileLocator {
+  /// Absolute path of the untouched original of [assetId], or null when
+  /// the photo or its file is missing.
+  Future<String?> originalFilePath(String assetId);
+}
+
 /// Sorts newest capture first, then by file name.
 List<CatalogEntry> sortEntries(Iterable<CatalogEntry> entries) {
   final list = entries.toList()

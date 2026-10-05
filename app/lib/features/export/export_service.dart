@@ -9,7 +9,7 @@ import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart'
-    show kNoBackdropInputs;
+    show BackdropInputs, kNoBackdropInputs;
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/masks/ai_mask_rasters.dart' show aiMaskRefsKey;
 import 'package:lumen/features/export/source_render.dart';
@@ -64,6 +64,42 @@ typedef FullResRenderer = Future<RgbaBuffer> Function(
   String assetId,
 });
 
+/// What a float (high-bit-depth) export needs to render one stored photo.
+class FloatExportRequest {
+  const FloatExportRequest({
+    required this.assetId,
+    required this.settings,
+    required this.pixelSource,
+    this.longEdge,
+    this.maskRasters = const {},
+    this.retouchMaps,
+    this.faces,
+    this.backdrop = kNoBackdropInputs,
+    this.patches,
+  });
+
+  final String assetId;
+  final DevelopSettings settings;
+
+  /// The 8-bit pixel source (the RAW rendition), for what is analysed in
+  /// 8 bits (backdrop matte).
+  final Uint8List pixelSource;
+  final int? longEdge;
+  final Map<String, MaskRaster> maskRasters;
+  final RetouchMaps? retouchMaps;
+  final FaceAnalysis? faces;
+  final BackdropInputs backdrop;
+  final PatchStoreGetter? patches;
+}
+
+/// Exports a photo from its float source (camera RAW, 16-bit PNG, 10-bit
+/// HEIC) so the file gets the highlight headroom and precision the editor
+/// showed. Returns null when the photo has no float source on this device:
+/// the export then takes the 8-bit path.
+typedef FloatExportRenderer = Future<RgbaBuffer?> Function(
+  FloatExportRequest request,
+);
+
 /// Reference-pipeline full-res render (CPU, isolate). Correct on every platform.
 Future<RgbaBuffer> cpuFullResRender(
   Uint8List original,
@@ -114,6 +150,7 @@ class ExportService {
     this.maskLoader,
     this.retouch,
     this.backdrop,
+    this.floatExport,
     SourceRenderer? sourceRenderer,
   }) : _render = renderer ?? cpuFullResRender,
        _renderSource = sourceRenderer ?? const CpuSourceRenderer();
@@ -132,6 +169,9 @@ class ExportService {
 
   /// Loads background-swap inputs (null: the background swap is ignored).
   final BackdropInputsLoader? backdrop;
+
+  /// Float export (null: every photo exports on the 8-bit path).
+  final FloatExportRenderer? floatExport;
   final SourceRenderer _renderSource;
 
   Future<ExportedFile> exportOne(String assetId, ExportOptions o) async {
@@ -151,8 +191,23 @@ class ExportService {
         ? kNoBackdropInputs
         : await backdrop!(assetId, settings.backdrop);
     final swapped = swap.people != null || swap.hair != null;
+    final floated = await floatExport?.call(
+      FloatExportRequest(
+        assetId: assetId,
+        settings: settings,
+        pixelSource: original,
+        longEdge: o.longEdge,
+        maskRasters: rasters,
+        retouchMaps: faces.maps,
+        faces: faces.faces,
+        backdrop: swap,
+        patches: patches,
+      ),
+    );
     final RgbaBuffer pixels;
-    if (heal || rasters.isNotEmpty || faces.maps != null || swapped) {
+    if (floated != null) {
+      pixels = floated;
+    } else if (heal || rasters.isNotEmpty || faces.maps != null || swapped) {
       final source = await decodeHealedSource(
         original,
         assetId: assetId,

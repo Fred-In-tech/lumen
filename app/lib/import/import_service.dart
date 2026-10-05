@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/data/catalog_repository.dart';
+import 'package:lumen/import/bit_depth.dart';
 import 'package:lumen/import/exif_reader.dart';
 import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/photo_decoder.dart';
@@ -94,6 +95,8 @@ class ImportService {
         bytes: file.bytes.length,
         importedAt: _clock().toUtc(),
         exif: exif,
+        // Read from the file header; RAW that does not declare it stays null.
+        bitDepth: sniffBitDepth(file.bytes, format),
       );
       // Thumbnail first, so the library never shows the entry without one.
       await _writeThumb(entry, pixels);

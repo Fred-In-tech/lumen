@@ -95,6 +95,26 @@ class HealedSourceCache {
           );
   }
 
+  /// The patches of [ops] alone as a premultiplied [width]×[height]
+  /// overlay (`composeHealOverlay`), or null when nothing draws. The float
+  /// editing path draws it over the float source, whose pixels a
+  /// [RgbaBuffer] cannot hold. Composed off the UI isolate, not cached.
+  Future<RgbaBuffer?> overlay(int width, int height, List<HealOp> ops) async {
+    final visible = [
+      for (final op in ops)
+        if (!op.hidden && op.isRenderable) op,
+    ];
+    final patches = await _patchesFor(visible);
+    final drawn = [
+      for (final op in visible)
+        if (patches.containsKey(op.patch)) op,
+    ];
+    if (drawn.isEmpty) return null;
+    return runInBackground(
+      () => composeHealOverlay(width, height, drawn, MapPatchLookup(patches)),
+    );
+  }
+
   /// Like [compose] but stores no result: for one-off buffers (thumbnails,
   /// style previews, histogram proxies) that would only evict the preview
   /// entries. Decoded patches are still shared.

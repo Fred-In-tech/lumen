@@ -45,10 +45,48 @@ String _trim(double v, {int decimals = 1}) {
   return s.endsWith('.0') ? s.substring(0, s.length - 2) : s;
 }
 
+const _rawFormats = {
+  'cr2',
+  'cr3',
+  'dng',
+  'nef',
+  'nrw',
+  'arw',
+  'sr2',
+  'raf',
+  'orf',
+  'rw2',
+  'pef',
+  'srw',
+  'erf',
+  'threeFr',
+};
+
+/// "14-bit RAW", "RAW" (a RAW file that does not declare its depth),
+/// "16-bit", or null when a non-RAW file's depth was never recorded
+/// (catalogs from before it was read at import). Never a guess.
+String? bitDepthLabel(CatalogEntry e) {
+  final bits = e.bitDepth;
+  if (_rawFormats.contains(e.format)) {
+    return bits == null ? 'RAW' : '$bits-bit RAW';
+  }
+  if (bits != null) return '$bits-bit';
+  return e.format == 'jpeg' || e.format == 'webp' ? '8-bit' : null;
+}
+
+/// How the editor processes the photo: the float path keeps RAW (and other
+/// high-bit-depth) data in 32-bit float up to develop.
+String editingLabel({required bool floatEditing}) =>
+    floatEditing ? '32-bit float' : '8-bit';
+
 /// Everything known about [e], grouped for the info panel. Rows without a
 /// value are left out, and so are sections without rows. GPS and serial
 /// numbers are never stored, so they can never appear here.
-List<InfoSection> photoInfo(CatalogEntry e) {
+///
+/// [floatEditing]: the photo is edited on the float path on this device
+/// (`floatEditingProvider`).
+List<InfoSection> photoInfo(CatalogEntry e, {bool floatEditing = false}) {
+  final depth = bitDepthLabel(e);
   final x = e.exif;
   final mp = e.width * e.height / 1e6;
   final bias = x.exposureBias;
@@ -61,6 +99,8 @@ List<InfoSection> photoInfo(CatalogEntry e) {
         if (e.width > 0 && e.height > 0)
           ('Size', '${e.width} × ${e.height}  (${_trim(mp)} MP)'),
         if (e.bytes > 0) ('File size', fileSizeLabel(e.bytes)),
+        if (depth != null) ('Bit depth', depth),
+        ('Editing', editingLabel(floatEditing: floatEditing)),
         ('Imported', _date(e.importedAt.toLocal())),
       ],
     ),
