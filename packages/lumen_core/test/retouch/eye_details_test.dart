@@ -56,6 +56,6 @@ void main() {
     final gap1 =
         discMean(after, _w, c.x, c.y, 8) -
         meanWhere(_w * _h, under, (i) => after[i]);
-    expect(gap1, lessThan(0.8 * gap0));
+    expect(gap1, lessThan(0.85 * gap0));
   });
 }

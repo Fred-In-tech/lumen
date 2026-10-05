@@ -155,7 +155,10 @@ FaceRegionPlanes buildFaceRegions(
   return FaceRegionPlanes(
     rect: rect,
     skin: skin,
-    underEye: _underEye(f),
+    underEye: productOf([
+      _underEye(f),
+      feather(masks.skinLike, 0.5 * kRegionFeatherIod),
+    ]),
     lash: _lashFalloff(f),
     mouth: pasted(rect, mouth.mouth, mouth.sub),
     sclera: pasted(rect, eye.sclera, eye.sub),

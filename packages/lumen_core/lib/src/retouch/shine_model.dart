@@ -26,8 +26,9 @@ const double kShineRemove = 0.75;
 
 /// Skin coverage of the reference blur below which no highlight is
 /// judged (ramp).
-const double kShineCoverLo = 0.08;
-const double kShineCoverHi = 0.2;
+const double kShineCoverLo = 0.15;
+const double kShineCoverHi = 0.35;
+const double kShineCoverIod = 0.1;
 
 /// The diffuse reference is the highlight-free skin within this blur
 /// (IOD): wide, so the middle of a broad forehead highlight still has
@@ -109,9 +110,9 @@ ShineResult computeShine(
     wt[i] = norm[i] * (1 - smoothstep(kShineShareLo, kShineShareHi, share));
   }
   final ref = maskedGaussians(lin, wt, w, h, sigma);
-  // Where little skin is near (the face edge), the reference is partly
-  // hair or background: no highlight is judged against it.
-  final cover = maskedCoverage(wt, w, h, sigma);
+  // Where little skin is near (the very edge of the face), nothing is
+  // judged: the reference there is partly hair or background.
+  final cover = maskedCoverage(norm, w, h, kShineCoverIod * iod);
   final refL = Float32List(n), refA = Float32List(n), refB = Float32List(n);
   for (var i = 0; i < n; i++) {
     linearToOklab(ref[0][i], ref[1][i], ref[2][i], t, 0);
@@ -120,6 +121,7 @@ ShineResult computeShine(
     refB[i] = t[2];
   }
   final light = _fitLight(lin, ref, low.l, refL, stats);
+  final toneL = _medianL(low.l, stats);
   final dl = Float32List(n), da = Float32List(n), db = Float32List(n);
   final weight = Float32List(n);
   final excess = <double>[];
@@ -127,11 +129,22 @@ ShineResult computeShine(
   for (var i = 0; i < n; i++) {
     if (stats[i] > 0.5) core++;
     if (norm[i] <= 0) continue;
+    // "The skin around": the local reference, but never brighter than
+    // this face's typical skin. The forehead, nose and cheekbones are
+    // lit and made up brighter as a whole; the excess a retoucher takes
+    // down is measured against the face, not against the zone itself.
+    final base = math.min(refL[i], toneL);
     final gate =
-        smoothstep(kShineGateLo, kShineGateHi, low.l[i] - refL[i]) *
+        smoothstep(kShineGateLo, kShineGateHi, low.l[i] - base) *
         smoothstep(kShineCoverLo, kShineCoverHi, cover[i]);
     if (gate <= 0) continue;
-    final m = _specular(lin, ref, light, i);
+    // Specular amount against the skin around and against this face's
+    // most saturated skin (a made-up, paler zone is still judged as
+    // skin with light on it); the floor below bounds what is removed.
+    final m = math.max(
+      _specular(lin, ref, light, i),
+      _specularFor(lin, skinDir, light, i),
+    );
     if (m <= 0) continue;
     var k = kShineRemove * gate * m;
     _minus(lin, light, i, k, t);
@@ -139,7 +152,7 @@ ShineResult computeShine(
     // it by at most [kShineRemove] of its excess, so no setting can turn
     // a hot spot into a dark or grey patch.
     final floor =
-        low.l[i] - kShineRemove * gate * math.max(0.0, low.l[i] - refL[i]);
+        low.l[i] - kShineRemove * gate * math.max(0.0, low.l[i] - base);
     if (t[0] < floor) {
       k *= (low.l[i] - floor) / math.max(low.l[i] - t[0], 1e-6);
       _minus(lin, light, i, k, t);
@@ -149,13 +162,13 @@ ShineResult computeShine(
     // What shows under the removed light moves to the surrounding skin
     // colour by the share of the highlight that went, so a dimmed
     // highlight is never a paler or greyer patch than the skin around.
-    final over = low.l[i] - refL[i];
+    final over = low.l[i] - base;
     final q = over > 1e-4 ? clamp01(-dl[i] / over) : 0.0;
     da[i] = t[1] + q * (refA[i] - t[1]) - low.a[i];
     db[i] = t[2] + q * (refB[i] - t[2]) - low.b[i];
     if (stats[i] > 0.5 && -dl[i] > kShinyDeltaL) {
       shiny++;
-      excess.add(low.l[i] - refL[i]);
+      excess.add(low.l[i] - base);
     }
   }
   excess.sort();
@@ -165,6 +178,18 @@ ShineResult computeShine(
     area: core == 0 ? 0 : shiny / core,
     p95: excess.isEmpty ? 0 : excess[((excess.length - 1) * 0.95).round()],
   );
+}
+
+/// Median L of the skin core (this face's typical skin lightness).
+double _medianL(Float32List l, Float32List stats) {
+  final v = <double>[];
+  final step = math.max(1, l.length ~/ 20000);
+  for (var i = 0; i < l.length; i += step) {
+    if (stats[i] > 0.5) v.add(l[i]);
+  }
+  if (v.isEmpty) return 1;
+  v.sort();
+  return v[v.length ~/ 2];
 }
 
 /// OkLab of pixel [i] with `k` of the [light] removed, into [out].
@@ -214,6 +239,22 @@ List<double> _saturatedSkin(
   }
   final len = math.sqrt(r * r + g * g + b * b);
   return len < 1e-9 ? [s3, s3, s3] : [r / len, g / len, b / len];
+}
+
+/// Specular amount `m ≥ 0` of pixel [i] for a fixed unit skin direction.
+double _specularFor(
+  List<Float32List> lin,
+  List<double> dir,
+  List<double> light,
+  int i,
+) {
+  final rho = dir[0] * light[0] + dir[1] * light[1] + dir[2] * light[2];
+  final det = 1 - rho * rho;
+  if (det < 1e-4) return 0;
+  final ic = lin[0][i] * dir[0] + lin[1][i] * dir[1] + lin[2][i] * dir[2];
+  final iw = lin[0][i] * light[0] + lin[1][i] * light[1] + lin[2][i] * light[2];
+  final m = (iw - rho * ic) / det;
+  return m > 0 ? m : 0;
 }
 
 /// Share of pixel [i]'s light that is specular, for the fixed skin

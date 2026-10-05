@@ -87,9 +87,16 @@ class SkinMasks {
     required this.norm,
     required this.stats,
     required this.spots,
+    required this.skinLike,
     required this.hair,
     required this.model,
   });
+
+  /// Skin by colour, lightness and texture alone, protected features
+  /// included (the lids and the skin right under the lashes are skin):
+  /// keeps zone effects such as the under-eye off hair and background
+  /// when the mesh sits off.
+  final Float32List skinLike;
 
   /// Where spots may be looked for: the core plus the small dark islands
   /// it encloses (a mole is not skin-coloured, but it is on the skin).
@@ -165,18 +172,21 @@ SkinMasks buildSkinMasks(
     kSkinCarriedBaseIod * iod,
   ).first;
   final hair = _hairMap(f, lab.l, m0);
-  final raw = Float32List(n);
+  final raw = Float32List(n), skinLike = Float32List(n);
   for (var i = 0; i < n; i++) {
-    if (m0[i] <= 0) continue;
+    if (prior[i] * pColor[i] <= 0) continue;
     final base = math.max(
       local[i],
       inner[i] * local[i] + (1 - inner[i]) * carried[i],
     );
     final rel = (base - soft.l[i]) / math.max(base, 0.05);
-    raw[i] =
-        m0[i] *
+    final like =
+        prior[i] *
+        pColor[i] *
         (1 - smoothstep(kSkinDarkRelLo, kSkinDarkRelHi, rel)) *
         (1 - smoothstep(kHairCutLo, kHairCutHi, hair[i]));
+    skinLike[i] = like;
+    raw[i] = like * (1 - protect[i]);
   }
   final connected = _connectedToFace(f, raw);
   final solid = Float32List(n);
@@ -225,6 +235,7 @@ SkinMasks buildSkinMasks(
     norm: raw,
     stats: stats,
     spots: spots,
+    skinLike: skinLike,
     hair: hair,
     model: model,
   );
@@ -368,7 +379,7 @@ Float32List _hairMapAt(
   var med = kHairEnergyFloor;
   if (picked.length > 16) {
     picked.sort();
-    med = math.max(med, math.sqrt(picked[picked.length ~/ 2]));
+    med = math.max(med, math.sqrt(math.max(0.0, picked[picked.length ~/ 2])));
   }
   // Structure tensor of the lightly smoothed L (coherence of direction).
   final jxx = Float32List(n), jxy = Float32List(n), jyy = Float32List(n);
@@ -394,7 +405,8 @@ Float32List _hairMapAt(
   );
   final out = Float32List(n);
   for (var i = 0; i < n; i++) {
-    final e = math.sqrt(energy[i]) / med;
+    // Running box sums can dip a hair below zero.
+    final e = math.sqrt(math.max(0.0, energy[i])) / med;
     if (e <= kHairEnergyLo) continue;
     final tr = sxx[i] + syy[i];
     final det = sxx[i] * syy[i] - sxy[i] * sxy[i];
