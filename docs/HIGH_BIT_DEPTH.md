@@ -236,13 +236,15 @@ only happens with extreme warp ranges.
 | Tiles | 12 of 2048² | 12 of 2048² |
 | Largest source window | 4.2 MP (67 MB as float32) | (whole photo: 45 MP, 179 MB + mips on the GPU) |
 | Estimated peak GPU memory per tile | **~194 MB** (two live float32 windows with mips + the 8-bit tile targets) | ~240 MB (8-bit source with mips) + tiles |
-| Native decode of the 12 windows | 1.1 s | |
+| Native decode of the 12 windows | 1.1–1.2 s (5.9 s in one run, see below) | |
 | Upload + passes + readback | 0.4 s | |
-| Whole export incl. JPEG encode | **7.4 s** | 5.4 s |
+| Whole export incl. JPEG encode | **7.4–8.1 s** (12.4 s in the slow run) | 5.4–6.3 s |
 | Process RSS (peak during the run) | 1.84 GB | (same run) |
 | Brightest block of the exported file | 155 levels, sd 41.6, mean 232 | 58 levels, sd 8.5, mean 153 (clipped white turned grey) |
 
-The GPU figure is computed from pixel counts (16 B/px × 4/3), not read
+Native decode times varied between runs on the development machine (other
+heavy jobs were running): five runs gave 1.1–1.2 s for the 12 windows, one
+gave 5.9 s. The GPU figure is computed from pixel counts (16 B/px × 4/3), not read
 from Metal. CPU memory is dominated by the full 8-bit output frame
 (179 MB), one window in transit (67 MB, copied by the channel) and the JPEG
 encoder.
@@ -259,7 +261,7 @@ light bulb and a white curtain in frame), preview 1708 × 2560:
 | Highlights −100, same block | **113 levels, sd 39.8** | 55 levels, sd 7.8 |
 | Exposure −2, brightest blocks (curtain) | 20–23 levels, sd 6.0 | 9–11 levels, sd 2.2–2.4 |
 | Highlights −100, brightest blocks | 22–27 levels, sd 6.9 | 10–16 levels, sd 2.7–3.4 |
-| Open | 0.9–1.0 s (one RAW decode at preview size); 3.8–4.9 s when the machine was busy | 0.2 s (JPEG rendition) |
+| Open | 0.9–1.0 s in three runs, 3.8–4.9 s in four (one RAW decode at preview size; the decode time varied with machine load) | 0.2 s (JPEG rendition) |
 | Slider drag frame (interactive, half size) | 1.2–2.1 ms | 1.3–2.1 ms |
 | Full-quality frame | 2.8–5.1 ms | 2.9–5.4 ms |
 
