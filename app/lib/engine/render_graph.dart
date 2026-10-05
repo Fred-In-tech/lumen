@@ -35,6 +35,7 @@
 ///   geometry as `render` (draw it over the frame for "show overlay").
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -167,13 +168,38 @@ class RenderGraph implements FrameRenderer {
     );
   }
 
+  /// Renders queue behind each other: the LUT, retouch, denoise and
+  /// backdrop caches hold one entry each, so two renders interleaving at
+  /// their awaits (the frame waiting for a map upload while style-preview
+  /// thumbnails render other settings) would dispose images the other is
+  /// about to draw with.
+  Future<void> _tail = Future.value();
+
+  Future<T> _exclusive<T>(Future<T> Function() body) {
+    final previous = _tail;
+    final done = Completer<void>();
+    _tail = done.future;
+    return previous.then((_) => body()).whenComplete(done.complete);
+  }
+
   /// [warp] overrides [warpField] for this render (thumbnails of other
-  /// settings); pass `WarpField.identity()` for no warp.
+  /// settings); pass `WarpField.identity()` for no warp. Renders of one
+  /// graph run one at a time, in call order.
   @override
   Future<ui.Image> render(
     DevelopSettings settings, {
     double scale = 1,
     bool showClipping = false,
+    WarpField? warp,
+  }) => _exclusive(
+    () =>
+        _render(settings, scale: scale, showClipping: showClipping, warp: warp),
+  );
+
+  Future<ui.Image> _render(
+    DevelopSettings settings, {
+    required double scale,
+    required bool showClipping,
     WarpField? warp,
   }) async {
     if (_disposed) throw StateError('RenderGraph disposed');
@@ -259,6 +285,15 @@ class RenderGraph implements FrameRenderer {
     int index, {
     double scale = 1,
     MaskTint tint = kDefaultMaskTint,
+  }) => _exclusive(
+    () => _renderMaskOverlay(settings, index, scale: scale, tint: tint),
+  );
+
+  Future<ui.Image> _renderMaskOverlay(
+    DevelopSettings settings,
+    int index, {
+    required double scale,
+    required MaskTint tint,
   }) async {
     if (_disposed) throw StateError('RenderGraph disposed');
     final masks = await maskCache.obtain(settings.masks);
