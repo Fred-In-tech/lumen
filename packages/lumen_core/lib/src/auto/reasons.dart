@@ -37,15 +37,19 @@ abstract final class Reasons {
   static String paramName(ParamId param) =>
       ParamRegistry.tryById(param)?.label.toLowerCase() ?? param;
 
-  /// Reason for a change made by the auto-tone solver.
-  static String auto(ParamId param, double from, double to) {
+  /// Reason for a change made by the auto-tone solver: what happened and,
+  /// after it, [why] (a "to …" phrase; defaults to the slider's usual
+  /// purpose).
+  static String auto(ParamId param, double from, double to, {String? why}) {
     final d = to - from;
     final t = _templates[param];
     final v = formatDelta(param, d);
     if (t == null) {
-      return '${d >= 0 ? 'Raised' : 'Lowered'} ${paramName(param)} $v';
+      final what = '${d >= 0 ? 'Raised' : 'Lowered'} ${paramName(param)} $v';
+      return why == null ? what : '$what $why';
     }
-    return (d >= 0 ? t.$1 : t.$2).replaceAll('{d}', v);
+    final (what, purpose) = d >= 0 ? (t.$1, t.$2) : (t.$3, t.$4);
+    return '${what.replaceAll('{d}', v)} ${why ?? purpose}';
   }
 
   /// Reason for a change contributed by an AI style's look.
@@ -115,50 +119,73 @@ abstract final class Reasons {
   }
 }
 
-/// (increase template, decrease template); `{d}` is the signed delta.
-const Map<ParamId, (String, String)> _templates = {
+/// (increase, its usual purpose, decrease, its usual purpose); `{d}` is the
+/// signed delta.
+const Map<ParamId, (String, String, String, String)> _templates = {
   P.exposure: (
-    'Raised exposure {d} to brighten the midtones',
-    'Lowered exposure {d} to tame an overly bright image',
+    'Raised exposure {d}',
+    'to brighten the midtones',
+    'Lowered exposure {d}',
+    'to tame an overly bright image',
   ),
   P.temp: (
-    'Warmed temp {d} to neutralize a cool cast',
-    'Cooled temp {d} to neutralize a warm cast',
+    'Warmed temp {d}',
+    'to neutralize a cool cast',
+    'Cooled temp {d}',
+    'to neutralize a warm cast',
   ),
   P.tint: (
-    'Shifted tint {d} toward magenta to remove a green cast',
-    'Shifted tint {d} toward green to remove a magenta cast',
+    'Shifted tint {d} toward magenta',
+    'to remove a green cast',
+    'Shifted tint {d} toward green',
+    'to remove a magenta cast',
   ),
   P.whites: (
-    'Raised whites {d} to set a clean white point',
-    'Lowered whites {d} to keep highlights from clipping',
+    'Raised whites {d}',
+    'to set a clean white point',
+    'Lowered whites {d}',
+    'to keep highlights from clipping',
   ),
   P.blacks: (
-    'Lifted blacks {d} to rescue crushed shadows',
-    'Deepened blacks {d} to restore a true black point',
+    'Lifted blacks {d}',
+    'to rescue crushed shadows',
+    'Deepened blacks {d}',
+    'to restore a true black point',
   ),
   P.highlights: (
-    'Raised highlights {d} to add sparkle',
-    'Pulled highlights {d} to recover bright detail',
+    'Raised highlights {d}',
+    'to add sparkle',
+    'Pulled highlights {d}',
+    'to recover bright detail',
   ),
   P.shadows: (
-    'Lifted shadows {d} to open up dark areas',
-    'Deepened shadows {d} to keep the mood',
+    'Lifted shadows {d}',
+    'to open up dark areas',
+    'Deepened shadows {d}',
+    'to keep the mood',
   ),
   P.contrast: (
-    'Added contrast {d} for more depth',
-    'Reduced contrast {d} to soften harsh tones',
+    'Added contrast {d}',
+    'for more depth',
+    'Reduced contrast {d}',
+    'to soften harsh tones',
   ),
   P.vibrance: (
-    'Boosted vibrance {d} to enrich muted colors',
-    'Reduced vibrance {d} to calm strong colors',
+    'Boosted vibrance {d}',
+    'to enrich muted colors',
+    'Reduced vibrance {d}',
+    'to calm strong colors',
   ),
   P.saturation: (
-    'Raised saturation {d} for richer color',
-    'Lowered saturation {d} to tone down color',
+    'Raised saturation {d}',
+    'for richer color',
+    'Lowered saturation {d}',
+    'to tone down color',
   ),
   P.dehaze: (
-    'Added dehaze {d} to cut through haze',
-    'Reduced dehaze {d} for a softer atmosphere',
+    'Added dehaze {d}',
+    'to cut through haze',
+    'Reduced dehaze {d}',
+    'for a softer atmosphere',
   ),
 };

@@ -6,13 +6,14 @@ import '../model/param_registry.dart';
 import 'ai_style.dart';
 import 'atoms.dart';
 import 'auto_edit_provider.dart';
-import 'auto_tone_constants.dart';
+import 'enhance_constants.dart';
+import 'enhance_report.dart';
 import 'guards.dart';
 import 'lexicon.dart';
 import 'local_auto_tone.dart';
 import 'reasons.dart';
 
-typedef _C = AutoToneConstants;
+typedef _C = EnhanceConstants;
 
 /// The offline engine: staged auto-tone + style atoms + guards, and the
 /// lexicon for instructions. Always available; never touches the network.
@@ -45,6 +46,7 @@ class LocalAutoEditProvider implements AutoEditProvider {
       targets: style.targets,
       exif: input.exif,
       scene: input.scene,
+      faces: input.faces,
       locked: input.locked,
       renderer: renderer,
     );
@@ -52,7 +54,8 @@ class LocalAutoEditProvider implements AutoEditProvider {
     final guard = Guards.enforce(
       proxy: proxy,
       settings: styled.settings,
-      limits: autoLimits,
+      // Light that was already blown in the photo is not the edit's fault.
+      limits: autoLimits.allowingClip(input.stats.clipFraction),
       locked: input.locked,
       renderer: renderer,
     );
@@ -65,8 +68,9 @@ class LocalAutoEditProvider implements AutoEditProvider {
         style,
         styled.touched,
         guard.reasons,
+        tone.reasonFor,
       ),
-      intent: _intent(style),
+      intent: _intent(style, tone.detail.notes),
       engineUsed: AutoEditEngine.local,
       confidence: tone.confidence,
     );
@@ -120,24 +124,30 @@ class LocalAutoEditProvider implements AutoEditProvider {
     );
   }
 
-  /// Fallback without pixels: closed-form WB, exposure and levels from the
-  /// stats (research §6.3–6.5), then the style look.
+  /// Fallback without pixels: closed-form white balance, exposure and
+  /// black point from the stats (no faces, no rendering), then the style.
   AutoEditOutcome _fromStatsOnly(AutoEditInput input) {
     final st = input.stats;
     final style = input.style;
     final values = <ParamId, double>{};
-    final strength = style.targets.wbStrength ?? _C.wbStrength;
-    final c = st.wb.confidence;
-    if (c >= _C.wbConfidenceLo) {
-      values[P.temp] = (-100 * st.wb.a * strength).clamp(-40, 40).toDouble();
-      values[P.tint] = (200 * st.wb.m * strength).clamp(-25, 25).toDouble();
-    }
+    final strength = math.min(
+      _C.wbStrength,
+      style.targets.wbStrength ?? _C.wbStrength,
+    );
+    final k = strength * st.wb.confidence;
+    final temp = (-100 * st.wb.a * k).clamp(-_C.tempMax, _C.tempMax);
+    final tint = (200 * st.wb.m * k).clamp(-_C.tintMax, _C.tintMax);
+    if (temp.abs() >= _C.wbDeadTemp) values[P.temp] = temp.toDouble();
+    if (tint.abs() >= _C.wbDeadTint) values[P.tint] = tint.toDouble();
+    final scale = style.targets.keyScale;
     final median = math.max(srgbToLinear(st.lumaP.p50), 1e-4);
-    final key = LocalAutoTone.sceneKey(st) * style.targets.keyScale;
-    final (lo, hi) = LocalAutoTone.exposureBand(style.targets);
-    if (median < lo || median > hi) {
-      values[P.exposure] = (math.log(key / median) / math.ln2)
-          .clamp(_C.evMin, _C.evMax)
+    if (median < _C.bandLowY * scale || median > _C.bandHighY * scale) {
+      final key = (_C.keyBase * scale).clamp(
+        _C.targetLowY * scale,
+        _C.targetHighY * scale,
+      );
+      values[P.exposure] = (_C.dampGlobal * math.log(key / median) / math.ln2)
+          .clamp(_C.evMinOther, _C.evMaxOther)
           .toDouble();
     }
     final tLo = _C.blackTarget + style.targets.blackTargetShift;
@@ -160,8 +170,9 @@ class LocalAutoEditProvider implements AutoEditProvider {
         style,
         styled.touched,
         const {},
+        Reasons.auto,
       ),
-      intent: _intent(style),
+      intent: _intent(style, const []),
       engineUsed: AutoEditEngine.local,
       degraded: true,
       degradedReason: 'No preview pixels: estimated from image statistics',
@@ -179,9 +190,14 @@ class LocalAutoEditProvider implements AutoEditProvider {
         param,
   };
 
-  static String _intent(AiStyle style) => style == AiStyle.natural
-      ? 'Natural: balanced exposure, neutral color'
-      : '${style.label}: balanced base edit with the ${style.label} look';
+  /// One line above the change list: the look, then what was left alone.
+  static String _intent(AiStyle style, List<EnhanceNote> notes) {
+    final head = style == AiStyle.natural
+        ? 'Natural: balanced exposure, true-to-scene color'
+        : '${style.label}: balanced base edit with the ${style.label} look';
+    if (notes.isEmpty) return head;
+    return '$head. ${notes.take(2).map((n) => n.text).join('. ')}.';
+  }
 
   /// One reason per change, always describing the final change from `from`
   /// to `to`: guard note > tone stage (+ style note) > style look.
@@ -192,6 +208,7 @@ class LocalAutoEditProvider implements AutoEditProvider {
     AiStyle style,
     Set<ParamId> styleTouched,
     Map<ParamId, String> guardReasons,
+    ReasonFor toneReason,
   ) {
     final toneChanged = from.changedParams(tone);
     return Reasons.diff(
@@ -201,7 +218,7 @@ class LocalAutoEditProvider implements AutoEditProvider {
         final guard = guardReasons[p];
         if (guard != null) return Reasons.guarded(p, a, b, guard);
         if (toneChanged.contains(p)) {
-          final r = Reasons.auto(p, a, b);
+          final r = toneReason(p, a, b);
           return styleTouched.contains(p) ? '$r (${style.label} look)' : r;
         }
         return Reasons.style(style.label, p, a, b);

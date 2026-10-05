@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import '../analysis/image_stats.dart';
 import '../model/develop_settings.dart';
 import '../model/exif_summary.dart';
+import '../model/face_analysis.dart';
 import '../model/param_registry.dart';
 import '../render/rgba_buffer.dart';
 import 'ai_style.dart';
@@ -121,6 +122,7 @@ class AutoEditInput {
     this.variants = 1,
     this.proxy,
     this.scene,
+    this.faces = const [],
   });
 
   /// Stats of the unedited analysis proxy.
@@ -147,6 +149,11 @@ class AutoEditInput {
 
   /// Optional scene hints (e.g. a previous vision answer).
   final SceneInfo? scene;
+
+  /// Face boxes of the photo (normalised to the unedited frame; empty when
+  /// unknown). The local engine anchors exposure and white balance on the
+  /// skin inside them. Transient: never stored with the edit.
+  final List<FaceBox> faces;
 }
 
 /// Input of an instruction ("warmer, lift shadows") edit.
@@ -162,6 +169,7 @@ class InstructInput extends AutoEditInput {
     super.baseline,
     super.proxy,
     super.scene,
+    super.faces,
   });
 
   final String instruction;

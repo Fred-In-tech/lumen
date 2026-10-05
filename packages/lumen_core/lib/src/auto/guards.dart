@@ -19,13 +19,29 @@ class GuardLimits {
   /// For vision / instruction proposals: clip ≤ 1 %, crush ≤ 2 %.
   static const proposal = GuardLimits();
 
-  /// For the local engine's own result (research clip guard 0.5 %).
-  static const local = GuardLimits(maxClip: 0.005);
+  /// For the local engine's own result (research clip guard 0.5 %). The
+  /// solver owns the key (it keeps low-key and high-key scenes as they
+  /// are), so the median is not second-guessed here.
+  static const local = GuardLimits(
+    maxClip: 0.005,
+    minMedianLStar: 0,
+    maxMedianLStar: 100,
+  );
 
   final double maxClip;
   final double maxCrush;
   final double minMedianLStar;
   final double maxMedianLStar;
+
+  /// These limits with room for [sourceClip], the share of the unedited
+  /// photo that is already clipped (a lamp, a window): only clipping the
+  /// edit adds counts against it.
+  GuardLimits allowingClip(double sourceClip) => GuardLimits(
+    maxClip: math.max(maxClip, sourceClip + maxClip),
+    maxCrush: maxCrush,
+    minMedianLStar: minMedianLStar,
+    maxMedianLStar: maxMedianLStar,
+  );
 }
 
 /// Measured guard quantities of one render.
