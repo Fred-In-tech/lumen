@@ -129,7 +129,10 @@ void main() {
       await onBytes.open(rendition);
       expect(onFloat.usingFloat, isTrue);
       expect(onBytes.usingFloat, isFalse);
-      // `before` and the analysis proxy stay the 8-bit rendition.
+      // The decoder cache is dropped once the preview is on the GPU.
+      await Future<void>.delayed(Duration.zero);
+      expect(source.released, 1);
+      // `before` and the analysis proxy are 8-bit images of the same size.
       expect(onFloat.before!.width, _w);
       expect(onFloat.analysisProxy, isNotNull);
       final f = await _frame(onFloat, darker);
@@ -142,8 +145,6 @@ void main() {
       expect(thumb.width, _w);
       onFloat.dispose();
       onBytes.dispose();
-      await Future<void>.delayed(Duration.zero);
-      expect(source.released, 1);
     });
 
     test('keeps the 8-bit path when the device fails the probe', () async {
@@ -158,7 +159,7 @@ void main() {
       );
       await r.open(rendition);
       expect(r.usingFloat, isFalse);
-      expect(asked, 0);
+      expect(asked, 1);
       expect(_topLevels(await _frame(r, darker)), 1);
       r.dispose();
     });

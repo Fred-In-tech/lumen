@@ -58,7 +58,6 @@ class GpuPhotoRenderer
 
   /// Finds the photo's float source (null: always the 8-bit path).
   final FloatSourceLoader? floatSource;
-  FloatSource? _float;
   ui.Image? _floatImage;
 
   /// True when the open photo is edited on the float path.
@@ -130,7 +129,6 @@ class GpuPhotoRenderer
     final size = await probeSize(original);
     final preview = decodedSizeFor(size.width, size.height, previewLongEdge);
     final float = await _openFloat(shaders, size, preview);
-    _float = float?.source;
     _floatImage = float?.image;
     final decoded = float == null
         ? await decodePhoto(original, maxLongEdge: previewLongEdge)
@@ -199,9 +197,10 @@ class GpuPhotoRenderer
     final loader = floatSource;
     if (loader == null) return null;
     try {
-      if (!await HbdCapability.probe(shaders)) return null;
+      // 8-bit photos stop here: nothing else on their path changes.
       final source = await loader(assetId);
       if (source == null) return null;
+      if (!await HbdCapability.probe(shaders)) return null;
       // Both decodes must be the same upright picture.
       final skew =
           (source.width * pixelSource.height -
@@ -220,6 +219,9 @@ class GpuPhotoRenderer
         fullHeight: preview.height,
       );
       final image = await uploadFloat(px.rgba, preview.width, preview.height);
+      // The preview is on the GPU: the decoder's cache (the RAW decode at
+      // this size) is not needed again until an export, which opens its own.
+      unawaited(source.release());
       _log.info(
         'float path on for $assetId (${preview.width}x${preview.height})',
       );
@@ -454,9 +456,6 @@ class GpuPhotoRenderer
     EngineImages.dispose(_source);
     EngineImages.dispose(_floatImage);
     _floatImage = null;
-    // The native decoder keeps the RAW decode cached while the photo is open.
-    unawaited(_float?.release());
-    _float = null;
     _output.dispose();
   }
 }
