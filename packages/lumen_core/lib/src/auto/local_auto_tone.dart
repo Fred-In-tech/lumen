@@ -89,13 +89,7 @@ abstract final class LocalAutoTone {
       exif: exif,
       hints: scene,
     ).solve();
-    return AutoToneResult(
-      // Geometry and liquify are left exactly as the photo has them.
-      settings: out.settings.copyWith(
-        geometry: base.geometry,
-        liquify: base.liquify,
-      ),
-      detail: out,
-    );
+    // Geometry and liquify come back exactly as the photo has them.
+    return AutoToneResult(settings: out.settings, detail: out);
   }
 }

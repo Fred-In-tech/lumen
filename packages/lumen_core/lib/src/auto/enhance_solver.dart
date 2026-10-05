@@ -310,7 +310,12 @@ class EnhanceSolver {
       step = math.min(step, math.max(down, -_C.hotSkinEvBudget));
     }
     if (step.abs() < 0.03) return;
-    _s = _s.withValue(P.exposure, _s.value(P.exposure) + step.clamp(-0.5, 0.5));
+    final people = _scene.isPeople;
+    final ev = (_s.value(P.exposure) + step.clamp(-0.5, 0.5)).clamp(
+      people ? _C.evMinPortrait : _C.evMinOther,
+      people ? _C.evMaxPortrait : _C.evMaxOther,
+    );
+    _s = _s.withValue(P.exposure, ev.toDouble());
   }
 
   /// Haze removal for scenes without faces (research 01 §6.9).

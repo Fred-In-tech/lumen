@@ -202,7 +202,7 @@ void main() {
       final s = paintPeople(
         [const PaintedFace(Skin.deep, size: 1.6)],
         stops: -2.5,
-        shirt: 1.1,
+        shirt: 1.6,
       );
       final out = await strict.autoEdit(
         AutoEditInput(
@@ -244,11 +244,21 @@ void main() {
       final s = SyntheticScenes.wellExposedChart();
       final base = DevelopSettings.defaults
           .withValues({P.exposure: 2, P.clarity: 25})
-          .copyWith(geometry: const Geometry(angle: 3));
+          .copyWith(
+            geometry: const Geometry(angle: 3),
+            liquify: [
+              LiquifyStroke(
+                tool: LiquifyTool.values.first,
+                points: const [(0.4, 0.4), (0.45, 0.4)],
+                radius: 0.1,
+              ),
+            ],
+          );
       final r = LocalAutoTone.run(proxy: s.image, base: base);
       expect(r.settings.value(P.exposure), 0);
       expect(r.settings.value(P.clarity), 25);
       expect(r.settings.geometry, base.geometry);
+      expect(r.settings.liquify, base.liquify);
       expect(r.renders, greaterThan(3));
       expect(r.changesFrom(base), isNotEmpty);
       expect(LocalAutoTone.managedParams, contains(P.exposure));

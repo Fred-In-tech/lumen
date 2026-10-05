@@ -80,7 +80,7 @@ void main() {
       final s = tone.settings;
       expect(
         s.value(P.exposure),
-        inInclusiveRange(_C.evMinPortrait, _C.evMaxPortrait + 0.5),
+        inInclusiveRange(_C.evMinPortrait, _C.evMaxPortrait),
         reason: e.key,
       );
       expect(s.value(P.highlights), greaterThanOrEqualTo(-60), reason: e.key);
