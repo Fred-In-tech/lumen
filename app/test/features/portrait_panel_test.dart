@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/memory_catalog_repository.dart';
 import 'package:lumen/design/theme.dart';
+import 'package:lumen/features/ai/auto_retouch.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/portrait/portrait_panel.dart';
 import 'package:lumen/features/portrait/portrait_state.dart';
@@ -99,6 +100,99 @@ void main() {
     c.read(editorProvider('a').notifier).undo();
     expect(_portrait(c).isDefault, isTrue);
     await _flushSave(tester);
+  });
+
+  testWidgets('Auto Retouch works again after Reset all, and after a slider '
+      'is dragged back to 0 (a reset is not a hand edit)', (tester) async {
+    final c = await _pump(tester);
+    final ctl = c.read(editorProvider('a').notifier);
+    await tester.tap(find.text('Auto Retouch'));
+    await tester.pumpAndSettle();
+    final auto = _portrait(c);
+    expect(auto.hasFaceEdits, isTrue);
+    // Hand edits (slider entries), then Reset all.
+    final s = c.read(editorProvider('a')).value!.settings;
+    ctl.commit(
+      s.copyWith(
+        portrait: auto
+            .withGroupValue(FaceGroup.all, PortraitIds.skinSoftening, 80)
+            .withGroupValue(FaceGroup.all, PortraitIds.skinShine, 0),
+      ),
+      label: 'by hand',
+    );
+    ctl.resetAll();
+    expect(_portrait(c).isDefault, isTrue);
+    await tester.tap(find.text('Auto Retouch'));
+    await tester.pumpAndSettle();
+    expect(_portrait(c), auto, reason: 'every value set again');
+    expect(find.textContaining('Auto Retouch applied'), findsOneWidget);
+    // Zero everything by hand (slider-kind entry): still not locked.
+    ctl.commit(
+      c
+          .read(editorProvider('a'))
+          .value!
+          .settings
+          .copyWith(portrait: PortraitSettings.empty),
+      label: 'zeroed by hand',
+    );
+    await tester.tap(find.text('Auto Retouch'));
+    await tester.pumpAndSettle();
+    expect(
+      _portrait(c).groupValue(FaceGroup.all, PortraitIds.skinSoftening),
+      auto.groupValue(FaceGroup.all, PortraitIds.skinSoftening),
+    );
+    await _flushSave(tester);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('Auto Retouch never looks dead: it says when it changes '
+      'nothing, keeps hand-set values, or finds no faces', (tester) async {
+    final c = await _pump(tester);
+    final ctl = c.read(editorProvider('a').notifier);
+    await tester.tap(find.text('Auto Retouch'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Auto Retouch'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('already applied'), findsOneWidget);
+    expect(c.read(editorProvider('a')).value!.history.entries, hasLength(1));
+    // A hand-set value stays, and the toast says so.
+    final s = c.read(editorProvider('a')).value!.settings;
+    ctl.commit(
+      s.copyWith(
+        portrait: s.portrait.withGroupValue(
+          FaceGroup.all,
+          PortraitIds.skinSoftening,
+          77,
+        ),
+      ),
+      label: 'Skin softening 77',
+    );
+    await tester.tap(find.text('Auto Retouch'));
+    await tester.pumpAndSettle();
+    expect(
+      _portrait(c).groupValue(FaceGroup.all, PortraitIds.skinSoftening),
+      77,
+    );
+    expect(find.textContaining('set by hand'), findsOneWidget);
+    await _flushSave(tester);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('Auto Retouch on a photo without faces says so', (tester) async {
+    final c = await _pump(
+      tester,
+      faces: const FaceAnalysis(
+        imageWidth: 10,
+        imageHeight: 10,
+        modelVersion: 't',
+      ),
+    );
+    await tester.tap(find.text('Auto Retouch'));
+    await tester.pumpAndSettle();
+    expect(find.text(kNoFacesToRetouch), findsOneWidget);
+    expect(_portrait(c).isDefault, isTrue);
+    expect(c.read(editorProvider('a')).value!.history.entries, isEmpty);
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('a group tab edits that group only', (tester) async {

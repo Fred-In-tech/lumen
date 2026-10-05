@@ -20,6 +20,39 @@ final _log = Logger('AutoRetouch');
 const kFacesNotRetouchedNote =
     'Faces were not retouched: face analysis is unavailable here.';
 
+/// Shown when Auto Retouch is pressed on a photo without faces.
+const kNoFacesToRetouch =
+    'No faces found in this photo, so there is nothing to retouch.';
+
+/// What pressing Auto Retouch did, said in a toast so the button never
+/// looks dead: [before] → [after] with [kept] hand-set values (lock keys)
+/// left alone, for [faces] measured faces (null: static recipe).
+String autoRetouchMessage({
+  required PortraitSettings before,
+  required PortraitSettings after,
+  required Set<String> kept,
+  int? faces,
+}) {
+  final hand = kept.length == 1
+      ? 'the value you set by hand'
+      : 'the ${kept.length} values you set by hand';
+  if (after == before) {
+    return kept.isEmpty
+        ? 'Auto Retouch is already applied: nothing to change.'
+        : 'Auto Retouch changed nothing: it kept $hand. '
+              'Reset a slider to hand it back.';
+  }
+  final who = switch (faces) {
+    null => '',
+    1 => ' to 1 face',
+    _ => ' to $faces faces',
+  };
+  final quiet = !after.hasFaceEdits
+      ? ' These faces need no retouch.'
+      : (kept.isEmpty ? '' : ' Kept $hand.');
+  return 'Auto Retouch applied$who.$quiet';
+}
+
 /// Measured needs of a photo, or why there are none ([note]).
 /// [needs] is [RetouchNeeds.none] when the photo has no retouchable faces.
 typedef RetouchMeasure = ({RetouchNeeds? needs, String? note});

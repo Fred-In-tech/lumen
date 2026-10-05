@@ -10,8 +10,10 @@ import '../model/portrait_presets.dart';
 
 /// `group/id` keys ([PortraitPresets.lockKey]) of group values whose last
 /// change, up to the history cursor, was a manual edit (slider or curve
-/// entries). A later preset, paste, AI or reset entry that changes the
-/// value hands it back to auto retouch.
+/// entries) that left a value in place. A later preset, paste, AI or reset
+/// entry that changes the value hands it back to auto retouch, and so does
+/// a hand edit that removes it (a slider dragged back to its default, an
+/// override cleared): a reset is not a hand edit.
 Set<String> manualPortraitLocks(HistoryStack history) {
   final locks = <String>{};
   for (final entry in history.entries.take(history.cursor)) {
@@ -27,7 +29,7 @@ Set<String> manualPortraitLocks(HistoryStack history) {
         for (final id in {...a.keys, ...b.keys}) {
           if (a[id] == b[id]) continue;
           final key = PortraitPresets.lockKey(g, id);
-          manual ? locks.add(key) : locks.remove(key);
+          manual && b[id] != null ? locks.add(key) : locks.remove(key);
         }
       }
     }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:lumen_core/lumen_core.dart';
 
@@ -12,6 +13,9 @@ import 'package:lumen/features/portrait/retouch_inputs.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 import 'package:lumen/widgets/buttons.dart';
 import 'package:lumen/widgets/segmented.dart';
+import 'package:lumen/widgets/toast.dart';
+
+final _log = Logger('AutoRetouchButton');
 
 class PortraitFaceStatus extends ConsumerWidget {
   const PortraitFaceStatus({
@@ -173,35 +177,62 @@ class _AutoRetouchState extends ConsumerState<AutoRetouchButton> {
     final doc = ref.read(editorProvider(id)).value?.doc;
     if (doc == null) return;
     // Measure only once faces are known (the panel's analysis found them);
-    // otherwise the static recipe applies right away.
+    // while they are unknown the static recipe applies right away.
     final faces = ref.read(portraitFacesProvider(id));
+    if (faces != null && faces.faces.isEmpty) {
+      showToast(context, kNoFacesToRetouch);
+      return;
+    }
     setState(() => _busy = true);
     try {
-      final RetouchNeeds? needs;
-      if (faces == null || faces.faces.isEmpty) {
-        needs = null;
-      } else {
-        needs =
-            (await ref
+      final needs = faces == null
+          ? null
+          : (await ref
                     .read(autoRetouchPlannerProvider)
                     .measure(id, doc.settings))
                 .needs;
-      }
       final now = ref.read(editorProvider(id)).value;
       if (now == null) return;
+      final before = now.settings.portrait;
+      final locked = manualPortraitLocks(now.doc.history);
+      final after = PortraitPresets.autoRetouchFor(
+        before,
+        needs,
+        locked: locked,
+      );
       ref
           .read(editorProvider(id).notifier)
           .commit(
-            now.settings.copyWith(
-              portrait: PortraitPresets.autoRetouchFor(
-                now.settings.portrait,
-                needs,
-                locked: manualPortraitLocks(now.doc.history),
-              ),
-            ),
+            now.settings.copyWith(portrait: after),
             label: 'Auto Retouch',
             kind: HistoryKind.preset,
           );
+      if (!mounted) return;
+      showToast(
+        context,
+        autoRetouchMessage(
+          before: before,
+          after: after,
+          kept: {
+            for (final id in PortraitPresets.autoIds)
+              for (final g in FaceGroup.values)
+                if (locked.contains(PortraitPresets.lockKey(g, id)))
+                  PortraitPresets.lockKey(g, id),
+          },
+          faces: needs == null || needs.isEmpty ? null : needs.faces.length,
+        ),
+        kind: after == before ? ToastKind.info : ToastKind.ai,
+      );
+    } on Object catch (e) {
+      // Never fail silently: the button must not look dead.
+      if (mounted) {
+        showToast(
+          context,
+          'Auto Retouch could not measure this photo.',
+          kind: ToastKind.error,
+        );
+      }
+      _log.warning('auto retouch of $id failed: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

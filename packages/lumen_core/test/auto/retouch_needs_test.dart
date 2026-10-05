@@ -223,6 +223,49 @@ void main() {
       expect(manualPortraitLocks(undone), {'all/${PortraitIds.iris}'});
       expect(manualPortraitLocks(HistoryStack(h.entries, 0)), isEmpty);
     });
+
+    test('a reset is not a hand edit: Reset all, section resets and a '
+        'slider dragged back to its default all release the value', () {
+      final p0 = PortraitSettings.empty;
+      final auto = PortraitPresets.autoRetouch(p0);
+      final hand = auto.withGroupValue(
+        FaceGroup.all,
+        PortraitIds.skinSoftening,
+        70,
+      );
+      var h = HistoryStack.empty
+          .push(entry(p0, auto, HistoryKind.ai))
+          .push(entry(auto, hand, HistoryKind.slider));
+      expect(manualPortraitLocks(h), {'all/${PortraitIds.skinSoftening}'});
+      // Reset all.
+      final reset = h.push(entry(hand, p0, HistoryKind.reset));
+      expect(manualPortraitLocks(reset), isEmpty);
+      // The slider dragged (or double-clicked) back to 0 by hand.
+      final zeroed = hand.withGroupValue(
+        FaceGroup.all,
+        PortraitIds.skinSoftening,
+        0,
+      );
+      h = h.push(entry(hand, zeroed, HistoryKind.slider));
+      expect(manualPortraitLocks(h), isEmpty, reason: 'back at the default');
+      // Every value zeroed by hand, one entry (e.g. typed into fields).
+      final cleared = HistoryStack.empty
+          .push(entry(p0, auto, HistoryKind.ai))
+          .push(entry(auto, p0, HistoryKind.slider));
+      expect(manualPortraitLocks(cleared), isEmpty);
+      // An explicit group override stays locked even at 0 ("none on kids").
+      final kids = p0.withGroupValue(
+        FaceGroup.child,
+        PortraitIds.skinSoftening,
+        0,
+      );
+      expect(
+        manualPortraitLocks(
+          HistoryStack.empty.push(entry(p0, kids, HistoryKind.slider)),
+        ),
+        {'child/${PortraitIds.skinSoftening}'},
+      );
+    });
   });
 
   group('portrait presets', () {
