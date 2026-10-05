@@ -118,8 +118,12 @@ void main() {
 
     test('lowers the mid-band variance on skin', () {
       expect(kBlotches.length, greaterThan(30));
-      expect(midVariance(smooth.l) / midVariance(inLab.l), lessThan(0.5));
-      expect(blotchContrast(smooth.l) / blotchContrast(inLab.l), lessThan(0.5));
+      // Smooth 100 is the hard limit: 75 % of the working band, never all.
+      expect(
+        midVariance(smooth.l) / midVariance(inLab.l),
+        inInclusiveRange(0.05, 0.6),
+      );
+      expect(blotchContrast(smooth.l) / blotchContrast(inLab.l), lessThan(0.6));
     });
 
     test('leaves every pixel outside the skin map bit-exact', () {
@@ -145,12 +149,14 @@ void main() {
       expect(ratio, inInclusiveRange(0.85, 1.15));
     });
 
-    test('Texture −100 softens the fine band, +100 boosts it', () {
+    test('Texture −100 / +100 moves the fine band by at most 15 %: no '
+        'slider can flatten pores', () {
       final soft = fineEnergy(labOf(run({PortraitIds.skinTexture: -100})).l);
       final hard = fineEnergy(labOf(run({PortraitIds.skinTexture: 100})).l);
       final base = fineEnergy(inLab.l);
-      expect(soft / base, lessThan(0.5));
-      expect(hard / base, greaterThan(1.4));
+      // Energy is amplitude squared: 0.85² ≈ 0.72, 1.15² ≈ 1.32.
+      expect(soft / base, inInclusiveRange(0.70, 0.95));
+      expect(hard / base, inInclusiveRange(1.05, 1.35));
     });
 
     test('is amplitude selective: a high-contrast edge survives', () {
@@ -178,7 +184,8 @@ void main() {
         region(RetouchChannel.underEye, i) > 0.6 &&
         region(RetouchChannel.lash, i) < 0.1;
 
-    test('dark circles close most of the gap to the cheek', () {
+    test('dark circles close about half of the gap to the cheek, never '
+        'all of it', () {
       final out = labOf(run({PortraitIds.darkCircles: 100})).l;
       final cheeks = [_face.toPx(-0.5, 0.42), _face.toPx(0.5, 0.42)];
       double cheek(Float64List l) =>
@@ -189,7 +196,8 @@ void main() {
       double gap(Float64List l) =>
           cheek(l) - meanWhere(_w * _h, underEye, (i) => l[i]);
       expect(gap(inLab.l), greaterThan(0.02));
-      expect(gap(out) / gap(inLab.l), lessThan(0.6));
+      // At most 70 % of the gap is lifted (research 09 §4.7).
+      expect(gap(out) / gap(inLab.l), inInclusiveRange(0.3, 0.65));
     });
 
     test('lower-lid protection shields the lash line', () {
@@ -208,10 +216,10 @@ void main() {
 
     test('eye whites lose red/yellow and never darken', () {
       final out = labOf(run({PortraitIds.eyeWhites: 100}));
-      bool sclera(int i) => region(RetouchChannel.sclera, i) > 0.9;
+      bool sclera(int i) => region(RetouchChannel.sclera, i) > 0.6;
       expect(
         meanWhere(_w * _h, sclera, (i) => out.b[i]),
-        lessThan(0.75 * meanWhere(_w * _h, sclera, (i) => inLab.b[i])),
+        lessThan(0.85 * meanWhere(_w * _h, sclera, (i) => inLab.b[i])),
       );
       expect(
         meanWhere(_w * _h, sclera, (i) => out.l[i] - inLab.l[i]),
@@ -226,7 +234,11 @@ void main() {
           math.sqrt(c.a[i] * c.a[i] + c.b[i] * c.b[i]);
       expect(
         meanWhere(_w * _h, iris, (i) => chroma(out, i)),
-        greaterThan(1.15 * meanWhere(_w * _h, iris, (i) => chroma(inLab, i))),
+        // At most +15 % (research 09 §4.9): visible in A/B, never alien.
+        inInclusiveRange(
+          1.08 * meanWhere(_w * _h, iris, (i) => chroma(inLab, i)),
+          1.16 * meanWhere(_w * _h, iris, (i) => chroma(inLab, i)),
+        ),
       );
     });
   });

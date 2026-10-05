@@ -19,6 +19,7 @@ import 'face_ids.dart';
 import 'face_maps.dart';
 import 'face_mesh.dart';
 import 'face_parsing_input.dart';
+import 'kernel_constants.dart';
 import 'lab_planes.dart';
 import 'retouch_maps.dart';
 import 'skin_pen.dart';
@@ -102,32 +103,33 @@ RetouchMaps _assemble(
   BackdropMaps backdrop,
 ) {
   final w = grid.width, h = grid.height, n = w * h * 4;
-  final b1 = _opaqueCopy(grid.data), b2 = _opaqueCopy(grid.data);
-  final b3 = _opaqueCopy(grid.data);
-  final bh = Uint8List(2 * n)..fillRange(0, 2 * n, 128);
-  final ra = Uint8List(2 * n), rb = Uint8List(2 * n);
-  for (var i = 3; i < 2 * n; i += 4) {
-    bh[i] = 255;
-    ra[i] = 255;
-    rb[i] = 255;
+  final low = _opaqueCopy(grid.data);
+  Uint8List atlas(int fill) {
+    final t = Uint8List(2 * n);
+    if (fill != 0) t.fillRange(0, 2 * n, fill);
+    for (var i = 3; i < 2 * n; i += 4) {
+      t[i] = 255;
+    }
+    return t;
   }
+
+  final da = atlas(128), db = atlas(128), dc = atlas(128);
+  final ra = atlas(0), rb = atlas(0);
   final faces = [for (final p in planes) _info(p)];
   final owner = faceOwners(faces, w, h);
   for (var k = 0; k < planes.length; k++) {
     final p = planes[k], slot = p.frame.slot;
-    p.b1.writeSrgb(b1, w, owner, slot, seed: kDitherSeedB1);
-    p.b2.writeSrgb(b2, w, owner, slot, seed: kDitherSeedB2);
-    p.b3.writeSrgb(b3, w, owner, slot, seed: kDitherSeedB3);
-    _writeFace(p, w, owner, bh, ra, rb);
-    assignFaceIds(faces[k], w, owner, bh, ra, rb);
+    p.low.writeSrgb(low, w, owner, slot, seed: kDitherSeedLow);
+    _writeFace(p, w, owner, da, db, dc, ra, rb);
+    assignFaceIds(faces[k], w, owner, db, ra, rb);
   }
   return RetouchMaps(
     width: w,
     height: h,
-    b1: b1,
-    b2: b2,
-    b3: b3,
-    bh: bh,
+    low: low,
+    deltaA: da,
+    deltaB: db,
+    deltaC: dc,
     regionA: ra,
     regionB: rb,
     faces: faces,
@@ -137,19 +139,19 @@ RetouchMaps _assemble(
 }
 
 RetouchFaceInfo _info(FaceMapPlanes p) {
-  final f = p.frame;
+  final f = p.frame, model = p.regions.skinModel;
   return RetouchFaceInfo(
     slot: f.slot,
     faceId: f.faceId,
     rect: f.rect,
     iod: f.iod,
     teethCapL: p.regions.teethCapL,
-    skinMeanL: p.regions.skinModel.meanL,
+    skinMeanL: model.meanL,
     lipGlossL: p.regions.makeup.glossL,
     lipChromaGain: p.regions.makeup.lipChromaGain,
     lipShiftL: p.regions.makeup.lipShiftL,
-    blushA: p.regions.makeup.blushA,
-    blushB: p.regions.makeup.blushB,
+    blushA: kBlushChroma * (p.regions.makeup.blushA - model.meanA),
+    blushB: kBlushChroma * (p.regions.makeup.blushB - model.meanB),
     hasForcedSpots: p.hasForcedSpots,
     eyeRightX: f.xs[FaceMesh.rightIrisCenter],
     eyeRightY: f.ys[FaceMesh.rightIrisCenter],
@@ -158,6 +160,7 @@ RetouchFaceInfo _info(FaceMapPlanes p) {
     // FaceFrame.ownershipDistance: the nose, 0.45 IOD below the eyes.
     centerX: f.eyeMid.x + kOwnershipCenterIod * f.iod * f.axis.x,
     centerY: f.eyeMid.y + kOwnershipCenterIod * f.iod * f.axis.y,
+    skin: p.deltas.measure,
   );
 }
 
@@ -176,38 +179,64 @@ void _writeFace(
   FaceMapPlanes p,
   int w,
   Int8List owner,
-  Uint8List bh,
+  Uint8List da,
+  Uint8List db,
+  Uint8List dc,
   Uint8List ra,
   Uint8List rb,
 ) {
-  final rect = p.frame.rect, r = p.regions, heal = p.heal;
+  final rect = p.frame.rect, r = p.regions, heal = p.heal, d = p.deltas;
   final wr = p.wrinkles, slot = p.frame.slot;
+  const sm = RetouchDelta.smooth, sh = RetouchDelta.shine;
+  const hl = RetouchDelta.heal, dk = RetouchDelta.darkCircles;
+  const be = RetouchDelta.bagEven, ey = RetouchDelta.eyes;
   for (var y = rect.y0; y < rect.y1; y++) {
     var i = (y - rect.y0) * rect.w;
     for (var x = rect.x0; x < rect.x1; x++, i++) {
       if (owner[y * w + x] != slot) continue;
       final left = (y * 2 * w + x) * 4, right = left + w * 4;
-      bh[left] = encodeSigned(heal.lowL[i], kHealRangeL);
-      bh[left + 1] = encodeSigned(heal.lowA[i], kHealRangeA);
-      bh[left + 2] = encodeSigned(heal.lowB[i], kHealRangeB);
-      bh[right] = encodeSigned(heal.highL[i], kHealRangeL);
-      bh[right + 1] = encodeSigned(heal.highA[i], kHealRangeA);
-      bh[right + 2] = encodeSigned(heal.highB[i], kHealRangeB);
-      final skin = _byte(r.skin[i]), under = _byte(r.underEye[i]);
-      final mouth = _byte(r.mouth[i]), sclera = _byte(r.sclera[i]);
-      final iris = _byte(r.iris[i]), lips = _byte(r.lips[i]);
-      final blush = _byte(r.blush[i]), wrinkle = encodeWrinkle(wr.delta[i]);
-      ra[left] = skin;
-      ra[left + 1] = under;
+      double dith(int c, int t) => ditherAt(x, y, kDitherSeedDelta + t, c);
+      void put(
+        Uint8List t,
+        int o,
+        int k,
+        RetouchDelta rd,
+        double a,
+        double b,
+        double c,
+      ) {
+        t[o] = encodeSignedDithered(a, rd.r0, dith(0, k));
+        t[o + 1] = encodeSignedDithered(b, rd.r1, dith(1, k));
+        t[o + 2] = encodeSignedDithered(c, rd.r2, dith(2, k));
+      }
+
+      put(da, left, 0, sm, d.smooth.l[i], d.smooth.a[i], d.smooth.b[i]);
+      put(da, right, 1, sh, d.shine.l[i], d.shine.a[i], d.shine.b[i]);
+      put(db, left, 2, hl, heal.dl[i], heal.da[i], heal.db[i]);
+      put(
+        db,
+        right,
+        3,
+        dk,
+        d.darkCircle.l[i],
+        d.darkCircle.a[i],
+        d.darkCircle.b[i],
+      );
+      put(dc, left, 4, be, d.bag[i], d.evenA[i], d.evenB[i]);
+      dc[right] = encodeSigned(p.irisL[i], ey.r0);
+      dc[right + 1] = encodeSigned(p.veinA[i], ey.r1);
+      dc[right + 2] = encodeSigned(p.veinL[i], ey.r2);
+      final wrinkle = encodeWrinkle(wr.delta[i]);
+      ra[left] = _byte(r.skin[i]);
+      ra[left + 1] = _byte(r.underEye[i]);
       ra[left + 2] = _byte(r.lash[i]);
-      ra[right] = mouth;
-      ra[right + 1] = sclera;
-      ra[right + 2] = iris;
-      rb[left] = lips;
-      rb[left + 1] = blush;
+      ra[right] = _byte(r.mouth[i]);
+      ra[right + 1] = _byte(r.sclera[i]);
+      ra[right + 2] = _byte(r.iris[i]);
+      rb[left] = _byte(r.lips[i]);
+      rb[left + 1] = _byte(r.blush[i]);
       rb[left + 2] = wrinkle;
-      final code = heal.spotCode[i];
-      rb[right + 1] = code;
+      rb[right + 1] = heal.spotCode[i];
       rb[right + 2] = wrinkle == 0 ? 0 : wr.zone[i];
     }
   }

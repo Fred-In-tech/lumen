@@ -63,14 +63,18 @@ SpotMeasure? measureSpot(
         annSum[k] += v;
         annN[k]++;
       }
-      if (d >= r0 && d <= r1 && valid[i] > 0) {
-        ol += l[i];
-        oa += a[i];
-        ob += b[i];
-        on++;
+      if (d >= r0 && d <= r1) {
+        // Isolation looks at the whole ring: a line that runs on into
+        // non-skin (a brow, a strand, a fold) is still a line.
         final s = _octant(dx, dy);
         secSum[s] += v;
         secN[s]++;
+        if (valid[i] > 0) {
+          ol += l[i];
+          oa += a[i];
+          ob += b[i];
+          on++;
+        }
       }
     }
   }

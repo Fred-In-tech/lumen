@@ -194,7 +194,7 @@ ui.Image runDenoise(
 
 /// One tile of retouch pass R over [source] (all samplers nearest; manual
 /// bilinear in the shader). [floats] from `RetouchPassUniforms.pack`;
-/// [maps] = B1, B2, B3, Bh, regionA, regionB images.
+/// [maps] = low, deltaA, deltaB, deltaC, regionA, regionB, backdrop images.
 ui.Image runRetouch(
   ShaderLibrary shaders, {
   required Float32List floats,

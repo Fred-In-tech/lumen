@@ -79,8 +79,8 @@ void main() {
     }
   });
 
-  test('below 50 % the clipped core stays a grey blob', () {
-    final out = run(40);
+  test('below 20 % the clipped core stays a grey blob', () {
+    final out = run(15);
     expect(chroma(out, false) / chroma(out, true), lessThan(0.3));
     final lCore = discMean(out.l, _w, c.x, c.y, core);
     expect(
@@ -89,7 +89,7 @@ void main() {
     );
   });
 
-  test('above 50 % the core blends into the sheen around it', () {
+  test('at full Shine the core blends into the sheen around it', () {
     final out = run(100);
     expect(chroma(out, false) / chroma(out, true), greaterThan(0.85));
     final lCore = discMean(out.l, _w, c.x, c.y, core);
@@ -97,8 +97,8 @@ void main() {
     expect((lCore - lRing).abs(), lessThan(0.02));
   });
 
-  test('the fill starts exactly at 50 % (continuous)', () {
-    final a = run(49), b = run(50);
+  test('the fill starts exactly at 20 % (continuous)', () {
+    final a = run(19), b = run(20);
     final i = c.y.floor() * _w + c.x.floor();
     expect(b.l[i], closeTo(a.l[i], 0.01));
   });

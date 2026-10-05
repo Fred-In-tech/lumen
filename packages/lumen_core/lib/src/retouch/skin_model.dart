@@ -22,6 +22,11 @@ const double kSkinLGateZero = 0.22;
 /// light; without this, Reduce Shine would not see the shine it reduces).
 const double kShineMinChroma = 0.3;
 
+/// Robust core of the samples: within this many robust σ (1.4826·MAD,
+/// at least [kSkinCoreFloor]) of the median chroma.
+const double kSkinCoreSigmas = 2.5;
+const double kSkinCoreFloor = 0.006;
+
 /// Fraction of sampled L trimmed at each end before fitting (§2.2 step 3).
 const double kSkinSampleTrim = 0.10;
 
@@ -76,9 +81,14 @@ class SkinColorModel {
       }
     }
     if (samples.length < 16) return fallback;
-    samples.sort((i, j) => lab.l[i].compareTo(lab.l[j]));
-    final cut = (samples.length * kSkinSampleTrim).floor();
-    final kept = samples.sublist(cut, samples.length - cut);
+    // Robust core first: the discs may partly sit on hair, lips or the
+    // background when the mesh is off, so samples far from the median
+    // colour (in robust σ) are dropped before anything is averaged.
+    final core = _robustCore(lab, samples);
+    if (core.length < 16) return fallback;
+    core.sort((i, j) => lab.l[i].compareTo(lab.l[j]));
+    final cut = (core.length * kSkinSampleTrim).floor();
+    final kept = core.sublist(cut, core.length - cut);
     var sl = 0.0, sa = 0.0, sb = 0.0;
     for (final i in kept) {
       sl += lab.l[i];
@@ -103,6 +113,36 @@ class SkinColorModel {
       covBB: cbb / n,
       lowL: lab.l[kept.first],
     );
+  }
+
+  /// Samples within [kSkinCoreSigmas] robust σ of the median (a, b) and
+  /// not far darker than the median L (two rounds).
+  static List<int> _robustCore(LabPlanes lab, List<int> samples) {
+    var kept = samples;
+    for (var round = 0; round < 2; round++) {
+      double median(double Function(int i) v) {
+        final xs = [for (final i in kept) v(i)]..sort();
+        return xs[xs.length ~/ 2];
+      }
+
+      final ml = median((i) => lab.l[i]);
+      final ma = median((i) => lab.a[i]), mb = median((i) => lab.b[i]);
+      double mad(double Function(int i) v, double m) =>
+          1.4826 * median((i) => (v(i) - m).abs());
+      final sa = math.max(mad((i) => lab.a[i], ma), kSkinCoreFloor);
+      final sb = math.max(mad((i) => lab.b[i], mb), kSkinCoreFloor);
+      final sl = math.max(mad((i) => lab.l[i], ml), 2 * kSkinCoreFloor);
+      final next = [
+        for (final i in kept)
+          if ((lab.a[i] - ma).abs() <= kSkinCoreSigmas * sa &&
+              (lab.b[i] - mb).abs() <= kSkinCoreSigmas * sb &&
+              lab.l[i] >= ml - 2 * kSkinCoreSigmas * sl)
+            i,
+      ];
+      if (next.length < 16) break;
+      kept = next;
+    }
+    return kept;
   }
 
   final double meanL;

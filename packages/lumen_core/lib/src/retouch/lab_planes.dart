@@ -154,9 +154,15 @@ class LabPlanes {
 }
 
 /// Dither seeds of the band textures.
+const int kDitherSeedLow = 1;
+
+/// Dither seeds of the backdrop band textures.
 const int kDitherSeedB1 = 1;
 const int kDitherSeedB2 = 2;
 const int kDitherSeedB3 = 3;
+
+/// Base seed of the delta tiles (tile index is added).
+const int kDitherSeedDelta = 16;
 
 /// Linear value of each 8-bit sRGB code.
 final Float64List _codeLinear = Float64List.fromList([

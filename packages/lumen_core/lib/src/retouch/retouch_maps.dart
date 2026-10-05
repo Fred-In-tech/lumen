@@ -1,5 +1,6 @@
-/// Retouch analysis textures (research 07 §3.0, §2.3), CPU-built and
-/// sampled in source uv by both `applyRetouch` and `retouch.frag`.
+/// Retouch analysis textures (research 09 §4, 07 §3.0), CPU-built once
+/// per photo and sampled in source uv by both `applyRetouch` and
+/// `retouch.frag`.
 ///
 /// Every texture is RGBA8888 with **A = 255** (never packed, so
 /// premultiplication cannot corrupt data) and is sampled with
@@ -8,11 +9,13 @@
 ///
 /// | Sampler | Size | R | G | B |
 /// |---|---|---|---|---|
-/// | `uB1` | W×H | B1 sRGB | | |
-/// | `uB2` | W×H | B2 sRGB | | |
-/// | `uB3` | W×H | B3 sRGB | | |
-/// | `uBh` left tile | 2W×H | ΔL low | Δa low | Δb low |
-/// | `uBh` right tile | | ΔL high | Δa high | Δb high |
+/// | `uLow` | W×H | low-pass sRGB (Texture slider) | | |
+/// | `uDeltaA` left tile | 2W×H | Smooth ΔL | Δa | Δb |
+/// | `uDeltaA` right tile | | Shine ΔL | Δa | Δb |
+/// | `uDeltaB` left tile | 2W×H | heal ΔL | Δa | Δb |
+/// | `uDeltaB` right tile | | dark circles ΔL | Δa | Δb |
+/// | `uDeltaC` left tile | 2W×H | eye bags ΔL | Even Δa | Even Δb |
+/// | `uDeltaC` right tile | | iris ΔL | vein Δa | vein ΔL |
 /// | `uRegionA` left tile | 2W×H | skin | under-eye | lash |
 /// | `uRegionA` right tile | | mouth | sclera | iris |
 /// | `uRegionB` left tile | 2W×H | lips | blush | wrinkle ΔL |
@@ -20,12 +23,16 @@
 ///
 /// `*` = sample the nearest texel (no interpolation): face id is
 /// `slot + 1` (0 = none), spot code see [encodeSpotCode] (kind 3 = clipped
-/// shine core), wrinkle zone see `wrinkle_zones.dart`. Heal deltas are
-/// signed (see [encodeSigned]); low heals the `B1` band, high the fine
-/// band (research 07 §3.3). Wrinkle ΔL is unsigned (`decodeWrinkle`):
-/// the L lift that fills every detected wrinkle; `B1`–`B3` are built from
-/// the wrinkle-filled image (§3.4). `B1`–`B3` are dithered on write
-/// (seeded, deterministic).
+/// shine core / glasses glare), wrinkle zone see `wrinkle_zones.dart`.
+///
+/// Each delta is the OkLab change its slider makes at 100, signed
+/// ([encodeSignedDithered] with the ranges of [RetouchDelta]); the pass is
+/// `out = src + Σ slider · mask · Δ`. Deltas are built from the bands
+/// above the pore band (`band_split.dart`), so they are smooth: sampling
+/// them at any output size gives the same result in preview and export,
+/// and detail finer than the map grid is never touched. Wrinkle ΔL is
+/// unsigned (`decodeWrinkle`): the L lift that fills every detected
+/// wrinkle.
 ///
 /// The image-scope backdrop atlas (`uBackdropMap`, 8th sampler) is
 /// [BackdropMaps], on its own grid.
@@ -37,6 +44,7 @@ import 'backdrop_maps.dart';
 import 'blemish_types.dart';
 import 'map_rect.dart';
 import 'retouch_uniforms.dart';
+import 'skin_deltas.dart' show SkinMeasure;
 
 /// Faces with their own uniform row (more faces are not retouched).
 const int kMaxRetouchFaces = 8;
@@ -46,9 +54,31 @@ const int kMaxRetouchFaces = 8;
 const int kRetouchInfoFloats = 4 + 12 * kMaxRetouchFaces + kBackdropInfoFloats;
 
 /// Signed encoding ranges of the heal deltas (OkLab L, a, b).
-const double kHealRangeL = 0.25;
-const double kHealRangeA = 0.1;
-const double kHealRangeB = 0.1;
+const double kHealRangeL = 0.5;
+const double kHealRangeA = 0.15;
+const double kHealRangeB = 0.15;
+
+/// A delta tile: its atlas (0 = `deltaA`, 1 = `deltaB`, 2 = `deltaC`),
+/// tile (0 = left, 1 = right) and the signed range of each channel.
+enum RetouchDelta {
+  smooth(0, 0, 0.125, 0.05, 0.05),
+  shine(0, 1, 0.4, 0.12, 0.12),
+  heal(1, 0, kHealRangeL, kHealRangeA, kHealRangeB),
+  darkCircles(1, 1, 0.2, 0.08, 0.08),
+
+  /// R = eye bags ΔL, G / B = Even tone Δa / Δb.
+  bagEven(2, 0, 0.1, 0.08, 0.08),
+
+  /// R = iris ΔL, G = vein Δa, B = vein ΔL.
+  eyes(2, 1, 0.1, 0.1, 0.1);
+
+  const RetouchDelta(this.atlas, this.tile, this.r0, this.r1, this.r2);
+  final int atlas;
+  final int tile;
+  final double r0;
+  final double r1;
+  final double r2;
+}
 
 /// Signed delta → byte: `128 + 127·clamp(v / range)`; 128 is exactly 0.
 int encodeSigned(double v, double range) {
@@ -124,7 +154,11 @@ class RetouchFaceInfo {
     this.eyeLeftY = 0,
     this.centerX = 0,
     this.centerY = 0,
+    this.skin = const SkinMeasure(),
   });
+
+  /// Measured state of this face's skin (inputs of Auto Retouch).
+  final SkinMeasure skin;
 
   final int slot;
   final String faceId;
@@ -149,7 +183,7 @@ class RetouchFaceInfo {
   final double lipChromaGain;
   final double lipShiftL;
 
-  /// Blush target OkLab a, b.
+  /// Blush at 100: OkLab a, b shift (target minus this face's skin).
   final double blushA;
   final double blushB;
 
@@ -171,10 +205,10 @@ class RetouchMaps {
   RetouchMaps({
     required this.width,
     required this.height,
-    required this.b1,
-    required this.b2,
-    required this.b3,
-    required this.bh,
+    required this.low,
+    required this.deltaA,
+    required this.deltaB,
+    required this.deltaC,
     required this.regionA,
     required this.regionB,
     this.faces = const [],
@@ -182,10 +216,8 @@ class RetouchMaps {
     BackdropMaps? backdrop,
   }) : backdrop = backdrop ?? BackdropMaps.none(BackdropState.notRequested) {
     final n = width * height * 4;
-    for (final t in [b1, b2, b3]) {
-      if (t.length != n) throw ArgumentError('texture ${t.length} != $n');
-    }
-    for (final t in [bh, regionA, regionB]) {
+    if (low.length != n) throw ArgumentError('texture ${low.length} != $n');
+    for (final t in [deltaA, deltaB, deltaC, regionA, regionB]) {
       if (t.length != 2 * n) {
         throw ArgumentError('atlas ${t.length} != ${2 * n}');
       }
@@ -194,14 +226,15 @@ class RetouchMaps {
 
   /// 1×1 neutral face maps (no faces), optionally with [backdrop] maps.
   factory RetouchMaps.empty({BackdropMaps? backdrop}) {
-    Uint8List px(int v) => Uint8List.fromList([v, v, v, 255]);
+    Uint8List zero() =>
+        Uint8List.fromList([128, 128, 128, 255, 128, 128, 128, 255]);
     return RetouchMaps(
       width: 1,
       height: 1,
-      b1: px(0),
-      b2: px(0),
-      b3: px(0),
-      bh: Uint8List.fromList([128, 128, 128, 255, 128, 128, 128, 255]),
+      low: Uint8List.fromList([0, 0, 0, 255]),
+      deltaA: zero(),
+      deltaB: zero(),
+      deltaC: zero(),
       regionA: Uint8List.fromList([0, 0, 0, 255, 0, 0, 0, 255]),
       regionB: Uint8List.fromList([0, 0, 0, 255, 0, 0, 0, 255]),
       backdrop: backdrop,
@@ -216,10 +249,10 @@ class RetouchMaps {
   RetouchMaps withRegions(Uint8List regionA, Uint8List regionB) => RetouchMaps(
     width: width,
     height: height,
-    b1: b1,
-    b2: b2,
-    b3: b3,
-    bh: bh,
+    low: low,
+    deltaA: deltaA,
+    deltaB: deltaB,
+    deltaC: deltaC,
     regionA: regionA,
     regionB: regionB,
     faces: faces,
@@ -239,12 +272,16 @@ class RetouchMaps {
   /// Size of one tile (the `Rres` grid).
   final int width;
   final int height;
-  final Uint8List b1;
-  final Uint8List b2;
-  final Uint8List b3;
 
-  /// 2W×H atlases.
-  final Uint8List bh;
+  /// W×H low-pass of the source (sRGB, dithered).
+  final Uint8List low;
+
+  /// 2W×H signed delta atlases (see [RetouchDelta]).
+  final Uint8List deltaA;
+  final Uint8List deltaB;
+  final Uint8List deltaC;
+
+  /// 2W×H region atlases.
   final Uint8List regionA;
   final Uint8List regionB;
 
@@ -277,6 +314,21 @@ class RetouchMaps {
     List<double> out,
     int o,
   ) => _bilinear(atlas, 2 * width, tile * width, u, v, out, o);
+
+  /// Bilinear signed delta [d] at uv into `out[o..o+2]` (decoded).
+  void sampleDelta(
+    RetouchDelta d,
+    double u,
+    double v,
+    List<double> out,
+    int o,
+  ) {
+    final atlas = d.atlas == 0 ? deltaA : (d.atlas == 1 ? deltaB : deltaC);
+    _bilinear(atlas, 2 * width, d.tile * width, u, v, out, o);
+    out[o] = decodeSigned(out[o], d.r0);
+    out[o + 1] = decodeSigned(out[o + 1], d.r1);
+    out[o + 2] = decodeSigned(out[o + 2], d.r2);
+  }
 
   /// Nearest texel byte of [c] at uv (for the face id and spot code).
   int nearest(RetouchChannel c, double u, double v) {
@@ -324,7 +376,7 @@ class RetouchMaps {
   /// |---|---|---|
   /// | 0–3 | `uMapInfo` | W, H, face count, 0 |
   /// | 4 + 12k + 0–3 | `uFaceInfo[3k]` | teethCapL, has maps (0/1), IOD (map px), lipGlossL |
-  /// | 4 + 12k + 4–7 | `uFaceInfo[3k+1]` | lipChromaGain, lipShiftL, blushA, blushB |
+  /// | 4 + 12k + 4–7 | `uFaceInfo[3k+1]` | lipChromaGain, lipShiftL, blush Δa, blush Δb |
   /// | 4 + 12k + 8–11 | `uFaceInfo[3k+2]` | right iris x, y, left iris x, y (map px) |
   /// | 100–103 | `uBackdropInfo0` | backdrop W, H, ready (0/1), τL |
   /// | 104–107 | `uBackdropInfo1` | median backdrop L, a, b, τC |

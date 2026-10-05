@@ -82,7 +82,7 @@ void main() {
 
     test('obvious spots heal from a low slider value', () {
       for (final s in kAcneSpots) {
-        expect(candidateFor(maps, s)!.threshold, lessThan(0.35));
+        expect(candidateFor(maps, s)!.threshold, lessThan(0.45));
       }
     });
 
@@ -184,15 +184,14 @@ void main() {
   });
 
   group('selection math', () {
-    test(
-      'threshold follows k = mix(4, 1.8, v) and maxR = mix(.02, .06, v)',
-      () {
-        expect(blemishThreshold(4.0, 0.01), 0);
-        expect(blemishThreshold(2.9, 0.01), closeTo(0.5, 1e-9));
-        expect(blemishThreshold(10, 0.04), closeTo(0.5, 1e-9));
-        expect(blemishThreshold(1.0, 0.01), 1);
-      },
-    );
+    test('threshold follows k = mix(4.5, 3, v) and maxR = mix(.02, .05, v); '
+        'dark marks never heal below 30', () {
+      expect(blemishThreshold(4.5, 0.01), 0);
+      expect(blemishThreshold(3.75, 0.01), closeTo(0.5, 1e-9));
+      expect(blemishThreshold(10, 0.035), closeTo(0.5, 1e-9));
+      expect(blemishThreshold(1.0, 0.01), 1);
+      expect(blemishThreshold(10, 0.01, floor: kDarkSpotMinSlider), 0.3);
+    });
 
     test('spot codes round-trip and ramp in over kSpotRamp', () {
       final code = encodeSpotCode(BlemishKind.freckle, 0.5);

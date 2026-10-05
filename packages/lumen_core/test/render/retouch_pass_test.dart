@@ -10,10 +10,10 @@ RetouchMaps _maps({List<int> slots = const [0, 2]}) {
   return RetouchMaps(
     width: w,
     height: h,
-    b1: tex(w),
-    b2: tex(w),
-    b3: tex(w),
-    bh: tex(2 * w),
+    low: tex(w),
+    deltaA: tex(2 * w),
+    deltaB: tex(2 * w),
+    deltaC: tex(2 * w),
     regionA: tex(2 * w),
     regionB: tex(2 * w),
     faces: [

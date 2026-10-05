@@ -1,6 +1,6 @@
-/// CPU reference of `retouch.frag` (research 07 §3.1–3.9). Each numbered
-/// step maps 1:1 to the shader: OkLab of linear sRGB, bands sampled in
-/// source uv, per-face rows selected by the nearest face id. The
+/// CPU reference of `retouch.frag` (research 09 §4). Each numbered step
+/// maps 1:1 to the shader: OkLab of linear sRGB, deltas sampled in source
+/// uv, per-face rows selected by the nearest face id. The
 /// image-scope backdrop change (`backdrop_kernel.dart`) is added on top of
 /// the face result, both computed from the same source pixel.
 library;
@@ -36,9 +36,7 @@ class RetouchKernel {
   final Float64List _t = Float64List(12);
   final Float64List _c = Float64List(3);
   final Float64List _li = Float64List(3);
-  final Float64List _l1 = Float64List(3);
-  final Float64List _l2 = Float64List(3);
-  final Float64List _l3 = Float64List(3);
+  final Float64List _d = Float64List(3);
   final Float64List _o = Float64List(3);
 
   /// True when face [slot] has maps and a non-identity row.
@@ -63,7 +61,7 @@ class RetouchKernel {
     // 1. Face row (nearest face id; 0 = no face).
     final slot = maps.nearest(RetouchChannel.faceId, u, v) - 1;
     final face = isActive(slot) && _face(slot, r, g, b, u, v);
-    // 16. Backdrop (image scope), added to the face result.
+    // 15. Backdrop (image scope), added to the face result.
     final backdrop = _bd.weights(u, v);
     if (!face && !backdrop) return false;
     final oo = _o, li = _li;
@@ -79,7 +77,7 @@ class RetouchKernel {
     return true;
   }
 
-  /// Face steps 2–15 into [_o] (and the source OkLab into [_li]); false
+  /// Face steps 2–14 into [_o] (and the source OkLab into [_li]); false
   /// when no face effect touches the pixel.
   bool _face(int slot, int r, int g, int b, double u, double v) {
     final p = uniforms.row(slot);
@@ -122,7 +120,7 @@ class RetouchKernel {
       re = p.redEye * (1 - smoothstep(kRedEyeEdge * rad, rad, d));
     }
     // Wrinkle removal: zone slider (nearest zone code) plus a share of
-    // Smooth, capped at kWrinkleMax (§3.4).
+    // Smooth, capped at kWrinkleMax (§4.10).
     final wEff = dW > 0
         ? kWrinkleMax *
               clamp01(
@@ -137,58 +135,57 @@ class RetouchKernel {
         if (sel == 0 && lw == 0 && bw == 0 && re == 0) return false;
       }
     }
-    // 4. OkLab of the source and the bands; healed low band (§3.3).
-    final li = _li, l1 = _l1, l2 = _l2, l3 = _l3;
+    // 4. OkLab of the source; every skin effect is `weight · Δ` added to
+    // it (the deltas are band-limited, so pores are never attenuated).
+    final li = _li, d = _d, oo = _o;
     final lut = kSrgbByteToLinear;
     linearToOklab(lut[r], lut[g], lut[b], li, 0);
-    _bandLab(maps.b1, u, v, l1);
-    _bandLab(maps.b2, u, v, l2);
-    _bandLab(maps.b3, u, v, l3);
-    maps.sampleTile(maps.bh, 0, u, v, t, 0);
-    maps.sampleTile(maps.bh, 1, u, v, t, 9);
-    final fineL = li[0] - l1[0] + sel * decodeSigned(t[9], kHealRangeL);
-    final fineA = li[1] - l1[1] + sel * decodeSigned(t[10], kHealRangeA);
-    final fineB = li[2] - l1[2] + sel * decodeSigned(t[11], kHealRangeB);
-    l1[0] += sel * decodeSigned(t[0], kHealRangeL);
-    l1[1] += sel * decodeSigned(t[1], kHealRangeA);
-    l1[2] += sel * decodeSigned(t[2], kHealRangeB);
-    // 5. Three bands, amplitude-selective mid suppression (§3.1). B1 is
-    // wrinkle-filled, so `fineL + dW` is the fine band without detected
-    // wrinkles; the wrinkle comes back as `(1 − wEff)·dW` (§3.4).
-    final midL = l1[0] - l2[0], midA = l1[1] - l2[1], midB = l1[2] - l2[2];
-    final thr = p.ampThreshold;
-    final keep = smoothstep(thr, kKeepRamp * thr, midL.abs());
-    final midK = 1 - clamp01(s * (1 - keep));
-    final fineK = 1 + tex;
-    final oo = _o;
-    oo[0] = l2[0] + midL * midK + (fineL + dW) * fineK - (1 - wEff) * dW;
-    // 6. Tone evening: base chroma toward the skin reference (§3.2).
-    oo[1] = l2[1] + ev * (l3[1] - l2[1]) + midA * midK + fineA * fineK;
-    oo[2] = l2[2] + ev * (l3[2] - l2[2]) + midB * midK + fineB * fineK;
-    // 7. Under-eye: dark circles and bags, lid-protected (§3.5).
-    if (dc > 0 || bg > 0) {
-      oo[0] += dc * kDarkCircleLift * math.max(0.0, l3[0] - l2[0]);
-      oo[1] += dc * kDarkCircleChroma * (l3[1] - l2[1]);
-      oo[2] += dc * kDarkCircleChroma * (l3[2] - l2[2]);
-      final flat = bg * kBagMid * midK * (1 - keep);
-      oo[0] += bg * kBagBase * (l3[0] - l2[0]) - flat * midL;
-      oo[1] -= flat * midA;
-      oo[2] -= flat * midB;
+    oo[0] = li[0];
+    oo[1] = li[1];
+    oo[2] = li[2];
+    // 5. Spot heal, wrinkle fill.
+    if (sel > 0) {
+      maps.sampleDelta(RetouchDelta.heal, u, v, d, 0);
+      oo[0] += sel * d[0];
+      oo[1] += sel * d[1];
+      oo[2] += sel * d[2];
     }
-    // 8. Shine: bright, desaturated relative to the skin reference (§3.8).
+    oo[0] += wEff * dW;
+    // 6. Smooth (mid bands) and Shine (specular layer).
+    if (s > 0) {
+      maps.sampleDelta(RetouchDelta.smooth, u, v, d, 0);
+      oo[0] += s * d[0];
+      oo[1] += s * d[1];
+      oo[2] += s * d[2];
+    }
     if (sh > 0) {
-      final rel = l1[0] - l3[0];
-      final c1 = math.sqrt(l1[1] * l1[1] + l1[2] * l1[2]);
-      final c3 = math.max(math.sqrt(l3[1] * l3[1] + l3[2] * l3[2]), 1e-3);
-      final w =
-          sh *
-          smoothstep(kShineRelLo, kShineRelHi, rel) *
-          (1 - smoothstep(kShineDesatLo, kShineDesatHi, c1 / c3));
-      oo[0] -= w * kShinePull * rel;
-      oo[1] += (l3[1] - oo[1]) * w * kShineChroma;
-      oo[2] += (l3[2] - oo[2]) * w * kShineChroma;
+      maps.sampleDelta(RetouchDelta.shine, u, v, d, 0);
+      oo[0] += sh * d[0];
+      oo[1] += sh * d[1];
+      oo[2] += sh * d[2];
     }
-    // 9. Teeth: mouth ∩ bright ∩ not red; never above the sclera (§3.6).
+    // 7. Texture: gain on the source's fine band.
+    if (tex != 0) {
+      _bandLab(maps.low, u, v, d);
+      oo[0] += tex * (li[0] - d[0]);
+      oo[1] += tex * (li[1] - d[1]);
+      oo[2] += tex * (li[2] - d[2]);
+    }
+    // 8. Even tone (chroma only) and eye bags (L only) share a tile.
+    if (ev > 0 || bg > 0) {
+      maps.sampleDelta(RetouchDelta.bagEven, u, v, d, 0);
+      oo[0] += bg * d[0];
+      oo[1] += ev * d[1];
+      oo[2] += ev * d[2];
+    }
+    // 9. Dark circles: toward the cheek, lightness with its colour.
+    if (dc > 0) {
+      maps.sampleDelta(RetouchDelta.darkCircles, u, v, d, 0);
+      oo[0] += dc * d[0];
+      oo[1] += dc * d[1];
+      oo[2] += dc * d[2];
+    }
+    // 10. Teeth: mouth ∩ bright ∩ not red; never above the cap (§4.9).
     if (teeth > 0) {
       final tm =
           mouth *
@@ -198,36 +195,35 @@ class RetouchKernel {
         final td = p.teethDesaturate * tm, tb = p.teethBrightness * tm;
         oo[2] *= 1 - kTeethYellowCut * td;
         oo[1] *= 1 - kTeethRedCut * td;
-        oo[0] += kTeethLift * tb * (1 - oo[0]);
+        oo[0] += math.min(kTeethMaxLift, kTeethLift * (1 - oo[0])) * tb;
         oo[0] = math.min(oo[0], math.max(li[0], _info[slot]!.teethCapL));
       }
     }
-    // 10. Eye whites: less red/yellow, slight lift (§3.7).
+    // 11. Eye whites: less red / yellow, tiny lift; red veins; iris.
     if (sw > 0) {
       final w = sw * smoothstep(kScleraLLo, kScleraLHi, li[0]);
       oo[1] *= 1 - kScleraRedCut * w;
       oo[2] *= 1 - kScleraYellowCut * w;
-      oo[0] += kScleraLift * w * (1 - oo[0]);
+      oo[0] = math.min(
+        oo[0] + kScleraLift * w * (1 - oo[0]),
+        math.max(li[0], kScleraMaxL),
+      );
     }
-    // 11. Red veins: fine-scale a* excess over the base (research 06 P0 #6).
-    if (rv > 0) {
-      final w = rv * smoothstep(kVeinLLo, kVeinLHi, li[0]);
-      final vein = math.max(0.0, li[1] - l2[1]);
-      oo[1] -= kVeinCut * w * vein;
-      oo[0] +=
-          kVeinCut *
-          w *
-          math.max(0.0, l2[0] - li[0]) *
-          smoothstep(kVeinLiftLo, kVeinLiftHi, vein);
+    if (rv > 0 || iw > 0) {
+      maps.sampleDelta(RetouchDelta.eyes, u, v, d, 0);
+      if (rv > 0) {
+        final w = rv * smoothstep(kVeinLLo, kVeinLHi, li[0]);
+        oo[1] += w * d[1];
+        oo[0] += w * d[2];
+      }
+      if (iw > 0) {
+        final w = iw * (1 - smoothstep(kIrisCatchLo, kIrisCatchHi, li[0]));
+        oo[0] += w * (d[0] + kIrisLift);
+        oo[1] *= 1 + kIrisChroma * w;
+        oo[2] *= 1 + kIrisChroma * w;
+      }
     }
-    // 12. Iris: local contrast, chroma, small lift; keeps catchlights.
-    if (iw > 0) {
-      final w = iw * (1 - smoothstep(kIrisCatchLo, kIrisCatchHi, li[0]));
-      oo[0] += kIrisContrast * w * (li[0] - l2[0]) + kIrisLift * w;
-      oo[1] *= 1 + kIrisChroma * w;
-      oo[2] *= 1 + kIrisChroma * w;
-    }
-    // 13. Lips: chroma toward the face's natural target (hue and texture
+    // 12. Lips: chroma toward the face's natural target (hue and texture
     // kept), slight deepening; gloss above the lip P95 is skipped (§3.9).
     if (lw > 0) {
       final f = _info[slot]!;
@@ -244,15 +240,14 @@ class RetouchKernel {
       oo[2] *= k;
       oo[0] += w * f.lipShiftL;
     }
-    // 14. Blush: chroma toward the face's blush colour relative to the
-    // local skin reference, slight darkening (§3.9).
+    // 13. Blush: the face's blush shift, slight darkening (§3.9).
     if (bw > 0) {
       final f = _info[slot]!;
-      oo[1] += bw * kBlushChroma * (f.blushA - l3[1]);
-      oo[2] += bw * kBlushChroma * (f.blushB - l3[2]);
+      oo[1] += bw * f.blushA;
+      oo[2] += bw * f.blushB;
       oo[0] *= 1 - kBlushDarken * bw;
     }
-    // 15. Red-eye: strongly red pupils in the eye discs lose their colour
+    // 14. Red-eye: strongly red pupils in the eye discs lose their colour
     // and darken; brown irises, skin and the catchlight do not qualify.
     if (re > 0) {
       final w =

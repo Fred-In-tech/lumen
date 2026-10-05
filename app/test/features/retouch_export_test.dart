@@ -373,7 +373,7 @@ void main() {
       final third = (await c.read(retouchMapsBuildProvider('p').future))!;
       expect(identical(third, first), isFalse);
       expect(
-        listEquals(third.maps.b1, first.maps.b1),
+        listEquals(third.maps.deltaA, first.maps.deltaA),
         isFalse,
         reason: 'built from the healed face',
       );

@@ -89,7 +89,7 @@ RetouchMaps applySkinPen(RetouchMaps base, List<BrushStroke> strokes) {
     }
     if (skin == null || keep == null || owner == null) continue;
     _write(base, f, sub, w, h, owner, skin, keep, ra!, rb!);
-    assignFaceIds(f, w, owner, base.bh, ra, rb, within: sub);
+    assignFaceIds(f, w, owner, base.deltaB, ra, rb, within: sub);
   }
   if (ra == null || rb == null) return base;
   return base.withRegions(ra, rb);
@@ -208,7 +208,7 @@ void _write(
         cx >= rect.x0 && cx < rect.x1 && cy >= rect.y0 && cy < rect.y1;
     (inRect && keep[rect.index(cx, cy)] > 0.5 ? erased : others).add(b);
   }
-  final sigma1 = kB1SigmaIod * f.iod;
+  final sigma1 = kHealSpillIod * f.iod;
   for (var y = rect.y0; y < rect.y1; y++) {
     var i = (y - rect.y0) * rect.w;
     for (var x = rect.x0; x < rect.x1; x++, i++) {

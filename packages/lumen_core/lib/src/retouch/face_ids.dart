@@ -81,7 +81,7 @@ void assignFaceIds(
           rb[left + 1] |
           rb[left + 2] |
           rb[right + 1];
-      if (any != 0 || _healed(bh, left) || _healed(bh, right)) {
+      if (any != 0 || _healed(bh, left)) {
         active[i] = 1;
         continue;
       }

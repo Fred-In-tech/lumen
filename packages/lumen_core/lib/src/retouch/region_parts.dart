@@ -103,6 +103,33 @@ Float32List fitEllipse(List<MapPoint> pts, MapRect sub) {
   );
 }
 
+/// Eye-open ramp on the lid gap / eye width ratio: a closed or squinting
+/// eye has no sclera or iris to work on (the polygon then covers lid skin
+/// and lashes).
+const double kEyeOpenLo = 0.10;
+const double kEyeOpenHi = 0.18;
+
+/// Sclera: near-neutral pixels only (lid skin is chromatic), weighted by
+/// proximity to the iris (full within [kScleraFullIod] of its edge, then
+/// `exp(−d / kScleraNearIod)`), so the corners stay
+/// (research 09 §4.9).
+const double kScleraChromaLo = 0.045;
+const double kScleraChromaHi = 0.075;
+const double kScleraChromaBlurIod = 0.012;
+const double kScleraNearIod = 0.05;
+const double kScleraFullIod = 0.04;
+
+/// How open one eye is, 0 (closed) .. 1, from its lid landmarks
+/// ([loop] is `FaceMesh.rightEye` / `leftEye`).
+double eyeOpenness(FaceFrame f, List<int> loop) {
+  double d(int a, int b) => math.sqrt(
+    math.pow(f.xs[a] - f.xs[b], 2) + math.pow(f.ys[a] - f.ys[b], 2),
+  );
+  final width = d(loop[0], loop[8]);
+  if (width < 1e-6) return 0;
+  return smoothstep(kEyeOpenLo, kEyeOpenHi, d(loop[4], loop[12]) / width);
+}
+
 /// Sclera and iris maps (§2.3) on the eye sub-rect, plus the teeth cap
 /// (sclera P90 L, null when no sclera is visible).
 ({MapRect sub, Float32List sclera, Float32List iris, double? capL}) eyeMaps(
@@ -116,47 +143,76 @@ Float32List fitEllipse(List<MapPoint> pts, MapRect sub) {
     f.rect,
   );
   final w = sub.w, h = sub.h;
-  final eyes = maxOf([
-    rasterizePolygon(f.pts(FaceMesh.rightEye), sub),
-    rasterizePolygon(f.pts(FaceMesh.leftEye), sub),
-  ]);
-  Float32List discs(double scale) => maxOf([
-    rasterizeDisc(
-      f.xs[FaceMesh.rightIrisCenter],
-      f.ys[FaceMesh.rightIrisCenter],
-      f.irisRadiusRight * scale,
-      sub,
-    ),
-    rasterizeDisc(
-      f.xs[FaceMesh.leftIrisCenter],
-      f.ys[FaceMesh.leftIrisCenter],
-      f.irisRadiusLeft * scale,
-      sub,
-    ),
-  ]);
   final erodePx = math.max(1, (kScleraErodeIod * iod).round());
-  final sclera = gaussianBlur(
-    erode(subtractMask(eyes, discs(kIrisDiscScale)), w, h, erodePx),
-    w,
-    h,
-    kEyeRegionFeatherIod * iod,
-  );
-  final iris = gaussianBlur(
-    subtractMask(productOf([discs(1), eyes]), discs(kPupilScale)),
-    w,
-    h,
-    kEyeRegionFeatherIod * iod,
-  );
+  final feather = kEyeRegionFeatherIod * iod;
   final l = cropPlane(lab.l, lab.rect, sub);
+  // Chroma is judged below vein scale: a thin red vein is still sclera.
+  final soft = math.max(1.0, kScleraChromaBlurIod * iod);
+  final a = gaussianBlur(cropPlane(lab.a, lab.rect, sub), w, h, soft);
+  final b = gaussianBlur(cropPlane(lab.b, lab.rect, sub), w, h, soft);
+  final sclera = Float32List(sub.area), iris = Float32List(sub.area);
+  for (final (loop, centre, radius) in [
+    (FaceMesh.rightEye, FaceMesh.rightIrisCenter, f.irisRadiusRight),
+    (FaceMesh.leftEye, FaceMesh.leftIrisCenter, f.irisRadiusLeft),
+  ]) {
+    final open = eyeOpenness(f, loop);
+    if (open <= 0) continue;
+    final cx = f.xs[centre], cy = f.ys[centre];
+    final eye = rasterizePolygon(f.pts(loop), sub);
+    final white = gaussianBlur(
+      erode(
+        subtractMask(eye, rasterizeDisc(cx, cy, radius * kIrisDiscScale, sub)),
+        w,
+        h,
+        erodePx,
+      ),
+      w,
+      h,
+      feather,
+    );
+    final ring = gaussianBlur(
+      subtractMask(
+        productOf([rasterizeDisc(cx, cy, radius, sub), eye]),
+        rasterizeDisc(cx, cy, radius * kPupilScale, sub),
+      ),
+      w,
+      h,
+      feather,
+    );
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final i = y * w + x;
+        if (ring[i] > 0) iris[i] = math.max(iris[i], open * ring[i]);
+        if (white[i] <= 0) continue;
+        final dx = sub.x0 + x + 0.5 - cx, dy = sub.y0 + y + 0.5 - cy;
+        final d = math.max(
+          0.0,
+          math.sqrt(dx * dx + dy * dy) - radius - kScleraFullIod * iod,
+        );
+        final neutral =
+            1 -
+            smoothstep(
+              kScleraChromaLo,
+              kScleraChromaHi,
+              math.sqrt(a[i] * a[i] + b[i] * b[i]),
+            );
+        final v =
+            open * white[i] * neutral * math.exp(-d / (kScleraNearIod * iod));
+        if (v > sclera[i]) sclera[i] = v;
+      }
+    }
+  }
   final picked = <double>[
     for (var i = 0; i < l.length; i++)
-      if (sclera[i] > 0.5) l[i],
+      if (sclera[i] > 0.35) l[i],
   ]..sort();
   return (
     sub: sub,
     sclera: sclera,
     iris: iris,
-    capL: picked.isEmpty ? null : picked[((picked.length - 1) * 0.9).round()],
+    capL: picked.length < 4
+        ? null
+        : picked[((picked.length - 1) * 0.9).round()],
   );
 }
 

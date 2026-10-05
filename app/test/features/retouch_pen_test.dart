@@ -120,7 +120,7 @@ void main() {
     );
     final pen = await c.read(retouchMapsBuildProvider('p').future);
     expect(pen?.maps.regionA, isNot(baseMaps.regionA));
-    expect(identical(pen?.maps.b1, baseMaps.b1), isTrue);
+    expect(identical(pen?.maps.deltaA, baseMaps.deltaA), isTrue);
     expect(baseBuilds, 1, reason: 'the analysis did not re-run');
     // An unrelated edit keeps the same pen maps (content-compared pen).
     final now = c.read(editorProvider('p')).value!.settings;

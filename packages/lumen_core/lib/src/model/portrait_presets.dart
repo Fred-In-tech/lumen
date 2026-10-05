@@ -10,7 +10,7 @@ abstract final class PortraitPresets {
     PortraitIds.skinSoftening: 40,
     PortraitIds.skinEven: 30,
     PortraitIds.skinShine: 30,
-    PortraitIds.acne: 80,
+    PortraitIds.acne: 50,
     PortraitIds.wrinkleForehead: 30,
     PortraitIds.wrinkleFrown: 30,
     PortraitIds.wrinkleCrowsFeet: 25,
@@ -18,8 +18,8 @@ abstract final class PortraitPresets {
     PortraitIds.wrinkleMarionette: 20,
     PortraitIds.darkCircles: 40,
     PortraitIds.eyeBags: 35,
-    PortraitIds.eyeWhites: 35,
-    PortraitIds.iris: 30,
+    PortraitIds.eyeWhites: 20,
+    PortraitIds.iris: 15,
     PortraitIds.redVein: 50,
     PortraitIds.teethBrightness: 25,
     PortraitIds.teethDesaturate: 30,
@@ -62,30 +62,27 @@ abstract final class PortraitPresets {
   // ---------------------------------------------------------------------
   // Need-scaled Auto Retouch (research 07 §7.1 step 10).
 
-  /// `value = lo + (hi − lo) · need` per slider. Every `hi` stays below the
-  /// "plastic" zone (smoothing past ~60 erases pores; eyes past ~50 glow),
-  /// so even the strongest auto retouch looks photographic.
+  /// `value = lo + (hi − lo) · need` per slider (research 09 §4.13).
+  /// Every `lo` is 0: a face that needs nothing gets nothing. The tops
+  /// are the "commercial" grade: a viewer can tell before from after on a
+  /// face that needs work, and no value reaches the hard limits of the
+  /// engine (which are themselves below the "plastic" zone).
   static const Map<String, (double, double)> needRanges = {
-    PortraitIds.skinSoftening: (15, 55),
-    PortraitIds.skinEven: (10, 45),
-    PortraitIds.skinShine: (10, 55),
-    PortraitIds.acne: (30, 90),
-    PortraitIds.wrinkleForehead: (5, 45),
-    PortraitIds.wrinkleFrown: (5, 45),
-    PortraitIds.wrinkleCrowsFeet: (5, 40),
-    PortraitIds.wrinkleSmile: (5, 40),
-    PortraitIds.wrinkleMarionette: (5, 40),
-    PortraitIds.darkCircles: (10, 60),
-    PortraitIds.eyeBags: (5, 50),
-    PortraitIds.redVein: (20, 70),
-    PortraitIds.teethBrightness: (10, 40),
-    PortraitIds.teethDesaturate: (10, 50),
-  };
-
-  /// Eye polish that does not depend on a measured problem.
-  static const Map<String, double> eyePolish = {
-    PortraitIds.eyeWhites: 35,
-    PortraitIds.iris: 30,
+    PortraitIds.skinSoftening: (0, 60),
+    PortraitIds.skinEven: (0, 55),
+    PortraitIds.skinShine: (0, 65),
+    PortraitIds.acne: (0, 70),
+    PortraitIds.wrinkleForehead: (0, 30),
+    PortraitIds.wrinkleFrown: (0, 30),
+    PortraitIds.wrinkleCrowsFeet: (0, 25),
+    PortraitIds.wrinkleSmile: (0, 20),
+    PortraitIds.wrinkleMarionette: (0, 20),
+    PortraitIds.darkCircles: (0, 60),
+    PortraitIds.eyeBags: (0, 40),
+    PortraitIds.eyeWhites: (0, 30),
+    PortraitIds.redVein: (0, 40),
+    PortraitIds.teethBrightness: (0, 30),
+    PortraitIds.teethDesaturate: (0, 40),
   };
 
   /// Upper limits per group: children keep their skin, seniors keep
@@ -115,11 +112,7 @@ abstract final class PortraitPresets {
   };
 
   /// Every slider the auto retouch writes.
-  static final Set<String> autoIds = {
-    ...natural.keys,
-    ...needRanges.keys,
-    ...eyePolish.keys,
-  };
+  static final Set<String> autoIds = {...natural.keys, ...needRanges.keys};
 
   /// A group's value differs from All by at least this much before it
   /// gets its own override ("faces differ a lot").
@@ -139,7 +132,7 @@ abstract final class PortraitPresets {
     return {
       PortraitIds.skinSoftening: scaled(
         PortraitIds.skinSoftening,
-        0.75 * needs.roughness + 0.25 * needs.unevenness,
+        needs.roughness,
       ),
       PortraitIds.skinEven: scaled(PortraitIds.skinEven, needs.unevenness),
       PortraitIds.skinShine: scaled(PortraitIds.skinShine, needs.shine),
@@ -166,6 +159,7 @@ abstract final class PortraitPresets {
       ),
       PortraitIds.darkCircles: scaled(PortraitIds.darkCircles, under),
       PortraitIds.eyeBags: scaled(PortraitIds.eyeBags, under),
+      PortraitIds.eyeWhites: scaled(PortraitIds.eyeWhites, needs.scleraRed),
       PortraitIds.redVein: scaled(PortraitIds.redVein, needs.scleraRed),
       PortraitIds.teethBrightness: scaled(
         PortraitIds.teethBrightness,
@@ -175,12 +169,14 @@ abstract final class PortraitPresets {
         PortraitIds.teethDesaturate,
         needs.teethYellow,
       ),
-      ...eyePolish,
+      // Never automatic: a brighter iris is a look, not a correction.
+      PortraitIds.iris: 0,
     };
   }
 
-  /// Need-scaled Auto Retouch: values for the All group from the typical
-  /// face, a group override where that group's faces differ by at least
+  /// Need-scaled Auto Retouch: values for the All group from the neediest
+  /// face (effects are proportional to what they correct, so the other
+  /// faces change less), a group override where that group's faces differ by at least
   /// [groupSplit], and the child/senior [groupCaps]. Without [needs] (no
   /// analysis) it falls back to the static [natural] recipe. Keys in
   /// [locked] (`lockKey`) are never written, nor are individuals, image
@@ -193,12 +189,12 @@ abstract final class PortraitPresets {
     final Map<String, double> all;
     final groupValues = <FaceGroup, Map<String, double>>{};
     if (needs == null || needs.isEmpty) {
-      all = {...natural, ...eyePolish};
+      all = {...natural};
       for (final e in groupOverrides.entries) {
         groupValues[e.key] = {...e.value};
       }
     } else {
-      all = valuesFor(FaceNeeds.mean(needs.faces));
+      all = valuesFor(FaceNeeds.most(needs.faces));
       final byGroup = <FaceGroup, List<FaceNeeds>>{};
       for (final f in needs.faces) {
         if (f.group != FaceGroup.all) {
@@ -206,7 +202,7 @@ abstract final class PortraitPresets {
         }
       }
       for (final e in byGroup.entries) {
-        final v = valuesFor(FaceNeeds.mean(e.value, group: e.key));
+        final v = valuesFor(FaceNeeds.most(e.value, group: e.key));
         groupValues[e.key] = {
           for (final id in v.keys)
             if ((v[id]! - all[id]!).abs() >= groupSplit) id: v[id]!,
@@ -242,8 +238,7 @@ abstract final class PortraitPresets {
 
   /// Highest value auto retouch may give [id] (its range top, else 100).
   static double capOf(String id) =>
-      needRanges[id]?.$2 ??
-      (eyePolish.containsKey(id) ? 40 : PortraitRegistry.byId(id).max);
+      needRanges[id]?.$2 ?? PortraitRegistry.byId(id).max;
 
   /// [p] with suggested All-group [deltas] (e.g. from the vision engine)
   /// added, capped like the measured values; [locked] keys untouched.

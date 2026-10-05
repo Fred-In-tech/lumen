@@ -322,8 +322,8 @@ GlarePlanes? detectGlare(FaceFrame f, LabPlanes lab) {
       cover[i] = 1;
     }
   }
-  // The code covers the delta plus its σ1 low-band spill.
-  final spill = (kSpotCodeSpillSigmas * kB1SigmaIod * iod).ceil();
+  // The code covers the delta plus a bilinear fringe.
+  final spill = (kSpotCodeSpillSigmas * kHealSpillIod * iod).ceil();
   final grown = dilate(
     Float32List.fromList([for (final c in cover) c.toDouble()]),
     w,
@@ -367,24 +367,13 @@ Float32List _sparkle(Float32List l, MapRect sub, FaceFrame f) {
   return gaussianBlur(dilate(out, w, h, 1), w, h, 0.5);
 }
 
-/// [heal] with the glare correction of face [f] merged in: low / high
-/// split like the spot heals, code [kGlareCode] where no spot code is set,
-/// and the corrected image as the input of `B2` and `B3`.
-HealPlanes mergeGlare(HealPlanes heal, GlarePlanes g, FaceFrame f) {
-  final rect = heal.rect, sub = g.sub, w = sub.w, h = sub.h;
-  final sigma1 = kB1SigmaIod * f.iod;
+/// [heal] with the glare correction merged in: code [kGlareCode] where
+/// no spot code is set, and the corrected image as the input of the bands.
+HealPlanes mergeGlare(HealPlanes heal, GlarePlanes g) {
+  final rect = heal.rect, sub = g.sub;
   final full = [g.dl, g.da, g.db];
-  final low = [for (final c in full) gaussianBlur(c, w, h, sigma1)];
   final out = [
-    for (final p in [
-      heal.lowL,
-      heal.lowA,
-      heal.lowB,
-      heal.highL,
-      heal.highA,
-      heal.highB,
-    ])
-      Float32List.fromList(p),
+    for (final p in [heal.dl, heal.da, heal.db]) Float32List.fromList(p),
   ];
   final codes = Uint8List.fromList(heal.spotCode);
   final healed = [
@@ -397,20 +386,16 @@ HealPlanes mergeGlare(HealPlanes heal, GlarePlanes g, FaceFrame f) {
       if (codes[i] != 0 && codes[i] != kGlareCode) continue;
       codes[i] = kGlareCode;
       for (var c = 0; c < 3; c++) {
-        out[c][i] += low[c][j];
-        out[3 + c][i] += full[c][j] - low[c][j];
+        out[c][i] += full[c][j];
         healed[c][i] += full[c][j];
       }
     }
   }
   return HealPlanes(
     rect: rect,
-    lowL: out[0],
-    lowA: out[1],
-    lowB: out[2],
-    highL: out[3],
-    highA: out[4],
-    highB: out[5],
+    dl: out[0],
+    da: out[1],
+    db: out[2],
     spotCode: codes,
     healed: LabPlanes(rect, healed[0], healed[1], healed[2]),
   );

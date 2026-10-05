@@ -14,24 +14,24 @@ import 'map_rect.dart';
 import 'polygon_raster.dart';
 import 'region_parts.dart';
 import 'shine_core.dart';
+import 'skin_mask.dart';
 import 'skin_model.dart';
 
-// Region constants, in IOD units (research 07 §1.4, §2.2, §2.3).
-const double kRegionFeatherIod = 0.015;
-const double kEyeProtectDilateIod = 0.04;
+// Region constants, in IOD units (research 09 §4.2 step 2).
+const double kRegionFeatherIod = 0.02;
+const double kEyeProtectDilateIod = 0.045;
+const double kBrowProtectDilateIod = 0.035;
+const double kLipProtectDilateIod = 0.025;
 const double kEyeShieldDilateIod = 0.01;
 const double kUnderEyeFeatherIod = 0.05;
 const double kLashFullIod = 0.02;
 const double kLashZeroIod = 0.08;
-const double kForeheadExtendIod = 0.35;
-const double kSkinSampleRadiusIod = 0.15;
-const double kSkinColorBlurIod = 0.03;
 const double kBlemishExclusionIod = 0.08;
-const double kParsingGuideRadiusIod = 0.02;
-const double kParsingGuideEps = 1e-3;
 
-/// Teeth cap when no sclera is visible (eyes closed).
-const double kDefaultTeethCapL = 0.92;
+/// Teeth cap when no sclera is visible (eyes closed), and its ceiling:
+/// teeth never get brighter than `min(sclera P90, kTeethCapMaxL)` (§4.9).
+const double kDefaultTeethCapL = 0.86;
+const double kTeethCapMaxL = 0.92;
 
 /// Region planes of one face over its work rect (all 0..1 floats).
 class FaceRegionPlanes {
@@ -46,7 +46,7 @@ class FaceRegionPlanes {
     required this.lips,
     required this.blush,
     required this.blemishExclusion,
-    required this.skinModel,
+    required this.masks,
     required this.teethCapL,
     required this.makeup,
     this.shineCore,
@@ -69,7 +69,12 @@ class FaceRegionPlanes {
 
   /// 1 within 0.08 IOD of the eyes, brows, lips and nostrils (§3.3 step 3).
   final Float32List blemishExclusion;
-  final SkinColorModel skinModel;
+
+  /// Every skin mask of this face ([skin] is `masks.effect`, plus the
+  /// clipped shine core).
+  final SkinMasks masks;
+
+  SkinColorModel get skinModel => masks.model;
 
   /// Sclera P90 OkLab L: teeth never get brighter (§3.6).
   final double teethCapL;
@@ -98,40 +103,42 @@ FaceRegionPlanes buildFaceRegions(
   Float32List feather(Float32List m, double units) =>
       gaussianBlur(m, w, h, units * iod);
 
-  // Protected features: eyes, brows, lips, nostrils (§2.2 step 4).
+  // Protected features: eyes with their lids, brows, lips. Nostrils are
+  // dark, so the skin mask rejects them where they really are (a mesh
+  // ellipse that sits off would only hide the nose tip from Shine).
   final eyePolys = [f.pts(FaceMesh.rightEye), f.pts(FaceMesh.leftEye)];
   final eyes = unionOfPolygons(eyePolys, rect);
-  final features = unionOfPolygons([
-    ...eyePolys,
+  final brows = unionOfPolygons([
     f.pts([...FaceMesh.rightBrowLower, ...FaceMesh.rightBrowUpper.reversed]),
     f.pts([...FaceMesh.leftBrowLower, ...FaceMesh.leftBrowUpper.reversed]),
-    f.pts(FaceMesh.lipsOuter),
   ], rect);
+  final lipsPoly = unionOfPolygons([f.pts(FaceMesh.lipsOuter)], rect);
+  final nostrils = Float32List(rect.area);
   for (final ring in [FaceMesh.rightNostril, FaceMesh.leftNostril]) {
     final sub = boxOf(f.pts(ring), 0.05 * iod, rect);
-    paintMax(features, rect, fitEllipse(f.pts(ring), sub), sub);
+    paintMax(nostrils, rect, fitEllipse(f.pts(ring), sub), sub);
   }
+  final features = maxOf([eyes, brows, lipsPoly, nostrils]);
   final protect = feather(
-    maxOf([dilate(eyes, w, h, px(kEyeProtectDilateIod)), features]),
+    maxOf([
+      dilate(eyes, w, h, px(kEyeProtectDilateIod)),
+      dilate(brows, w, h, px(kBrowProtectDilateIod)),
+      dilate(lipsPoly, w, h, px(kLipProtectDilateIod)),
+    ]),
     kRegionFeatherIod,
   );
 
-  // Colour skin model (§2.2 step 3) and the skin weight (step 4).
-  final model = SkinColorModel.fit(lab, [
-    for (final c in [
-      f.p(FaceMesh.rightCheekApple),
-      f.p(FaceMesh.leftCheekApple),
-      f.mid(FaceMesh.glabellaTop, FaceMesh.foreheadTop),
-    ])
-      (centre: c, radius: kSkinSampleRadiusIod * iod),
-  ]);
-  final pColor = model.probabilityPlane(
-    lab.mapChannels((c) => gaussianBlur(c, w, h, kSkinColorBlurIod * iod)),
+  final masks = buildSkinMasks(
+    f,
+    lab,
+    protect: protect,
+    gridW: gridW,
+    gridH: gridH,
+    parsing: parsing,
+    clip: clip,
   );
-  final raw = parsing == null
-      ? productOf([rasterizePolygon(_extendedOval(f), rect), pColor])
-      : _parsingSkin(f, lab, parsing, pColor, gridW, gridH);
-  var skin = subtractMask(feather(raw, kRegionFeatherIod), protect);
+  final model = masks.model;
+  var skin = masks.effect;
   final core = clip == null ? null : shineCoreHole(f, clip, skin);
   var exclusion = dilate(features, w, h, px(kBlemishExclusionIod));
   if (core != null) {
@@ -142,6 +149,9 @@ FaceRegionPlanes buildFaceRegions(
   final eye = eyeMaps(f, lab);
   final mouth = mouthMaps(f, lab, model.meanA);
   final lips = pasted(rect, mouth.lips, mouth.sub);
+  final cap = eye.capL == null
+      ? kDefaultTeethCapL
+      : math.min(eye.capL!, kTeethCapMaxL);
   return FaceRegionPlanes(
     rect: rect,
     skin: skin,
@@ -153,8 +163,8 @@ FaceRegionPlanes buildFaceRegions(
     lips: lips,
     blush: blushMap(f, skin),
     blemishExclusion: exclusion,
-    skinModel: model,
-    teethCapL: eye.capL ?? kDefaultTeethCapL,
+    masks: masks,
+    teethCapL: cap,
     makeup: makeupTargets(lab, lips, model),
     shineCore: core,
   );
@@ -191,67 +201,6 @@ Float32List _underEye(FaceFrame f) {
     kUnderEyeFeatherIod * iod,
   );
   return pasted(rect, subtractMask(crescents, shield), sub);
-}
-
-/// Face oval with the upper arc pushed up by 0.35 IOD along the face axis
-/// (the mesh top 10 is mid-forehead, not the hairline).
-List<MapPoint> _extendedOval(FaceFrame f) {
-  final pts = f.pts(FaceMesh.faceOval);
-  final tops = [for (final q in pts) math.max(0.0, -f.alongAxis(q))];
-  final tMax = tops.reduce(math.max);
-  if (tMax <= 0) return pts;
-  final ext = kForeheadExtendIod * f.iod;
-  return [
-    for (var i = 0; i < pts.length; i++)
-      (
-        x: pts[i].x - f.axis.x * ext * tops[i] / tMax,
-        y: pts[i].y - f.axis.y * ext * tops[i] / tMax,
-      ),
-  ];
-}
-
-/// §2.2 step 4 composition with multiclass planes, refined by a guided
-/// filter against OkLab L (step 2).
-Float32List _parsingSkin(
-  FaceFrame f,
-  LabPlanes lab,
-  FaceParsingPlanes planes,
-  Float32List pColor,
-  int gridW,
-  int gridH,
-) {
-  final rect = f.rect;
-  final raw = Float32List(rect.area);
-  for (var y = rect.y0; y < rect.y1; y++) {
-    final v = (y + 0.5) / gridH;
-    for (var x = rect.x0; x < rect.x1; x++) {
-      final u = (x + 0.5) / gridW;
-      final i = rect.index(x, y);
-      final skin = math.max(
-        planes.sample(ParsingClass.faceSkin, u, v),
-        planes.sample(ParsingClass.bodySkin, u, v),
-      );
-      if (skin <= 0) continue;
-      raw[i] =
-          skin *
-          (0.5 + 0.5 * pColor[i]) *
-          (1 - planes.sample(ParsingClass.hair, u, v)) *
-          (1 - 0.8 * planes.sample(ParsingClass.accessories, u, v));
-    }
-  }
-  final r = math.max(1, (kParsingGuideRadiusIod * f.iod).round());
-  final refined = guidedFilter(
-    lab.l,
-    [raw],
-    rect.w,
-    rect.h,
-    r,
-    kParsingGuideEps,
-  ).first;
-  for (var i = 0; i < refined.length; i++) {
-    refined[i] = clamp01(refined[i]);
-  }
-  return refined;
 }
 
 /// 1 on the lower lid line, fading to 0 at 0.08 IOD (lid protection).

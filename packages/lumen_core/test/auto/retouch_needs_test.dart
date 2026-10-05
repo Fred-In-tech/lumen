@@ -41,15 +41,27 @@ void main() {
         poreAmp: 0.03,
       ),
     );
+    final blotchy = _needs(
+      const SynthFace(
+        id: 'f',
+        cx: 160,
+        cy: 130,
+        iod: 90,
+        spots: [],
+        uneven: 0.06,
+      ),
+    );
 
     test('more acne measures a higher blemish need', () {
       expect(clean.blemish, 0);
       expect(acne.blemish, greaterThan(0.5));
     });
 
-    test('pores raise roughness; clean skin stays low', () {
+    test('blotchy skin raises the Smooth need; pores alone do not (pores '
+        'are texture, not a problem)', () {
       expect(clean.roughness, lessThan(0.3));
-      expect(rough.roughness, greaterThan(0.8));
+      expect(rough.roughness, lessThan(0.3));
+      expect(blotchy.roughness, greaterThan(clean.roughness + 0.3));
     });
 
     test('dull teeth, shine and red veins are seen', () {
@@ -60,7 +72,12 @@ void main() {
       final shine = _needs(
         const SynthFace(id: 'f', cx: 160, cy: 130, iod: 90, clippedShine: true),
       );
-      expect(shine.shine, greaterThan(clean.shine + 0.3));
+      final matte = _needs(
+        const SynthFace(id: 'f', cx: 160, cy: 130, iod: 90, lumps: false),
+      );
+      expect(matte.shine, 0);
+      expect(clean.shine, greaterThan(0.3), reason: 'forehead / nose sheen');
+      expect(shine.shine, greaterThanOrEqualTo(clean.shine));
       final veins = _needs(
         const SynthFace(id: 'f', cx: 160, cy: 130, iod: 90, veins: true),
       );
@@ -76,7 +93,7 @@ void main() {
         FaceNeeds(
           faceId: 'x',
           blemish: acne.blemish,
-          roughness: rough.roughness,
+          roughness: blotchy.roughness,
         ),
       );
       expect(light[PortraitIds.skinSoftening], lessThan(30));
@@ -126,8 +143,9 @@ void main() {
         const RetouchNeeds([worst]),
       );
       double v(String id, [FaceGroup g = FaceGroup.all]) => p.groupValue(g, id);
-      expect(v(PortraitIds.skinSoftening), lessThanOrEqualTo(55));
+      expect(v(PortraitIds.skinSoftening), lessThanOrEqualTo(60));
       expect(v(PortraitIds.eyeWhites), lessThanOrEqualTo(40));
+      expect(v(PortraitIds.iris), 0, reason: 'never automatic');
       for (final e in PortraitPresets.needRanges.entries) {
         expect(v(e.key), lessThanOrEqualTo(e.value.$2), reason: e.key);
       }
@@ -153,7 +171,14 @@ void main() {
         p.groupValue(FaceGroup.female, PortraitIds.skinSoftening),
         greaterThan(p.groupValue(FaceGroup.male, PortraitIds.skinSoftening)),
       );
-      expect(p.groupOverrides(FaceGroup.female, PortraitIds.acne), isTrue);
+      // All follows the neediest face; the clean group gets its own,
+      // lower values.
+      expect(p.groupOverrides(FaceGroup.male, PortraitIds.acne), isTrue);
+      expect(p.groupValue(FaceGroup.male, PortraitIds.acne), 0);
+      expect(
+        p.groupValue(FaceGroup.all, PortraitIds.acne),
+        p.groupValue(FaceGroup.female, PortraitIds.acne),
+      );
       // Similar faces share the All values (no overrides).
       final same = PortraitPresets.autoRetouchFor(
         PortraitSettings.empty,
@@ -195,7 +220,7 @@ void main() {
       expect(p.individuals['p1']?[PortraitIds.iris], 77);
       expect(p.imageValue(PortraitIds.bgClean), 40);
       expect(p.spots.remove, hasLength(1));
-      expect(p.groupValue(FaceGroup.all, PortraitIds.acne), 90);
+      expect(p.groupValue(FaceGroup.all, PortraitIds.acne), 70);
     });
   });
 

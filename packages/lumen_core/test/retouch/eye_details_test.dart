@@ -32,15 +32,15 @@ void main() {
     return q.y.abs() < 0.06 &&
         (q.x - ex).abs() < kEyeOuterX - 0.55 &&
         isVein(q.x - ex, q.y) &&
-        regionAt(maps, RetouchChannel.sclera, i % _w, i ~/ _w, _w, _h) > 0.8;
+        regionAt(maps, RetouchChannel.sclera, i % _w, i ~/ _w, _w, _h) > 0.6;
   }
 
-  test('red veins lose most of their redness', () {
+  test('red veins are softened by up to half, never erased', () {
     final before = labOf(p.image), after = labOf(run(PortraitIds.redVein, 100));
     final a0 = meanWhere(_w * _h, onVein, (i) => before.a[i]);
     final a1 = meanWhere(_w * _h, onVein, (i) => after.a[i]);
     expect(a0, greaterThan(0.04));
-    expect(a1, lessThan(0.6 * a0));
+    expect(a1, inInclusiveRange(0.5 * a0, 0.85 * a0));
   });
 
   test('eye bags flatten the under-eye shading toward the cheek', () {

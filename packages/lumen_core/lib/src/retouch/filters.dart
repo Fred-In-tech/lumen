@@ -313,3 +313,66 @@ double smoothstep(double e0, double e1, double x) {
 
 /// GLSL `clamp(x, 0, 1)`.
 double clamp01(double x) => x <= 0 ? 0 : (x >= 1 ? 1 : x);
+
+/// Box-downsamples [src] by an integer [factor] (mean of each block;
+/// partial blocks at the right / bottom edge average what they have).
+/// Returns the plane and its size.
+({Float32List plane, int w, int h}) downsample(
+  Float32List src,
+  int w,
+  int h,
+  int factor,
+) {
+  final ow = (w + factor - 1) ~/ factor, oh = (h + factor - 1) ~/ factor;
+  final out = Float32List(ow * oh);
+  for (var oy = 0; oy < oh; oy++) {
+    final y0 = oy * factor, y1 = math.min(h, y0 + factor);
+    for (var ox = 0; ox < ow; ox++) {
+      final x0 = ox * factor, x1 = math.min(w, x0 + factor);
+      var sum = 0.0;
+      for (var y = y0; y < y1; y++) {
+        final row = y * w;
+        for (var x = x0; x < x1; x++) {
+          sum += src[row + x];
+        }
+      }
+      out[oy * ow + ox] = sum / ((y1 - y0) * (x1 - x0));
+    }
+  }
+  return (plane: out, w: ow, h: oh);
+}
+
+/// Bilinear upsample of a [downsample]d plane back to `w × h` (block
+/// centres map to their mean position; clamp to edge).
+Float32List upsample(
+  Float32List src,
+  int sw,
+  int sh,
+  int w,
+  int h,
+  int factor,
+) {
+  final out = Float32List(w * h);
+  final xa = Int32List(w), xb = Int32List(w), fx = Float32List(w);
+  for (var x = 0; x < w; x++) {
+    final p = (x + 0.5) / factor - 0.5;
+    final x0 = p.floor();
+    fx[x] = p - x0;
+    xa[x] = x0 < 0 ? 0 : (x0 >= sw ? sw - 1 : x0);
+    xb[x] = x0 + 1 < 0 ? 0 : (x0 + 1 >= sw ? sw - 1 : x0 + 1);
+  }
+  for (var y = 0; y < h; y++) {
+    final p = (y + 0.5) / factor - 0.5;
+    final y0 = p.floor(), fy = p - y0;
+    final ra = (y0 < 0 ? 0 : (y0 >= sh ? sh - 1 : y0)) * sw;
+    final rb = (y0 + 1 < 0 ? 0 : (y0 + 1 >= sh ? sh - 1 : y0 + 1)) * sw;
+    final o = y * w;
+    for (var x = 0; x < w; x++) {
+      final f = fx[x];
+      final top = src[ra + xa[x]] * (1 - f) + src[ra + xb[x]] * f;
+      final bot = src[rb + xa[x]] * (1 - f) + src[rb + xb[x]] * f;
+      out[o + x] = top * (1 - fy) + bot * fy;
+    }
+  }
+  return out;
+}

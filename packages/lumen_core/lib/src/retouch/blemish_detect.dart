@@ -23,20 +23,58 @@ const List<double> kBlobSigmas = [1.5, 2.5, 4.0, 6.4];
 /// Robust-σ window radius: 0.15 IOD wide.
 const int kNoiseWindow = 12;
 
-/// Minimum absolute contrast: darker by this L, or redder by this a*.
-const double kMinSpotDepthL = 0.008;
-const double kMinSpotRedness = 0.006;
+/// Minimum absolute contrast (a z-score alone fires on make-up texture,
+/// pores and lashes): darker by this L, or redder by this a*.
+const double kMinSpotDepthL = 0.02;
+const double kMinSpotRedness = 0.012;
 
-/// Classification (§3.3 step 5, research 06 P0 #2).
-const double kMoleDepthL = 0.12;
-const double kMoleMinRadiusIod = 0.025;
-const double kAcneMinRedness = 0.008;
+/// Dark marks without redness need more evidence than red ones: baby
+/// hairs, lash tips and make-up texture are dark too.
+const double kDarkSpotMinZ = 4.0;
+const double kDarkSpotMinDepthL = 0.03;
+
+/// Highlights (no spots there): L above the masked skin mean at
+/// [kHighlightBaseIod] by more than [kHighlightRel].
+const double kHighlightBaseIod = 0.2;
+const double kHighlightRel = 0.045;
+
+/// Smallest spot (IOD); below it a peak is a pore or a lash tip. Spots
+/// up to [kMaxSpotRadiusIod] are listed (those above `kBlemishRMax` only
+/// heal at 100 or when the user asks).
+const double kMinSpotRadiusIod = 0.006;
+const double kMaxSpotRadiusIod = 0.065;
+
+/// Classification (research 09 §4.5).
+/// * Mole: much darker than its ring, not red, not tiny: kept.
+/// * Pimple (acne): red, whatever its darkness: healed.
+/// * Freckle: brown (b* up more than a*): kept. A face with
+///   [kFreckleFaceCount] or more of them is freckled, and its remaining
+///   small dark marks count as freckles too.
+/// * Dark mark (acne kind, `dark`): the rest; healed from
+///   `kDarkSpotMinSlider` on.
+const double kMoleDepthL = 0.07;
+const double kMoleMinRadiusIod = 0.012;
+const double kAcneMinRedness = 0.012;
 const double kAcneRednessRatio = 0.8;
+
+/// A pimple's redness is not small next to its darkness (a mole or a
+/// scab can carry a little red and still be mostly dark).
+const double kAcneRedPerDepth = 0.2;
+const double kFreckleMinBrown = 0.010;
+const double kFreckleMaxRadiusIod = 0.016;
+const int kFreckleFaceCount = 12;
+
+/// Resolution gate (§4.2): no spots below [kBlemishMinIodPx] map px of
+/// IOD; below [kBlemishFullIodPx] only spots of at least
+/// [kBlemishSmallFaceRadiusIod].
+const double kBlemishMinIodPx = 40;
+const double kBlemishFullIodPx = 80;
+const double kBlemishSmallFaceRadiusIod = 0.02;
 
 /// Hessian eigenvalue ratio limit (rejects wrinkles and pore lines).
 const double kMaxBlobElongation = 3;
 
-const int kMaxBlemishesPerFace = 300;
+const int kMaxBlemishesPerFace = 120;
 
 /// Peaks examined (strongest first) before giving up on weaker ones.
 const int kMaxExaminedPeaks = 600;
@@ -61,6 +99,10 @@ List<BlemishCandidate> detectBlemishes(
   required int gridW,
   required int gridH,
 }) {
+  if (f.iod < kBlemishMinIodPx) return const [];
+  final minRadius = f.iod < kBlemishFullIodPx
+      ? kBlemishSmallFaceRadiusIod
+      : kMinSpotRadiusIod;
   final s = kBlemishNormIod / f.iod;
   final crop = _Crop(
     f.bounds,
@@ -76,11 +118,16 @@ List<BlemishCandidate> detectBlemishes(
   );
   final l = sample(lab.l, blur: true), a = sample(lab.a, blur: true);
   final b = sample(lab.b, blur: true);
-  final skin = sample(regions.skin), excl = sample(regions.blemishExclusion);
+  // Candidates live on the confident skin core only (not the hairline,
+  // not hair texture) and not inside a highlight, where the dark gaps
+  // between sparkling pores would pass for spots.
+  final core = sample(_coreOrForced(regions));
+  final excl = sample(regions.blemishExclusion);
+  final lit = sample(_highlight(f, lab, regions.masks.norm));
   final w = crop.w, h = crop.h, n = w * h;
   final valid = Float32List(n);
   for (var i = 0; i < n; i++) {
-    valid[i] = skin[i] >= 0.5 && excl[i] < 0.5 ? 1 : 0;
+    valid[i] = core[i] >= 0.5 && excl[i] < 0.5 && lit[i] < 0.5 ? 1 : 0;
   }
   final gl = [for (final sg in kBlobSigmas) gaussianBlur(l, w, h, sg)];
   final ga = [for (final sg in kBlobSigmas) gaussianBlur(a, w, h, sg)];
@@ -132,11 +179,22 @@ List<BlemishCandidate> detectBlemishes(
     );
     if (m == null || !m.isolated) continue;
     if (m.depthL < kMinSpotDepthL && m.deltaA < kMinSpotRedness) continue;
+    final red =
+        m.deltaA >= kAcneMinRedness &&
+        m.deltaA >= kAcneRednessRatio * m.deltaB &&
+        m.deltaA >= kAcneRedPerDepth * m.depthL;
+    final brown = m.deltaB >= kFreckleMinBrown && m.deltaB > m.deltaA;
+    if (!red &&
+        !brown &&
+        (zBest[i] < kDarkSpotMinZ || m.depthL < kDarkSpotMinDepthL)) {
+      continue;
+    }
     final rIod = m.radius / kBlemishNormIod;
-    if (rIod > kBlemishRMax) continue;
+    if (rIod > kMaxSpotRadiusIod || rIod < minRadius) continue;
     kept.add((x: cx.toDouble(), y: cy.toDouble(), r: m.radius));
     final c = crop.toMap(cx.toDouble(), cy.toDouble());
     final u = c.x / gridW, v = c.y / gridH;
+    final kind = _classify(m.depthL, m.deltaA, m.deltaB, rIod);
     out.add(
       BlemishCandidate(
         id: '${f.faceId}:${(u * 4096).round()}x${(v * 4096).round()}',
@@ -145,13 +203,71 @@ List<BlemishCandidate> detectBlemishes(
         u: u,
         v: v,
         radiusIod: rIod,
-        kind: _classify(m.depthL, m.deltaA, m.deltaB, rIod),
+        kind: kind.kind,
         score: zBest[i].toDouble(),
         depthL: m.depthL,
         deltaA: m.deltaA,
         deltaB: m.deltaB,
+        dark: kind.dark,
       ),
     );
+  }
+  return _policy(out);
+}
+
+/// The skin core, or the effect mask where the core is empty (tiny or
+/// heavily occluded faces still get their strongest spots).
+Float32List _coreOrForced(FaceRegionPlanes r) =>
+    r.masks.statsCount >= 64 ? r.masks.spots : r.skin;
+
+/// 1 where the skin is lit well above the skin around it (a highlight).
+Float32List _highlight(FaceFrame f, LabPlanes lab, Float32List norm) {
+  final w = lab.rect.w, h = lab.rect.h;
+  final sigma = math.max(3.0, kHighlightBaseIod * f.iod);
+  final den = gaussianBlur(norm, w, h, sigma);
+  final num = gaussianBlur(productOf([norm, lab.l]), w, h, sigma);
+  final local = gaussianBlur(lab.l, w, h, math.max(1.0, 0.02 * f.iod));
+  final out = Float32List(lab.l.length);
+  for (var i = 0; i < out.length; i++) {
+    if (den[i] < 0.05) continue;
+    if (local[i] - num[i] / den[i] > kHighlightRel) out[i] = 1;
+  }
+  return out;
+}
+
+/// Freckled faces keep their small dark marks; at most
+/// [kMaxHealsPerFace] healable spots (the strongest) remain.
+List<BlemishCandidate> _policy(List<BlemishCandidate> found) {
+  final freckled =
+      found.where((c) => c.kind == BlemishKind.freckle).length >=
+      kFreckleFaceCount;
+  var heals = 0;
+  final out = <BlemishCandidate>[];
+  for (final c in found) {
+    if (c.kind != BlemishKind.acne) {
+      out.add(c);
+      continue;
+    }
+    if (freckled && c.dark && c.radiusIod <= kFreckleMaxRadiusIod) {
+      out.add(
+        BlemishCandidate(
+          id: c.id,
+          faceId: c.faceId,
+          slot: c.slot,
+          u: c.u,
+          v: c.v,
+          radiusIod: c.radiusIod,
+          kind: BlemishKind.freckle,
+          score: c.score,
+          depthL: c.depthL,
+          deltaA: c.deltaA,
+          deltaB: c.deltaB,
+        ),
+      );
+      continue;
+    }
+    // [found] is strongest first.
+    if (heals++ < kMaxHealsPerFace) out.add(c);
   }
   return out;
 }
@@ -161,14 +277,24 @@ List<BlemishCandidate> detectBlemishes(
 double _blobRadius(int k) =>
     1.4 * math.sqrt(kBlobSigmas[k] * kBlobSigmas[k + 1]) * math.sqrt2;
 
-BlemishKind _classify(double depthL, double da, double db, double rIod) {
+({BlemishKind kind, bool dark}) _classify(
+  double depthL,
+  double da,
+  double db,
+  double rIod,
+) {
+  final red =
+      da >= kAcneMinRedness &&
+      da >= kAcneRednessRatio * db &&
+      da >= kAcneRedPerDepth * depthL;
+  if (red) return (kind: BlemishKind.acne, dark: false);
   if (depthL >= kMoleDepthL && rIod >= kMoleMinRadiusIod) {
-    return BlemishKind.mole;
+    return (kind: BlemishKind.mole, dark: false);
   }
-  if (da >= kAcneMinRedness && da >= kAcneRednessRatio * db) {
-    return BlemishKind.acne;
+  if (db >= kFreckleMinBrown && db > da) {
+    return (kind: BlemishKind.freckle, dark: false);
   }
-  return BlemishKind.freckle;
+  return (kind: BlemishKind.acne, dark: true);
 }
 
 double _dist(double ax, double ay, int bx, int by) =>

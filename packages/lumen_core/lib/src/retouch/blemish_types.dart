@@ -14,14 +14,25 @@ export '../model/spot_anchor.dart';
 /// slider asks otherwise.
 enum BlemishKind { acne, freckle, mole }
 
-/// z-score threshold at slider 0 / 100: `k = mix(4.0, 1.8, v)`.
-const double kBlemishKMax = 4.0;
-const double kBlemishKMin = 1.8;
+/// z-score threshold at slider 0 / 100: `k = mix(4.5, 3.0, v)`. Nothing
+/// below 3 robust σ is ever a candidate: on a whole face thousands of
+/// pore-sized cells are tested, so weaker peaks are texture, not spots.
+const double kBlemishKMax = 4.5;
+const double kBlemishKMin = 3.0;
 
 /// Largest healable radius at slider 0 / 100 (IOD units):
-/// `maxR = mix(0.02, 0.06, v)`. Larger spots need the MI-GAN path.
+/// `maxR = mix(0.02, 0.05, v)`. Larger spots need the MI-GAN path.
 const double kBlemishRMin = 0.02;
-const double kBlemishRMax = 0.06;
+const double kBlemishRMax = 0.05;
+
+/// Dark marks without redness (scabs, post-acne marks) heal from this
+/// slider value on, never below (research 09 §4.5).
+const double kDarkSpotMinSlider = 0.3;
+
+/// At most this many spots per face are healable: hundreds of heals read
+/// as fake, so with more candidates only the strongest are kept and the
+/// mid band plus colour evening carry the rest.
+const int kMaxHealsPerFace = 40;
 
 /// A spot fades in over this much slider travel (0..1) past its threshold.
 const double kSpotRamp = 0.08;
@@ -43,10 +54,11 @@ const int kGlareCode = kShineCoreCode + 1;
 /// Slider value (0..1) at which a spot with z-score [z] and radius
 /// [radiusIod] starts to heal: the smallest `v` with `z ≥ k(v)` and
 /// `r ≤ maxR(v)`.
-double blemishThreshold(double z, double radiusIod) {
+double blemishThreshold(double z, double radiusIod, {double floor = 0}) {
   final vk = (kBlemishKMax - z) / (kBlemishKMax - kBlemishKMin);
   final vr = (radiusIod - kBlemishRMin) / (kBlemishRMax - kBlemishRMin);
-  return (vk > vr ? vk : vr).clamp(0.0, 1.0);
+  final v = (vk > vr ? vk : vr).clamp(0.0, 1.0);
+  return v > floor ? v : floor;
 }
 
 /// Encodes one spot for the spot-code channel.
@@ -98,6 +110,7 @@ class BlemishCandidate {
     required this.depthL,
     required this.deltaA,
     required this.deltaB,
+    this.dark = false,
   });
 
   /// Stable id (face id + quantized centre) for keep/remove overrides.
@@ -119,8 +132,12 @@ class BlemishCandidate {
   final double deltaA;
   final double deltaB;
 
+  /// A dark mark without redness (heals from [kDarkSpotMinSlider] on).
+  final bool dark;
+
   /// Slider value (0..1) at which this spot starts to heal.
-  double get threshold => blemishThreshold(score, radiusIod);
+  double get threshold =>
+      blemishThreshold(score, radiusIod, floor: dark ? kDarkSpotMinSlider : 0);
 
   Map<String, Object?> toJson() => {
     'id': id,

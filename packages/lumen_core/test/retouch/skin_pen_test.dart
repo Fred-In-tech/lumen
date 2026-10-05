@@ -213,7 +213,11 @@ void main() {
     final pen = applySkinPen(base, [_eraseStubble, _paintTint]);
     expect(built.regionA, pen.regionA);
     expect(built.regionB, pen.regionB);
-    expect(identical(pen.b1, base.b1), isTrue, reason: 'bands are shared');
+    expect(
+      identical(pen.deltaA, base.deltaA),
+      isTrue,
+      reason: 'deltas are shared',
+    );
     expect(
       retouchImage(
         p.image,
@@ -231,7 +235,7 @@ void main() {
     final rb = Uint8List.fromList(pen.regionB);
     final owner = faceOwners(pen.faces, pen.width, pen.height);
     for (final f in pen.faces) {
-      assignFaceIds(f, pen.width, owner, pen.bh, pen.regionA, rb);
+      assignFaceIds(f, pen.width, owner, pen.deltaB, pen.regionA, rb);
     }
     expect(rb, pen.regionB);
   });

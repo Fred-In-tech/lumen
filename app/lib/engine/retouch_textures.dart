@@ -2,9 +2,9 @@
 /// their cache, and the (tiled) pass itself.
 ///
 /// Public API:
-/// * `RetouchTextures.upload(RetouchMaps)`: the seven map textures (B1,
-///   B2, B3 at W×H; Bh, regionA, regionB at 2W×H; the backdrop atlas at
-///   3W'×2H'); `maps`, `dispose()`.
+/// * `RetouchTextures.upload(RetouchMaps)`: the seven map textures (low
+///   at W×H; deltaA, deltaB, deltaC, regionA, regionB at 2W×H; the
+///   backdrop atlas at 3W'×2H'); `maps`, `dispose()`.
 /// * `RetouchMapsCache`: `obtain(maps)` uploads each `RetouchMaps` instance
 ///   once (identity-keyed) and returns null for null maps or maps with
 ///   no faces and no ready backdrop / clothes (`RetouchMaps.isUsable`).
@@ -72,10 +72,10 @@ class RetouchTextures {
   }
 
   static List<(Uint8List, int, int)> _slots(RetouchMaps m, int w, int h) => [
-    (m.b1, w, h),
-    (m.b2, w, h),
-    (m.b3, w, h),
-    (m.bh, 2 * w, h),
+    (m.low, w, h),
+    (m.deltaA, 2 * w, h),
+    (m.deltaB, 2 * w, h),
+    (m.deltaC, 2 * w, h),
     (m.regionA, 2 * w, h),
     (m.regionB, 2 * w, h),
     (
@@ -87,7 +87,7 @@ class RetouchTextures {
 
   final RetouchMaps maps;
 
-  /// B1, B2, B3, Bh, regionA, regionB, backdrop (sampler order of
+  /// low, deltaA, deltaB, deltaC, regionA, regionB, backdrop (sampler order of
   /// `retouch.frag`).
   final List<ui.Image> images;
 

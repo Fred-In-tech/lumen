@@ -1,10 +1,13 @@
 #version 460 core
-// Lumen portrait retouch pass R (research 07 §3.1-3.9), between denoise N
-// and develop D, in SOURCE space. CPU twin: lumen_core
-// retouch/retouch_kernel.dart (face steps 1-15) and
-// retouch/backdrop_kernel.dart (step 16) map 1:1; constants are the
-// literals of retouch/kernel_constants.dart, wrinkle codes are
-// retouch/wrinkle_zones.dart. Uniforms: render/retouch_pass.dart
+// Lumen portrait retouch pass R (research 09 §4), between denoise N and
+// develop D, in SOURCE space. CPU twin: lumen_core
+// retouch/retouch_kernel.dart (face steps 1-14) and
+// retouch/backdrop_kernel.dart (step 15) map 1:1; constants are the
+// literals of retouch/kernel_constants.dart, delta ranges those of
+// RetouchDelta (retouch/retouch_maps.dart), wrinkle codes are
+// retouch/wrinkle_zones.dart. Every skin effect is weight * delta added
+// to the source in OkLab: the deltas are band-limited on the CPU, so no
+// uniform value can attenuate pores. Uniforms: render/retouch_pass.dart
 // (318 floats). Untouched pixels output the source texel unchanged.
 #include <flutter/runtime_effect.glsl>
 #include "lib/common.glsl"
@@ -16,7 +19,7 @@ uniform vec4 uVec0[79];
 #define uTile uVec0[0]  // 2-5   pass offset xy in the source, full wh
 #define uMapInfo uVec0[1]  // 6-9   map grid W, H, face count, 0
 #define uFaceInfo0 uVec0[2]  // 10-13 face 0: teeth cap L, active, IOD, lip gloss L
-#define uFaceInfo1 uVec0[3]  // 14-17 face 0: lip chroma gain, lip L shift, blush a, blush b
+#define uFaceInfo1 uVec0[3]  // 14-17 face 0: lip chroma gain, lip L shift, blush da, blush db
 #define uFaceInfo2 uVec0[4]  // 18-21 face 0: right iris x, y, left iris x, y (map px)
 #define uFaceInfo3 uVec0[5]  // 22-25 face 1: teeth cap L, active, IOD, lip gloss L
 #define uFaceInfo4 uVec0[6]  // 26-29 face 1: lip chroma gain, lip L shift, blush a, blush b
@@ -94,10 +97,10 @@ uniform vec4 uVec0[79];
 #define uClothesParams uVec0[78]  // 314-317 clothes wrinkles, lint, active, 0
 
 uniform sampler2D uSource;     // 0: sRGB source (FilterQuality.none)
-uniform sampler2D uB1;         // 1: W x H bands (sRGB, dithered), FilterQuality.none
-uniform sampler2D uB2;         // 2
-uniform sampler2D uB3;         // 3
-uniform sampler2D uBh;         // 4: 2W x H heal deltas (low | high)
+uniform sampler2D uLow;        // 1: W x H low-pass (sRGB, dithered), FilterQuality.none
+uniform sampler2D uDeltaA;     // 2: 2W x H signed deltas: smooth | shine
+uniform sampler2D uDeltaB;     // 3: 2W x H heal | dark circles
+uniform sampler2D uDeltaC;     // 4: 2W x H bag L, even a, even b | iris L, vein a, vein L
 uniform sampler2D uRegionA;    // 5: 2W x H skin, under-eye, lash | mouth, sclera, iris
 uniform sampler2D uRegionB;    // 6: 2W x H lips, blush, wrinkle dL | face id, spot code, wrinkle zone
 uniform sampler2D uBackdropMap; // 7: 3W' x 2H' image atlas E | G | fold / U | weights | lint
@@ -143,7 +146,10 @@ vec3 bandLab(vec3 srgb) {
   return linSrgbToOklab(srgbDecode(srgb));
 }
 
-// Face steps 1-15 (retouch_kernel.dart _face): writes o, false when no
+// Signed delta tile (retouch_maps.dart decodeSigned): 128 is zero.
+#define DELTA(TEX, OFF, RANGE) ((BILERP(TEX, OFF, A) * 255.0 - 128.0) / 127.0 * (RANGE))
+
+// Face steps 1-14 (retouch_kernel.dart _face): writes o, false when no
 // face effect touches the pixel.
 bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
   vec2 W = uMapInfo.xy;
@@ -210,7 +216,7 @@ bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
   float lash = ra0.b;
   float mouth = ra1.r;
   float dW = rb0.b * 0.2;  // kWrinkleRangeL
-  float shineFill = clamp((r1.w - 0.5) / 0.4, 0.0, 1.0);
+  float shineFill = clamp((r1.w - 0.2) / 0.4, 0.0, 1.0);  // mapShineFill
   float sel = spotSel(floor(ids.g * 255.0 + 0.5), r3.z, r3.w, r4.x,
                       shineFill, r2.w);
   // 3. Effect weights; untouched pixels keep the source exactly.
@@ -227,11 +233,11 @@ bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
   float iw = r2.y * ra1.b;
   float lw = r4.y * rb0.r;
   float bw = r4.z * rb0.g;
-  // Wrinkle removal: zone slider plus a share of Smooth, capped (§3.4).
+  // Wrinkle removal: zone slider plus a share of Smooth, capped (§4.10).
   float wEff = 0.0;
   if (dW > 0.0) {
     float zw = zoneWeight(floor(ids.b * 255.0 + 0.5), r5, r4.w);
-    wEff = 0.85 * clamp(zw + 0.5 * s, 0.0, 1.0);  // kWrinkleMax, kWrinkleSmooth
+    wEff = 0.65 * clamp(zw + 0.3 * s, 0.0, 1.0);  // kWrinkleMax, kWrinkleSmooth
   }
   // Red-eye: analytic discs around the iris centres (map px).
   float re = 0.0;
@@ -246,83 +252,68 @@ bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
       iw == 0.0 && sel == 0.0 && lw == 0.0 && bw == 0.0 && re == 0.0) {
     return false;
   }
-  // 4. OkLab of the source and the bands; healed low band (§3.3).
-  vec3 l1 = bandLab(BILERP(uB1, 0.0, W));
-  vec3 l2 = bandLab(BILERP(uB2, 0.0, W));
-  vec3 l3 = bandLab(BILERP(uB3, 0.0, W));
-  vec3 range = vec3(0.25, 0.1, 0.1);
-  vec3 dLow = (BILERP(uBh, 0.0, A) * 255.0 - 128.0) / 127.0 * range;
-  vec3 dHigh = (BILERP(uBh, W.x, A) * 255.0 - 128.0) / 127.0 * range;
-  vec3 fine = li - l1 + sel * dHigh;
-  l1 += sel * dLow;
-  // 5. Three bands, amplitude-selective mid suppression (§3.1). B1 is
-  // wrinkle-filled, so fine.x + dW is the fine band without detected
-  // wrinkles; the wrinkle comes back as (1 - wEff) * dW (§3.4).
-  vec3 mid = l1 - l2;
-  float thr = r0.x > 0.6 ? 0.025 : 0.035;  // mapAmpThreshold(smooth)
-  float keep = smoothstep(thr, 2.5 * thr, abs(mid.x));
-  float midK = 1.0 - clamp(s * (1.0 - keep), 0.0, 1.0);
-  float fineK = 1.0 + tex;
-  o.x = l2.x + mid.x * midK + (fine.x + dW) * fineK - (1.0 - wEff) * dW;
-  // 6. Tone evening: base chroma toward the skin reference (§3.2).
-  o.y = l2.y + ev * (l3.y - l2.y) + mid.y * midK + fine.y * fineK;
-  o.z = l2.z + ev * (l3.z - l2.z) + mid.z * midK + fine.z * fineK;
-  // 7. Under-eye: dark circles and bags, lid-protected (§3.5).
-  if (dc > 0.0 || bg > 0.0) {
-    o.x += dc * 0.8 * max(0.0, l3.x - l2.x);
-    o.y += dc * 0.6 * (l3.y - l2.y);
-    o.z += dc * 0.6 * (l3.z - l2.z);
-    float flatten = bg * 0.7 * midK * (1.0 - keep);
-    o.x += bg * 0.4 * (l3.x - l2.x) - flatten * mid.x;
-    o.y -= flatten * mid.y;
-    o.z -= flatten * mid.z;
+  // 4. Every skin effect is weight * delta on the source OkLab.
+  o = li;
+  // 5. Spot heal, wrinkle fill.
+  if (sel > 0.0) {
+    o += sel * DELTA(uDeltaB, 0.0, vec3(0.5, 0.15, 0.15));
   }
-  // 8. Shine: bright, desaturated relative to the skin reference (§3.8).
+  o.x += wEff * dW;
+  // 6. Smooth (mid bands) and Shine (specular layer).
+  if (s > 0.0) {
+    o += s * DELTA(uDeltaA, 0.0, vec3(0.125, 0.05, 0.05));
+  }
   if (sh > 0.0) {
-    float rel = l1.x - l3.x;
-    float c1 = length(l1.yz);
-    float c3 = max(length(l3.yz), 1e-3);
-    float w = sh * smoothstep(0.03, 0.10, rel) *
-              (1.0 - smoothstep(0.6, 0.95, c1 / c3));
-    o.x -= w * 0.7 * rel;
-    o.y += (l3.y - o.y) * w * 0.5;
-    o.z += (l3.z - o.z) * w * 0.5;
+    o += sh * DELTA(uDeltaA, W.x, vec3(0.4, 0.12, 0.12));
   }
-  // 9. Teeth: mouth, bright, not red; never above the sclera (§3.6).
+  // 7. Texture: gain on the source's fine band.
+  if (tex != 0.0) {
+    o += tex * (li - bandLab(BILERP(uLow, 0.0, W)));
+  }
+  // 8. Even tone (chroma only) and eye bags (L only) share a tile.
+  if (ev > 0.0 || bg > 0.0) {
+    vec3 d = DELTA(uDeltaC, 0.0, vec3(0.1, 0.08, 0.08));
+    o += vec3(bg * d.x, ev * d.y, ev * d.z);
+  }
+  // 9. Dark circles: toward the cheek, lightness with its colour.
+  if (dc > 0.0) {
+    o += dc * DELTA(uDeltaB, W.x, vec3(0.2, 0.08, 0.08));
+  }
+  // 10. Teeth: mouth, bright, not red; never above the cap (§4.9).
   if (teeth > 0.0) {
     float tm = mouth * smoothstep(0.55, 0.72, li.x) *
                (1.0 - smoothstep(0.035, 0.08, li.y));
     if (tm > 0.0) {
       float td = r3.y * tm;
       float tb = r3.x * tm;
-      o.z *= 1.0 - 0.85 * td;
-      o.y *= 1.0 - 0.40 * td;
-      o.x += 0.10 * tb * (1.0 - o.x);
+      o.z *= 1.0 - 0.60 * td;
+      o.y *= 1.0 - 0.30 * td;
+      o.x += min(0.05, 0.10 * (1.0 - o.x)) * tb;
       o.x = min(o.x, max(li.x, info0.x));
     }
   }
-  // 10. Eye whites: less red/yellow, slight lift (§3.7).
+  // 11. Eye whites: less red / yellow, tiny lift; red veins; iris.
   if (sw > 0.0) {
     float w = sw * smoothstep(0.45, 0.62, li.x);
-    o.y *= 1.0 - 0.7 * w;
+    o.y *= 1.0 - 0.5 * w;
     o.z *= 1.0 - 0.4 * w;
-    o.x += 0.05 * w * (1.0 - o.x);
+    o.x = min(o.x + 0.035 * w * (1.0 - o.x), max(li.x, 0.90));
   }
-  // 11. Red veins: fine-scale a* excess over the base.
-  if (rv > 0.0) {
-    float w = rv * smoothstep(0.35, 0.5, li.x);
-    float vein = max(0.0, li.y - l2.y);
-    o.y -= 0.9 * w * vein;
-    o.x += 0.9 * w * max(0.0, l2.x - li.x) * smoothstep(0.004, 0.02, vein);
+  if (rv > 0.0 || iw > 0.0) {
+    vec3 d = DELTA(uDeltaC, W.x, vec3(0.1, 0.1, 0.1));
+    if (rv > 0.0) {
+      float w = rv * smoothstep(0.35, 0.5, li.x);
+      o.y += w * d.y;
+      o.x += w * d.z;
+    }
+    if (iw > 0.0) {
+      float w = iw * (1.0 - smoothstep(0.85, 0.95, li.x));
+      o.x += w * (d.x + 0.02);
+      o.y *= 1.0 + 0.15 * w;
+      o.z *= 1.0 + 0.15 * w;
+    }
   }
-  // 12. Iris: local contrast, chroma, small lift; keeps catchlights.
-  if (iw > 0.0) {
-    float w = iw * (1.0 - smoothstep(0.85, 0.95, li.x));
-    o.x += 0.6 * w * (li.x - l2.x) + 0.03 * w;
-    o.y *= 1.0 + 0.35 * w;
-    o.z *= 1.0 + 0.35 * w;
-  }
-  // 13. Lips: chroma toward the face's natural target (hue and texture
+  // 12. Lips: chroma toward the face's natural target (hue and texture
   // kept), slight deepening; gloss clearly above the lip P95 skipped.
   if (lw > 0.0) {
     float w = lw * (1.0 - smoothstep(info0.w + 0.02, info0.w + 0.08, li.x));
@@ -331,14 +322,13 @@ bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
     o.z *= k;
     o.x += w * info1.y;
   }
-  // 14. Blush: chroma toward the face's blush colour relative to the
-  // local skin reference, slight darkening (§3.9).
+  // 13. Blush: the face's blush shift, slight darkening (§3.9).
   if (bw > 0.0) {
-    o.y += bw * 0.35 * (info1.z - l3.y);
-    o.z += bw * 0.35 * (info1.w - l3.z);
+    o.y += bw * info1.z;
+    o.z += bw * info1.w;
     o.x *= 1.0 - 0.03 * bw;
   }
-  // 15. Red-eye: strongly red pupils in the eye discs lose their colour
+  // 14. Red-eye: strongly red pupils in the eye discs lose their colour
   // and darken; brown irises, skin and the catchlight do not qualify.
   if (re > 0.0) {
     float w = re * smoothstep(0.05, 0.10, li.y) *
@@ -363,7 +353,7 @@ vec3 decodeSigned(vec3 v, vec3 range) {
   return (v * 255.0 - 128.0) / 127.0 * range;
 }
 
-// 16. Backdrop and clothes (image scope, backdrop_kernel.dart): adds the
+// 15. Backdrop and clothes (image scope, backdrop_kernel.dart): adds the
 // Clean / stray-hair blend, the Unify shift and the clothing wrinkle /
 // lint change to o; false when untouched.
 bool backdropRetouch(vec2 uv, vec3 li, inout vec3 o) {

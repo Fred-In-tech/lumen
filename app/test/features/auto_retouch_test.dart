@@ -154,10 +154,10 @@ void main() {
     expect(ai.ops.any((o) => o.path.startsWith('values.')), isTrue);
     final p = after.settings.portrait;
     expect(p.groupValue(FaceGroup.all, PortraitIds.iris), 70, reason: 'locked');
-    expect(_acne(p), greaterThan(60), reason: 'acne face: strong acne value');
+    expect(_acne(p), greaterThan(40), reason: 'acne face: strong acne value');
     expect(
       p.groupValue(FaceGroup.all, PortraitIds.skinSoftening),
-      lessThanOrEqualTo(55),
+      lessThanOrEqualTo(60),
     );
     // One undo removes colour and retouch together.
     ctl.undo();
@@ -187,9 +187,10 @@ void main() {
     final acne = await planner.plan('acne', EditDocument.create('acne'));
     final clean = await planner.plan('clean', EditDocument.create('clean'));
     expect(_acne(acne.portrait!), greaterThan(_acne(clean.portrait!) + 20));
+    expect(_acne(clean.portrait!), 0, reason: 'no spots: nothing to heal');
     expect(
       clean.portrait!.groupValue(FaceGroup.all, PortraitIds.skinSoftening),
-      lessThan(
+      lessThanOrEqualTo(
         acne.portrait!.groupValue(FaceGroup.all, PortraitIds.skinSoftening),
       ),
     );
@@ -238,7 +239,7 @@ void main() {
       final a = await repo.loadEdit('acne');
       expect(a.history.entries.single.kind, HistoryKind.ai);
       expect(a.settings.portrait.hasFaceEdits, isTrue);
-      expect(_acne(a.settings.portrait), greaterThan(60));
+      expect(_acne(a.settings.portrait), greaterThan(40));
       final b = await repo.loadEdit('broken');
       expect(b.settings.portrait.hasFaceEdits, isFalse);
       expect(b.ai, isNotNull, reason: 'the colour edit still landed');

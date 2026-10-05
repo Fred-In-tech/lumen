@@ -20,23 +20,24 @@ FaceAnalysis _analysis(List<DetectedFace> faces) => FaceAnalysis(
 
 void main() {
   group('slider mapping (§3.13)', () {
-    test('smoothing is (v/100)^0.8 with a lower threshold above 0.6', () {
+    test('smoothing is (v/100)^1.2: gentle at the low end', () {
       expect(mapSmoothing(0), 0);
       expect(mapSmoothing(100), 1);
-      expect(mapSmoothing(50), closeTo(math.pow(0.5, 0.8), 1e-12));
-      expect(mapAmpThreshold(0.5), kAmpThreshold);
-      expect(mapAmpThreshold(0.7), kAmpThresholdStrong);
+      expect(mapSmoothing(50), closeTo(math.pow(0.5, 1.2), 1e-12));
+      expect(mapSmoothing(50), lessThan(0.5));
     });
 
     test('texture is bipolar around a gain of exactly 1', () {
       expect(mapTextureGain(0), 1);
       expect(mapTextureGain(-100), closeTo(kTextureGainMin, 1e-12));
       expect(mapTextureGain(100), closeTo(kTextureGainMax, 1e-12));
-      expect(mapTextureGain(-50), closeTo(0.7, 1e-12));
+      expect(mapTextureGain(-50), closeTo(0.925, 1e-12));
+      // No Texture value can flatten pores.
+      expect(kTextureGainMin, greaterThanOrEqualTo(0.85));
     });
 
     test('even tone and linear sliders', () {
-      expect(mapEvenTone(100), closeTo(kEvenToneMax, 1e-12));
+      expect(mapEvenTone(100), 1);
       expect(mapLinear(80), closeTo(0.8, 1e-12));
       expect(mapLinear(150), 1);
     });
@@ -250,7 +251,7 @@ void main() {
       expect(f[kRetouchHeaderFloats + 0], 0, reason: 'slot 0 smooth');
       expect(f[kRetouchHeaderFloats + 20], 0, reason: 'slot 0 forehead');
       // The shine fill is derived from Shine (row slot 7), not stored.
-      expect(u.row(1).shineFill, closeTo(0.5, 1e-12));
+      expect(u.row(1).shineFill, closeTo(1, 1e-12));
       // uBackdropParams and uClothesParams after the rows.
       expect(f.sublist(196, 200), [
         closeTo(0.6, 1e-6),
@@ -261,10 +262,10 @@ void main() {
       expect(f.sublist(200), [closeTo(0.7, 1e-6), closeTo(0.35, 1e-6), 0, 0]);
     });
 
-    test('shine fill starts above 50 % Shine', () {
-      expect(mapShineFill(0.5), 0);
-      expect(mapShineFill(0.7), closeTo(0.5, 1e-12));
-      expect(mapShineFill(0.9), 1);
+    test('shine fill starts above 20 % Shine', () {
+      expect(mapShineFill(0.2), 0);
+      expect(mapShineFill(0.4), closeTo(0.5, 1e-12));
+      expect(mapShineFill(0.6), closeTo(1, 1e-12));
       expect(mapShineFill(1), 1);
     });
 
@@ -286,7 +287,7 @@ void main() {
         analysis,
       );
       expect(other.key, isNot(u.key));
-      expect(u.key, startsWith('retouch:v4:'));
+      expect(u.key, startsWith('retouch:v5:'));
       for (final changed in [
         settings.withGroupValue(FaceGroup.male, PortraitIds.glare, 46),
         settings.withImageValue(PortraitIds.clothesWrinkles, 71),

@@ -24,9 +24,8 @@
 ///
 /// for slots k = 0..7 (unused slots hold identity rows). `uFace[6k+5]`
 /// holds the two blend pairs of the wrinkle zone code (forehead ↔ frown,
-/// smile ↔ marionette), see `wrinkle_zones.dart`. The amplitude threshold
-/// (`mapAmpThreshold(smooth)`) and the shine fill (`mapShineFill(shine)`)
-/// are derived in the pass, not packed.
+/// smile ↔ marionette), see `wrinkle_zones.dart`. The shine fill
+/// (`mapShineFill(shine)`) is derived in the pass, not packed.
 library;
 
 import 'dart:typed_data';
@@ -122,8 +121,6 @@ class FaceRetouchParams {
   /// Glasses glare removal (0..1).
   final double glare;
 
-  /// Amplitude-selective threshold, derived from [smooth] (§3.1).
-  double get ampThreshold => mapAmpThreshold(smooth);
   final double darkCircles;
   final double bags;
   final double lidProtect;
@@ -284,7 +281,7 @@ class RetouchUniforms {
       ...backdrop.toList(),
       ...backdrop.clothesList(),
     ].map((v) => v.toStringAsFixed(4)).join(',');
-    return 'retouch:v4:${rows.join('|')}|bd:$bd';
+    return 'retouch:v5:${rows.join('|')}|bd:$bd';
   }
 
   @override

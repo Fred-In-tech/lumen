@@ -165,6 +165,57 @@ bool isVein(double dx, double y) =>
 
 enum SynthGlasses { none, clear, tinted }
 
+/// Skin tones of the fixtures (OkLab of the unlit base colour).
+enum SynthTone {
+  /// The tone every older fixture was written for.
+  standard(0.70, 0.032, 0.045),
+  light(0.80, 0.022, 0.032),
+  medium(0.60, 0.040, 0.058),
+  deep(0.40, 0.040, 0.050);
+
+  const SynthTone(this.l, this.a, this.b);
+  final double l;
+  final double a;
+  final double b;
+}
+
+/// Specular highlight weight (0..1) at local (x, y): forehead, nose
+/// bridge and tip, both cheekbones.
+double synthSpecular(double x, double y) => [
+  _g(x, (y + 0.62) * 1.3, 0.22),
+  0.9 * _g(x * 2.2, y - 0.45, 0.16),
+  0.8 * _g(x, y - 0.68, 0.06),
+  0.7 * _g((x - 0.62) * 0.8, (y - 0.42) * 1.6, 0.14),
+  0.7 * _g((x + 0.62) * 0.8, (y - 0.42) * 1.6, 0.14),
+].reduce(math.max);
+
+/// Smooth value noise in [-1, 1] with features of about 0.05 IOD (the
+/// mid band) plus a broader 0.15 IOD layer: continuous unevenness.
+double synthUneven(double x, double y) =>
+    0.65 * _valueNoise(x / 0.05, y / 0.05, 11) +
+    0.35 * _valueNoise(x / 0.15, y / 0.15, 23);
+
+double _valueNoise(double x, double y, int seed) {
+  final x0 = x.floor(), y0 = y.floor();
+  final fx = x - x0, fy = y - y0;
+  final sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  double v(int i, int j) => _hash(i * 3 + seed, j * 5 - seed);
+  final top = v(x0, y0) + (v(x0 + 1, y0) - v(x0, y0)) * sx;
+  final bot = v(x0, y0 + 1) + (v(x0 + 1, y0 + 1) - v(x0, y0 + 1)) * sx;
+  return top + (bot - top) * sy;
+}
+
+/// [count] freckles scattered over the nose and cheeks (deterministic).
+List<SynthSpot> synthFreckles(int count) => [
+  for (var k = 0; k < count; k++)
+    SynthSpot(
+      0.75 * _hash(k * 7 + 1, 3),
+      0.45 + 0.28 * _hash(5, k * 11 + 2),
+      0.009 + 0.003 * (_hash(k, k) + 1),
+      SynthSpotKind.freckle,
+    ),
+];
+
 /// Lens ellipses (local centre ±[kLensX], [kLensY]; half-axes), rim width
 /// (fraction of the radius), brown tint (linear RGB factors) and the glare
 /// band (white, linear amount, through the right lens centre).
@@ -228,7 +279,31 @@ class SynthFace {
     this.redEye = false,
     this.penPatches = false,
     this.glasses = SynthGlasses.none,
+    this.tone = SynthTone.standard,
+    this.uneven = 0,
+    this.specular = 0,
+    this.sparkle = 0,
+    this.lumps = true,
   });
+
+  /// Skin tone (the fixtures above are offsets on top of it).
+  final SynthTone tone;
+
+  /// Continuous mid-band unevenness (OkLab L amplitude; a little redness
+  /// rides on it): what Smooth and Even tone are for.
+  final double uneven;
+
+  /// Specular highlights on the forehead, nose and cheekbones: this much
+  /// white light (linear) added on top of the skin, like an oily film.
+  final double specular;
+
+  /// Make-up shimmer: pore-scale sparkle inside the highlights and a fine
+  /// speckle on the skin (texture, not blemishes).
+  final double sparkle;
+
+  /// The legacy fixtures: sparse blotches, the lightness shine lump, dark
+  /// circles, the red cheek patch and the wrinkles.
+  final bool lumps;
 
   final String id;
 
@@ -279,18 +354,20 @@ SynthPortrait renderSynthPortrait(int w, int h, List<SynthFace> faces) {
   final img = RgbaBuffer(w, h);
   final lms = synthLandmarksLocal();
   final polys = _Polys(lms);
-  final lab = Float64List(3);
+  final lab = Float64List(4);
   for (var y = 0; y < h; y++) {
     for (var x = 0; x < w; x++) {
       lab[0] = 0.55 + 0.1 * y / h;
       lab[1] = -0.01;
       lab[2] = -0.03;
+      lab[3] = 0;
       for (final f in faces) {
         final p = f.toLocal(x + 0.5, y + 0.5);
         _shadeFace(f, polys, p.x, p.y, _hash(x, y), lab);
       }
       final rgb = oklabToLinearSrgb(Oklab(lab[0], lab[1], lab[2]));
-      var r = rgb.r, g = rgb.g, b = rgb.b;
+      // The specular layer is light, so it is added in linear RGB.
+      var r = rgb.r + lab[3], g = rgb.g + lab[3], b = rgb.b + lab[3];
       for (final f in faces) {
         if (f.glasses == SynthGlasses.none) continue;
         final p = f.toLocal(x + 0.5, y + 0.5);
@@ -419,9 +496,13 @@ void _shadeFace(
     return;
   }
   // Skin: base, side shading, blotches (mid band), pores (fine band).
-  var l = 0.70 - 0.05 * (x / kOvalRx) * (x / kOvalRx), a = 0.032, b = 0.045;
-  final inPatch = x > kPatchX0 && x < kPatchX1 && y > kPatchY0 && y < kPatchY1;
-  if (inPatch) {
+  final t = f.tone;
+  var l = t.l - 0.05 * (x / kOvalRx) * (x / kOvalRx), a = t.a, b = t.b;
+  final inPatch =
+      f.lumps && x > kPatchX0 && x < kPatchX1 && y > kPatchY0 && y < kPatchY1;
+  if (!f.lumps) {
+    l += f.poreAmp * noise;
+  } else if (inPatch) {
     if ((x - kStripeX).abs() < kStripeHalfW) l -= kStripeDepth;
     l -= kPatchBlotchDepth * _g(x - kPatchBlotchX, y - kPatchBlotchY, 0.04);
   } else {
@@ -435,23 +516,35 @@ void _shadeFace(
     }
     l += f.poreAmp * noise;
   }
-  a += kRednessA * _g(x - kRednessX, y - kRednessY, kRednessSigma);
-  // Dark circles under each eye.
-  for (final ex in const [-0.5, 0.5]) {
-    final w = _g(x - ex, (y - 0.13) * 2.2, 0.13);
-    l -= 0.06 * w;
-    a += 0.006 * w;
-    b -= 0.02 * w;
+  if (f.uneven > 0) {
+    final u = synthUneven(x, y);
+    l += f.uneven * u;
+    a += 0.15 * f.uneven * math.max(0.0, -u);
   }
-  // Shine on the forehead centre and the nose tip.
-  final shine = math.max(_g(x, y + 0.6, 0.12), 0.8 * _g(x, y - 0.68, 0.05));
-  l += 0.10 * shine;
-  a *= 1 - 0.6 * shine;
-  b *= 1 - 0.6 * shine;
-  for (final w in kWrinkles) {
-    final d = w.distance(x, y);
-    if (d < 4 * w.sigma) {
-      l -= w.depth * math.exp(-d * d / (2 * w.sigma * w.sigma));
+  if (f.sparkle > 0) l += 0.05 * f.sparkle * noise * noise * noise;
+  if (f.specular > 0) {
+    final s = synthSpecular(x, y);
+    lab[3] = f.specular * s * (1 + f.sparkle * math.max(0.0, noise) * s);
+  }
+  if (f.lumps) {
+    a += kRednessA * _g(x - kRednessX, y - kRednessY, kRednessSigma);
+    // Dark circles under each eye.
+    for (final ex in const [-0.5, 0.5]) {
+      final w = _g(x - ex, (y - 0.13) * 2.2, 0.13);
+      l -= 0.06 * w;
+      a += 0.006 * w;
+      b -= 0.02 * w;
+    }
+    // Shine on the forehead centre and the nose tip.
+    final shine = math.max(_g(x, y + 0.6, 0.12), 0.8 * _g(x, y - 0.68, 0.05));
+    l += 0.10 * shine;
+    a *= 1 - 0.6 * shine;
+    b *= 1 - 0.6 * shine;
+    for (final w in kWrinkles) {
+      final d = w.distance(x, y);
+      if (d < 4 * w.sigma) {
+        l -= w.depth * math.exp(-d * d / (2 * w.sigma * w.sigma));
+      }
     }
   }
   if (f.penPatches) {

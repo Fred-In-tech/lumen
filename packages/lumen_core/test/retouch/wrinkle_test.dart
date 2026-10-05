@@ -74,7 +74,12 @@ void main() {
           final r = lineDepth(out, w) / lineDepth(inL, w);
           if (w.zone == zone) {
             own.add(r);
-            expect(r, lessThan(0.55), reason: '${w.zone} (${w.x0}, ${w.y0})');
+            // Softened, never erased: at most 65 % goes (09 §4.10).
+            expect(
+              r,
+              inInclusiveRange(0.3, 0.7),
+              reason: '${w.zone} (${w.x0}, ${w.y0})',
+            );
           } else if (identical(w, kWrinkles.first) && zone == SynthZone.frown) {
             // This forehead line crosses the frown zone on purpose: its
             // middle blends toward the frown slider.
@@ -83,7 +88,7 @@ void main() {
             expect(r, greaterThan(0.9), reason: '${w.zone} (${w.x0}, ${w.y0})');
           }
         }
-        expect(own.reduce((a, b) => a + b) / own.length, lessThan(0.45));
+        expect(own.reduce((a, b) => a + b) / own.length, lessThan(0.65));
       });
     }
   });
@@ -204,7 +209,8 @@ void main() {
     final out = run({PortraitIds.skinSoftening: 100});
     for (final w in kWrinkles.where((l) => l.zone == SynthZone.smile)) {
       final r = lineDepth(out, w) / lineDepth(inL, w);
-      expect(r, inInclusiveRange(0.45, 0.8));
+      // 0.65 · 0.3 of the detected line plus the band reduction.
+      expect(r, inInclusiveRange(0.5, 0.9));
     }
   });
 

@@ -1,7 +1,10 @@
-/// What each face needs from portrait retouch, measured from the retouch
-/// maps and the source they were built from (research 07 §7.1 step 10).
-/// Every need is 0..1: 0 = nothing to fix, 1 = as much as the auto
-/// retouch will ever do. Pure, deterministic, isolate-safe.
+/// What each face needs from portrait retouch (research 09 §4.4–4.9).
+/// The skin needs come from the measurements taken while the maps were
+/// built (`RetouchFaceInfo.skin`: band energies, colour excursions,
+/// specular layer, under-eye gap), eyes, teeth and lines from the maps and
+/// the source. Every need is 0..1: 0 = nothing to fix (the slider stays
+/// at 0), 1 = as much as the auto retouch will ever do. Pure,
+/// deterministic, isolate-safe.
 library;
 
 import 'dart:math' as math;
@@ -35,7 +38,16 @@ class FaceNeeds {
     this.teethYellow = 0,
     this.scleraRed = 0,
     this.lipChroma = 0,
+    this.iod = 0,
+    this.pimples = 0,
   });
+
+  /// IOD in map pixels (0 = unknown): small faces get reduced work.
+  final double iod;
+
+  /// Inflamed (red) spots found. Dark marks without redness never raise
+  /// the automatic value: on made-up skin they are mostly texture.
+  final double pimples;
 
   final String faceId;
   final FaceGroup group;
@@ -43,16 +55,16 @@ class FaceNeeds {
   /// Acne-like spots (count weighted by contrast).
   final double blemish;
 
-  /// Fine-band L energy on clear skin (pores, texture).
+  /// Blotch and bump energy of the mid bands (the Smooth need).
   final double roughness;
 
-  /// Mid-band L and colour energy on skin (blotches, uneven tone).
+  /// Colour excursions from the local skin colour (the Even tone need).
   final double unevenness;
 
   /// Under-eye darker than the cheek.
   final double underEye;
 
-  /// Share of the cheek that is specular.
+  /// Area and strength of the specular layer.
   final double shine;
 
   /// Line depth per wrinkle zone (missing = none found).
@@ -70,30 +82,33 @@ class FaceNeeds {
 
   double wrinkle(WrinkleZone z) => wrinkles[z] ?? 0;
 
-  /// The mean of [faces] (a group's typical face), named [faceId].
-  static FaceNeeds mean(
+  /// The neediest value of every need over [faces], named [faceId]: one
+  /// slider serves the group, and because every effect is proportional
+  /// to what it corrects, faces that need less change less.
+  static FaceNeeds most(
     List<FaceNeeds> faces, {
-    String faceId = 'mean',
+    String faceId = 'most',
     FaceGroup group = FaceGroup.all,
   }) {
     if (faces.isEmpty) return FaceNeeds(faceId: faceId, group: group);
-    double avg(double Function(FaceNeeds f) v) =>
-        faces.map(v).reduce((a, b) => a + b) / faces.length;
+    double top(double Function(FaceNeeds f) v) => faces.map(v).reduce(math.max);
     return FaceNeeds(
       faceId: faceId,
       group: group,
-      blemish: avg((f) => f.blemish),
-      roughness: avg((f) => f.roughness),
-      unevenness: avg((f) => f.unevenness),
-      underEye: avg((f) => f.underEye),
-      shine: avg((f) => f.shine),
+      blemish: top((f) => f.blemish),
+      roughness: top((f) => f.roughness),
+      unevenness: top((f) => f.unevenness),
+      underEye: top((f) => f.underEye),
+      shine: top((f) => f.shine),
       wrinkles: {
-        for (final z in WrinkleZone.values) z: avg((f) => f.wrinkle(z)),
+        for (final z in WrinkleZone.values) z: top((f) => f.wrinkle(z)),
       },
-      teethDark: avg((f) => f.teethDark),
-      teethYellow: avg((f) => f.teethYellow),
-      scleraRed: avg((f) => f.scleraRed),
-      lipChroma: avg((f) => f.lipChroma),
+      teethDark: top((f) => f.teethDark),
+      teethYellow: top((f) => f.teethYellow),
+      scleraRed: top((f) => f.scleraRed),
+      lipChroma: top((f) => f.lipChroma),
+      iod: top((f) => f.iod),
+      pimples: top((f) => f.pimples),
     );
   }
 }
@@ -109,19 +124,19 @@ class RetouchNeeds {
   bool get isEmpty => faces.isEmpty;
 }
 
-// Calibration (OkLab units), checked on the synthetic portrait generator:
-// clean skin sits near the low ends, heavy problems saturate the highs.
-const double _roughLo = 0.004, _roughHi = 0.016;
-const double _unevenLo = 0.004, _unevenHi = 0.02;
-const double _underEyeLo = 0.012, _underEyeHi = 0.07;
-const double _shineLo = 0.002, _shineHi = 0.03;
+// Calibration (OkLab units, research 09 §4.4–4.9; [H] values tuned on
+// the synthetic set of every skin tone and on real portraits).
+const double _smoothLo = 0.003, _smoothHi = 0.011;
+const double _colourLo = 0.008, _colourHi = 0.030;
+const double _underEyeLo = 0.02, _underEyeHi = 0.09;
+const double _shineArea = 6, _shineExcess = 6, _shineExcessLo = 0.04;
 const double _wrinkleLo = 0.004, _wrinkleHi = 0.035;
 const double _teethDarkLo = 0.02, _teethDarkHi = 0.16;
 const double _teethYellowLo = 0.006, _teethYellowHi = 0.045;
 const double _scleraRedLo = 0.004, _scleraRedHi = 0.03;
 
-/// Acne spots that add up to a need of 1 (each weighted by contrast).
-const double _blemishFull = 4;
+/// `blemish = (25 + 6·n) / 70`, 0 without spots (§4.5).
+const double _blemishBase = 25, _blemishPerSpot = 6, _blemishTop = 70;
 
 double _ramp(double v, double lo, double hi) =>
     ((v - lo) / (hi - lo)).clamp(0.0, 1.0);
@@ -191,14 +206,11 @@ FaceNeeds _measureFace(
   int at(List<int> tex, int x, int y, int tile, int ch) =>
       tex[(y * 2 * w + tile * w + x) * 4 + ch];
   final owner = info.slot + 1;
-  final rough = _Mean(), uneven = _Mean();
   final cheekL = _Mean(), underL = _Mean();
   final scleraL = _Mean(), scleraA = _Mean(), scleraB = _Mean();
   final lipC = _Mean();
   final mouth = <Oklab>[];
   final zone = {for (final z in WrinkleZone.values) z: _Mean()};
-  final cheek = <Oklab>[];
-  var shineCore = 0, skinCount = 0;
   final r = info.rect;
   for (var y = r.y0; y < r.y0 + r.h; y++) {
     for (var x = r.x0; x < r.x0 + r.w; x++) {
@@ -211,22 +223,9 @@ FaceNeeds _measureFace(
       final mouthW = at(ra, x, y, 1, 0) / 255;
       final lips = at(rb, x, y, 0, 0) / 255;
       final wrinkle = decodeWrinkle(at(rb, x, y, 0, 2).toDouble());
-      final spot = at(rb, x, y, 1, 1);
       final zoneCode = at(rb, x, y, 1, 2);
       if (skin > 0.5) {
-        skinCount++;
-        if (spot >= 1 + 3 * 64) shineCore++;
-        final clear = spot == 0 && wrinkle < 0.004;
-        if (clear) {
-          final b1 = _lab(maps.b1, o), b2 = _lab(maps.b2, o);
-          rough.add(math.pow(g.l - b1.l, 2).toDouble(), skin);
-          final dl = b1.l - b2.l, da = b1.a - b2.a, db = b1.b - b2.b;
-          uneven.add(dl * dl + da * da + db * db, skin);
-        }
-        if (under < 0.05) {
-          cheekL.add(g.l, 1);
-          if (clear) cheek.add(g);
-        }
+        if (under < 0.05) cheekL.add(g.l, 1);
       }
       if (under > 0.3) underL.add(g.l, under);
       if (sclera > 0.5) {
@@ -241,13 +240,6 @@ FaceNeeds _measureFace(
     }
   }
 
-  // Shine: clipped cores plus bright, desaturated cheek texels.
-  final meanCheek = cheekL.value;
-  final bright = cheek
-      .where((c) => c.l > meanCheek + 0.1 && c.a * c.a + c.b * c.b < 0.0009)
-      .length;
-  final shineFrac = skinCount == 0 ? 0.0 : (shineCore + bright) / skinCount;
-
   // Teeth: the near-neutral, not-dark part of the open mouth (the inner
   // mouth and gums are red), compared with the sclera.
   final teeth = mouth
@@ -261,24 +253,33 @@ FaceNeeds _measureFace(
     teethYellow = _ramp(tb - scleraB.value, _teethYellowLo, _teethYellowHi);
   }
 
-  final acne = maps.blemishes.where(
-    (b) => b.faceId == info.faceId && b.kind == BlemishKind.acne,
-  );
-  final acneWeight = acne.fold<double>(
-    0,
-    (s, b) => s + (1 - b.threshold).clamp(0.0, 1.0),
-  );
-
+  var pimples = 0.0;
+  for (final b in maps.blemishes) {
+    if (b.faceId != info.faceId || b.kind != BlemishKind.acne) continue;
+    if (b.score <= 0) continue; // manual spots are not a measured need
+    if (!b.dark) pimples++;
+  }
+  final m = info.skin;
   return FaceNeeds(
     faceId: info.faceId,
     group: group,
-    blemish: (acneWeight / _blemishFull).clamp(0.0, 1.0),
-    roughness: _ramp(math.sqrt(rough.value), _roughLo, _roughHi),
-    unevenness: _ramp(math.sqrt(uneven.value), _unevenLo, _unevenHi),
-    underEye: underL.weight < 4
+    iod: info.iod,
+    pimples: pimples,
+    blemish: pimples <= 0
         ? 0
-        : _ramp(meanCheek - underL.value, _underEyeLo, _underEyeHi),
-    shine: _ramp(shineFrac, _shineLo, _shineHi),
+        : ((_blemishBase + _blemishPerSpot * pimples) / _blemishTop).clamp(
+            0.0,
+            1.0,
+          ),
+    // The working band only: the broad band also holds highlights and
+    // make-up contour, which are not blotchiness.
+    roughness: _ramp(m.n2, _smoothLo, _smoothHi),
+    unevenness: _ramp(m.colourP90, _colourLo, _colourHi),
+    underEye: _ramp(m.underEyeGap, _underEyeLo, _underEyeHi),
+    shine:
+        (_shineArea * m.shineArea +
+                _shineExcess * math.max(0.0, m.shineP95 - _shineExcessLo))
+            .clamp(0.0, 1.0),
     wrinkles: {
       for (final e in zone.entries)
         if (e.value.weight >= 3)

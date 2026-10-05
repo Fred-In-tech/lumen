@@ -25,11 +25,11 @@ void main() {
   group('region maps cover the expected areas', () {
     test('skin covers cheeks, chin and the extended forehead', () {
       for (final (x, y) in const [
-        (0.55, 0.15),
+        (0.55, 0.24),
         (-0.75, 0.45),
         (0.0, 1.75),
-        (0.0, -0.95),
-        (0.6, -0.7),
+        (0.0, -0.85),
+        (0.5, -0.6),
       ]) {
         expect(
           at(RetouchChannel.skin, x, y),
@@ -70,8 +70,13 @@ void main() {
     });
 
     test('sclera, iris and pupil are separated', () {
-      expect(at(RetouchChannel.sclera, -0.67, 0.0), greaterThan(0.8));
-      expect(at(RetouchChannel.sclera, 0.33, 0.0), greaterThan(0.8));
+      // Full next to the iris, fading toward the corners (never whitened).
+      expect(at(RetouchChannel.sclera, -0.62, 0.0), greaterThan(0.8));
+      expect(at(RetouchChannel.sclera, 0.38, 0.0), greaterThan(0.8));
+      expect(
+        at(RetouchChannel.sclera, -0.71, 0.0),
+        lessThan(0.6 * at(RetouchChannel.sclera, -0.62, 0.0)),
+      );
       expect(at(RetouchChannel.sclera, -0.44, 0.0), lessThan(0.05));
       expect(at(RetouchChannel.iris, -0.44, 0.0), greaterThan(0.8));
       expect(
@@ -108,8 +113,8 @@ void main() {
     final again = computeRetouchMaps(p.image, p.analysis);
     expect(again.regionA, maps.regionA);
     expect(again.regionB, maps.regionB);
-    expect(again.b2, maps.b2);
-    expect(again.bh, maps.bh);
+    expect(again.deltaA, maps.deltaA);
+    expect(again.deltaB, maps.deltaB);
   });
 
   group('FaceParsingPlanes', () {
@@ -152,7 +157,7 @@ void main() {
         p.analysis,
         parsing: [planes(hairOnLeftCheek: false)],
       );
-      final q = _face.toPx(-0.6, 0.3), r = _face.toPx(0.55, 0.15);
+      final q = _face.toPx(-0.6, 0.3), r = _face.toPx(0.55, 0.24);
       double skin(RetouchMaps m, ({double x, double y}) s) =>
           regionAt(m, RetouchChannel.skin, s.x.floor(), s.y.floor(), 512, 512);
       expect(skin(clean, q), greaterThan(0.8));

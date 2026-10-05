@@ -1,40 +1,47 @@
 /// Everything `RetouchMaps` needs for one face, over its work rect
-/// (research 07 §3.0: B1, B2, B3, Bh, regions; IOD-relative sigmas).
+/// (research 09 §4.12: masks → heal → bands → per-slider deltas).
 library;
 
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../render/rgba_buffer.dart';
+import 'band_split.dart';
 import 'blemish_detect.dart';
 import 'blemish_heal.dart';
 import 'blemish_types.dart';
 import 'face_frame.dart';
 import 'face_parsing_input.dart';
 import 'face_regions.dart';
-import 'glare.dart';
 import 'filters.dart';
+import 'glare.dart';
 import 'lab_planes.dart';
 import 'shine_core.dart';
+import 'skin_deltas.dart';
 import 'spot_anchors.dart';
 import 'wrinkle_map.dart';
 
-/// `B2` guided filter: r = 0.06 IOD, ε = 4e-4, applied to the healed B1
-/// band with its own OkLab L as the guide.
-const double kB2RadiusIod = 0.06;
-const double kB2Eps = 4e-4;
+/// The Texture slider scales the source minus this low-pass (IOD; at
+/// least [kTextureSigmaMinPx] map px).
+const double kTextureSigmaIod = 0.012;
+const double kTextureSigmaMinPx = 1.0;
 
-/// `B3` normalized convolution: three box passes of r = 0.25 IOD.
-const double kB3RadiusIod = 0.25;
+/// Iris (§4.9): local contrast = this share of the iris' own mid band.
+const double kIrisContrast = 0.20;
+
+/// Red veins: at most this share of the fine red excess is removed.
+const double kVeinCut = 0.5;
 
 class FaceMapPlanes {
   const FaceMapPlanes({
     required this.frame,
     required this.regions,
     required this.heal,
-    required this.b1,
-    required this.b2,
-    required this.b3,
+    required this.low,
+    required this.deltas,
+    required this.irisL,
+    required this.veinA,
+    required this.veinL,
     required this.blemishes,
     required this.wrinkles,
     this.hasForcedSpots = false,
@@ -47,9 +54,18 @@ class FaceMapPlanes {
   /// heals even with every slider at 0).
   final bool hasForcedSpots;
   final HealPlanes heal;
-  final LabPlanes b1;
-  final LabPlanes b2;
-  final LabPlanes b3;
+
+  /// Low-pass of the source at [kTextureSigmaIod] (Texture slider).
+  final LabPlanes low;
+
+  /// Per-slider skin deltas and the skin measurements.
+  final SkinDeltas deltas;
+
+  /// Eye deltas at 100: iris local contrast (L), vein redness (a) and
+  /// vein darkness (L).
+  final Float32List irisL;
+  final Float32List veinA;
+  final Float32List veinL;
   final List<BlemishCandidate> blemishes;
   final WrinklePlanes wrinkles;
 }
@@ -61,7 +77,7 @@ FaceMapPlanes computeFaceMaps(
   FaceParsingPlanes? parsing,
   BlemishOverrides overrides = BlemishOverrides.none,
 }) {
-  final rect = f.rect, w = rect.w, h = rect.h;
+  final rect = f.rect, w = rect.w, h = rect.h, n = rect.area;
   final lab = LabPlanes.fromRgba(grid, rect);
   final regions = buildFaceRegions(
     f,
@@ -97,54 +113,56 @@ FaceMapPlanes computeFaceMaps(
   );
   // Glasses glare: a subtracted veil, merged as spot code kGlareCode.
   final glare = detectGlare(f, lab);
-  final heal = glare == null ? spotHeal : mergeGlare(spotHeal, glare, f);
-  // Wrinkles are found on the spot-healed image and folded into every
-  // band: B1 = G(σ1) ∗ (L + ΔW), so the pass removes `wEff·ΔW` without
-  // smoothing ever counting a wrinkle twice (§3.4, retouch_kernel.dart).
+  final heal = glare == null ? spotHeal : mergeGlare(spotHeal, glare);
+  // Wrinkles are found on the spot-healed image; the bands come from the
+  // healed, wrinkle-filled image, so Smooth never counts a spot or a
+  // detected line twice.
   final wrinkles = computeWrinkles(
     f,
     heal.healed.l,
     regions.skin,
     exclude: regions.shineCore,
   );
-  final healed = LabPlanes(
+  final clean = LabPlanes(
     rect,
     addPlanes(heal.healed.l, wrinkles.delta),
     heal.healed.a,
     heal.healed.b,
   );
-  final sigma1 = kB1SigmaIod * f.iod;
-  final b1 = LabPlanes(
-    rect,
-    gaussianBlur(addPlanes(lab.l, wrinkles.delta), w, h, sigma1),
-    gaussianBlur(lab.a, w, h, sigma1),
-    gaussianBlur(lab.b, w, h, sigma1),
+  final bands = SkinBands.split(clean, regions.masks.norm, f.iod);
+  final deltas = computeSkinDeltas(
+    f,
+    bands,
+    regions.masks,
+    underEye: regions.underEye,
+    blush: regions.blush,
   );
-  // B2 filters the healed *B1 band* (guide = its L), not the source: a
-  // guided filter returns a·I + b, so filtering the source would leak a
-  // fraction of the pores into the base and let smoothing amplify them.
-  // By linearity, G(σ1)∗(lab + Δ) = B1 + Δlow.
-  final b1Healed = LabPlanes(
-    rect,
-    addPlanes(b1.l, heal.lowL),
-    addPlanes(b1.a, heal.lowA),
-    addPlanes(b1.b, heal.lowB),
-  );
-  final g = guidedFilter(
-    b1Healed.l,
-    b1Healed.channels,
-    w,
-    h,
-    math.max(1, (kB2RadiusIod * f.iod).round()),
-    kB2Eps,
-  );
+  // Eyes: iris contrast on its own mid band; veins are the fine red
+  // excess over the sclera's low-pass.
+  final irisL = Float32List(n), veinA = Float32List(n), veinL = Float32List(n);
+  for (var i = 0; i < n; i++) {
+    if (regions.iris[i] > 0) {
+      irisL[i] = kIrisContrast * (bands.l0.l[i] - bands.l2.l[i]);
+    }
+    if (regions.sclera[i] > 0) {
+      final red = math.max(0.0, lab.a[i] - bands.l1.a[i]);
+      veinA[i] = -kVeinCut * red;
+      veinL[i] =
+          kVeinCut *
+          math.max(0.0, bands.l1.l[i] - lab.l[i]) *
+          smoothstep(0.004, 0.02, red);
+    }
+  }
+  final sigmaT = math.max(kTextureSigmaMinPx, kTextureSigmaIod * f.iod);
   return FaceMapPlanes(
     frame: f,
     regions: regions,
     heal: heal,
-    b1: b1,
-    b2: LabPlanes(rect, g[0], g[1], g[2]),
-    b3: _skinReference(healed, regions.skin, f.iod),
+    low: lab.mapChannels((c) => gaussianBlur(c, w, h, sigmaT)),
+    deltas: deltas,
+    irisL: irisL,
+    veinA: veinA,
+    veinL: veinL,
     blemishes: spots,
     hasForcedSpots: spots.any(
       (s) =>
@@ -153,23 +171,4 @@ FaceMapPlanes computeFaceMaps(
     ),
     wrinkles: wrinkles,
   );
-}
-
-/// Normalized convolution over skin: `blur(skin·c) / blur(skin)`, falling
-/// back to the pixel itself where there is no skin nearby.
-LabPlanes _skinReference(LabPlanes lab, Float32List skin, double iod) {
-  final rect = lab.rect, w = rect.w, h = rect.h, n = rect.area;
-  final r = math.max(1, (kB3RadiusIod * iod).round());
-  Float32List blur3(Float32List p) =>
-      boxBlur(boxBlur(boxBlur(p, w, h, r), w, h, r), w, h, r);
-  final den = blur3(skin);
-  Float32List channel(Float32List c) {
-    final num = blur3(productOf([c, skin]));
-    for (var i = 0; i < n; i++) {
-      num[i] = den[i] > 1e-3 ? num[i] / den[i] : c[i];
-    }
-    return num;
-  }
-
-  return LabPlanes(rect, channel(lab.l), channel(lab.a), channel(lab.b));
 }
