@@ -1,7 +1,8 @@
 // End-to-end portrait flow on the real app, GPU and on-device models:
-// import a sample portrait → open it → Portrait → faces detected → Auto
+// import a sample portrait → open it (Auto mode) → faces detected → Auto
 // Retouch → the rendered frame is a real retouched photo (not white) →
-// click into the prompt bar, click the canvas, hold "\" → before/after.
+// Manual → Portrait tools → back to Auto → click into the prompt bar, click
+// the canvas, hold "\" → before/after.
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -18,6 +19,7 @@ import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/file_catalog_repository_io.dart';
 import 'package:lumen/data/file_preference_repositories_io.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
+import 'package:lumen/features/editor/editor_mode.dart';
 import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/photo_canvas.dart';
 import 'package:lumen/features/library/library_actions.dart';
@@ -159,6 +161,7 @@ void main() {
     );
     final id = container.read(libraryProvider).value!.single.assetId;
     await _settle(tester, 3000);
+    await _screenshot(tester, 'p0_library');
 
     final tile = find.bySemanticsLabel(RegExp('sample_portrait.jpg')).first;
     await tester.tap(tile);
@@ -177,11 +180,8 @@ void main() {
     // Auto-edit on import may have set colour; start retouch from there.
     await _screenshot(tester, 'p1_editor');
 
-    // Portrait module: faces are detected on device.
-    // The module tab (icon-only when the panel is narrow).
-    await tester.tap(find.byTooltip('Portrait').first);
-    await tester.pump();
-    expect(container.read(editorModuleProvider(id)), EditorModule.portrait);
+    // Auto mode: faces are detected on device for the Retouch step.
+    expect(container.read(editorModeProvider), EditorMode.auto);
     await _pumpUntil(
       tester,
       () =>
@@ -251,6 +251,25 @@ void main() {
     expect(changed, lessThan(on.length ~/ 4 ~/ 3), reason: 'not face-local');
     ctl.commit(base, label: 'Back to Auto Retouch');
     await _settle(tester, 2000);
+
+    // Manual: the Portrait tools, one part of the face at a time.
+    await tester.tap(find.bySemanticsLabel('Manual mode'));
+    await _settle(tester, 800);
+    await _screenshot(tester, 'p5_manual_adjust');
+    await tester.tap(find.byTooltip('Portrait').first);
+    await tester.pump();
+    expect(container.read(editorModuleProvider(id)), EditorModule.portrait);
+    await _settle(tester, 1500);
+    await _screenshot(tester, 'p6_manual_portrait');
+    await tester.tap(find.bySemanticsLabel('Scene tools'));
+    await _settle(tester, 800);
+    await _screenshot(tester, 'p7_manual_portrait_scene');
+    await tester.tap(find.byTooltip('Crop').first);
+    await _settle(tester, 800);
+    await _screenshot(tester, 'p8_manual_crop');
+    await tester.tap(find.bySemanticsLabel('Auto mode'));
+    await _settle(tester, 800);
+    expect(container.read(editorModuleProvider(id)), EditorModule.adjust);
 
     // Click into the prompt bar, then the photo: "\" must reach the editor.
     final field = find.byWidgetPredicate(

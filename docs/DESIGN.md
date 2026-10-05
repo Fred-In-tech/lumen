@@ -7,6 +7,45 @@
 
 ---
 
+## 0. Studio redesign (2026-10-04): read this first
+
+The user asked for a lighter, simpler look after using the app. Where this section disagrees with the rest of the file, this section wins. Everything it does not mention (components, microcopy, accessibility, motion) still applies.
+
+**References (Mobbin):** Krea AI's enhance editor and Magnific's skin enhancer for the look (soft grey workspace, white floating panel, pill toolbar, one blue action colour); Apple Photos for the "Auto first" order of tools.
+
+**Look: "Studio" (light).** `LumenTokens.light` is the default theme; `LumenTokens.dark` keeps the darkroom palette for a later appearance setting.
+
+| Token | Value | Use |
+|---|---|---|
+| surface0 | `#F3F3F1` | workspace behind the photo, card wells |
+| surface1 | `#FFFFFF` | panels, raised pills |
+| surface2 / surface3 | `#EFEFEC` / `#E4E4E0` | tracks, wells, hover |
+| line / lineStrong | `#E6E6E3` / `#D0D0CB` | hairlines |
+| text | `#161616` / `#55554F` / `#74746D` | primary / secondary / tertiary |
+| accent | `#2563EB` | the one action colour: primary button, slider fill, active tool |
+| AI gradient | `#7C3AED` → `#5B4FE9` → `#2563EB` | only on things a model decides (same rule as §7) |
+
+- The histogram keeps a dark well so the additive RGB curves stay readable.
+- Tooltips and toasts are dark on the light theme.
+- Shadows are soft (`Elevation.e1`–`e3`); panels are white cards with a 16px radius floating on the workspace.
+
+**Flow: two modes.** One `Auto | Manual` pill at the top centre of the editor (`editorModeProvider`), on phone just above the sheet.
+
+- **Auto** (default): the panel holds three numbered cards and nothing else: 1 Enhance (one button, an amount slider, "why" collapsed), 2 Retouch (Auto Retouch, with a link to fine-tune faces), 3 Looks (style tiles). The prompt bar floats under the photo. No histogram, no sliders.
+- **Manual**: histogram, then six tool tabs (Adjust, Portrait, Masks, Remove, Crop, Presets), then only that tool's controls. The left rail and the AI Studio / Presets flyouts are gone; Crop and Presets are tabs. No AI block sits on top of the sliders.
+- Shortcuts that start a Manual tool (M, Q, R) and controls found through search move the editor to Manual; "Auto edit" in search moves it to Auto. Going back to Auto puts crop, masks, portrait and remove tools away.
+
+**Portrait panel.** Auto Retouch is the first thing in the panel. Under it: face status, "Apply to" (All / Female / Male / Child / Senior / Individual), then four parts shown one at a time (Skin, Face, Shape, Scene) in place of one list of eleven groups:
+
+| Part | Groups |
+|---|---|
+| Skin | Skin, Blemishes, Wrinkles |
+| Face | Eyes, Teeth, Makeup |
+| Shape | Face shape, Liquify |
+| Scene | Background swap, Background, Clothing |
+
+---
+
 ## 1. Principles and visual direction
 
 ### 1.1 Five principles

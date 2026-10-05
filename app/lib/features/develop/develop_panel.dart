@@ -5,14 +5,16 @@ import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
-import 'package:lumen/features/ai/ai_panel.dart';
+import 'package:lumen/features/crop/crop_panel.dart';
 import 'package:lumen/features/develop/histogram_view.dart';
 import 'package:lumen/features/develop/sections.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
+import 'package:lumen/features/editor/editor_mode.dart';
 import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/features/editor/module_overlay.dart';
 import 'package:lumen/features/masks/masks_panel.dart';
+import 'package:lumen/features/presets/presets_panel.dart';
 import 'package:lumen/features/remove/remove_panel.dart';
 import 'package:lumen/features/portrait/portrait_panel.dart';
 import 'package:lumen/features/search/control_search_dialog.dart';
@@ -20,7 +22,8 @@ import 'package:lumen/features/sync/settings_clipboard.dart';
 import 'package:lumen/widgets/buttons.dart';
 import 'package:lumen/widgets/toast.dart';
 
-/// Right-hand develop panel (desktop/tablet): histogram, AI, groups, footer.
+/// Right-hand Manual panel (desktop/tablet): histogram, tool tabs, the
+/// selected tool's controls, footer.
 class DevelopPanel extends ConsumerWidget {
   const DevelopPanel({super.key, required this.session, required this.width});
 
@@ -42,13 +45,14 @@ class DevelopPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final id = session.assetId;
-    final module = ref.watch(editorModuleProvider(id));
-    return Container(
+    final tool = ref.watch(manualToolProvider(id));
+    final exif = _exifLine(session.entry?.exif);
+    final entry = session.entry;
+    final imageAspect = entry == null || entry.height == 0
+        ? 1.5
+        : entry.width / entry.height;
+    return SizedBox(
       width: width,
-      decoration: BoxDecoration(
-        color: t.surface1,
-        border: Border(left: BorderSide(color: t.line)),
-      ),
       child: Column(
         children: [
           Padding(
@@ -60,16 +64,18 @@ class DevelopPanel extends ConsumerWidget {
                   valueListenable: session.histogram,
                   builder: (_, h, _) => HistogramView(histogram: h),
                 ),
-                const SizedBox(height: Sp.s1_5),
-                Text(
-                  _exifLine(session.entry?.exif),
-                  style: LumenType.monoStyle().copyWith(color: t.textTertiary),
-                ),
-                const SizedBox(height: Sp.s3),
+                const SizedBox(height: Sp.s1),
                 Row(
                   children: [
-                    Expanded(child: ModuleTabs(assetId: id)),
-                    const SizedBox(width: Sp.s1),
+                    Expanded(
+                      child: Text(
+                        exif.isEmpty ? 'No camera data' : exif,
+                        overflow: TextOverflow.ellipsis,
+                        style: LumenType.monoStyle().copyWith(
+                          color: t.textTertiary,
+                        ),
+                      ),
+                    ),
                     LumenIconButton(
                       icon: LucideIcons.search,
                       tooltip: 'Search controls  /',
@@ -78,6 +84,8 @@ class DevelopPanel extends ConsumerWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: Sp.s2),
+                ModuleTabs(assetId: id),
               ],
             ),
           ),
@@ -85,24 +93,35 @@ class DevelopPanel extends ConsumerWidget {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                ...switch (module) {
-                  EditorModule.adjust => [
+                ...switch (tool) {
+                  ManualTool.adjust => [DevelopSections(assetId: id)],
+                  ManualTool.portrait => [PortraitPanel(assetId: id)],
+                  ManualTool.masks => [
+                    MasksPanel(assetId: id, sourceSize: sourceSizeOf(session)),
+                  ],
+                  ManualTool.remove => [RemovePanel(assetId: id)],
+                  ManualTool.crop => [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         Sp.s4,
-                        Sp.s1,
+                        Sp.s2,
                         Sp.s4,
-                        Sp.s4,
+                        0,
                       ),
-                      child: AiPanel(session: session),
+                      child: CropPanel(assetId: id, imageAspect: imageAspect),
                     ),
-                    DevelopSections(assetId: id),
                   ],
-                  EditorModule.portrait => [PortraitPanel(assetId: id)],
-                  EditorModule.masks => [
-                    MasksPanel(assetId: id, sourceSize: sourceSizeOf(session)),
+                  ManualTool.presets => [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        Sp.s4,
+                        Sp.s2,
+                        Sp.s4,
+                        0,
+                      ),
+                      child: PresetsPanel(assetId: id),
+                    ),
                   ],
-                  EditorModule.remove => [RemovePanel(assetId: id)],
                 },
                 const SizedBox(height: Sp.s6),
               ],
@@ -155,65 +174,97 @@ class DevelopPanel extends ConsumerWidget {
   }
 }
 
-/// Module switcher at the top of the right panel (Adjust · Portrait · …):
-/// equal-width segments with icon and label, icon-only (with a tooltip)
-/// when the panel is too narrow for the labels. Each segment keeps its
-/// module name as its semantics label.
+/// The tool shown in the Manual panel: an editing module, Crop, or Presets.
+enum ManualTool {
+  adjust('Adjust', LucideIcons.slidersHorizontal),
+  portrait('Portrait', LucideIcons.scanFace),
+  masks('Masks', LucideIcons.squareDashed),
+  remove('Remove', LucideIcons.eraser),
+  crop('Crop', LucideIcons.crop),
+  presets('Presets', LucideIcons.swatchBook);
+
+  const ManualTool(this.label, this.icon);
+
+  final String label;
+  final IconData icon;
+}
+
+/// The active Manual tool of one photo, derived from crop mode, the Presets
+/// flag and the editing module (so shortcuts that change those move the tab).
+final manualToolProvider = Provider.family<ManualTool, String>((ref, assetId) {
+  final crop = ref.watch(
+    editorProvider(assetId).select((s) => s.value?.cropMode ?? false),
+  );
+  if (crop) return ManualTool.crop;
+  if (ref.watch(presetsOpenProvider(assetId))) return ManualTool.presets;
+  return switch (ref.watch(editorModuleProvider(assetId))) {
+    EditorModule.adjust => ManualTool.adjust,
+    EditorModule.portrait => ManualTool.portrait,
+    EditorModule.masks => ManualTool.masks,
+    EditorModule.remove => ManualTool.remove,
+  };
+});
+
+/// Shows [tool] for photo [assetId].
+void selectManualTool(WidgetRef ref, String assetId, ManualTool tool) {
+  ref
+      .read(editorProvider(assetId).notifier)
+      .setCropMode(tool == ManualTool.crop);
+  ref
+      .read(presetsOpenProvider(assetId).notifier)
+      .set(tool == ManualTool.presets);
+  ref.read(editorModuleProvider(assetId).notifier).select(switch (tool) {
+    ManualTool.portrait => EditorModule.portrait,
+    ManualTool.masks => EditorModule.masks,
+    ManualTool.remove => EditorModule.remove,
+    _ => EditorModule.adjust,
+  });
+}
+
+/// Tool switcher at the top of the Manual panel (Adjust · Portrait · Masks ·
+/// Remove · Crop · Presets): equal-width tabs, icon over label. Each tab
+/// keeps its tool name as its semantics label and tooltip.
 class ModuleTabs extends ConsumerWidget {
   const ModuleTabs({super.key, required this.assetId});
 
   final String assetId;
 
-  /// Below this width per segment the labels are dropped.
-  static const minLabelledSegment = 76.0;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
-    final module = ref.watch(editorModuleProvider(assetId));
-    final select = ref.read(editorModuleProvider(assetId).notifier).select;
-    const modules = EditorModule.values;
-    return LayoutBuilder(
-      builder: (context, c) {
-        final labelled =
-            (c.maxWidth - 4) / modules.length >= minLabelledSegment;
-        return Container(
-          height: 30,
-          padding: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            color: t.surface2,
-            borderRadius: BorderRadius.circular(Rad.sm),
-          ),
-          child: Row(
-            children: [
-              for (final m in modules)
-                Expanded(
-                  child: _ModuleSegment(
-                    module: m,
-                    selected: m == module,
-                    labelled: labelled,
-                    onTap: () => select(m),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
+    final tool = ref.watch(manualToolProvider(assetId));
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: t.surface2,
+        borderRadius: BorderRadius.circular(Rad.md),
+      ),
+      child: Row(
+        children: [
+          for (final m in ManualTool.values)
+            Expanded(
+              child: _ToolTab(
+                tool: m,
+                selected: m == tool,
+                onTap: () => selectManualTool(ref, assetId, m),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
 
-class _ModuleSegment extends StatelessWidget {
-  const _ModuleSegment({
-    required this.module,
+class _ToolTab extends StatelessWidget {
+  const _ToolTab({
+    required this.tool,
     required this.selected,
-    required this.labelled,
     required this.onTap,
   });
 
-  final EditorModule module;
+  final ManualTool tool;
   final bool selected;
-  final bool labelled;
   final VoidCallback onTap;
 
   @override
@@ -224,34 +275,36 @@ class _ModuleSegment extends StatelessWidget {
       duration: Motion.fast,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: selected ? t.surface3 : Colors.transparent,
-        borderRadius: BorderRadius.circular(Rad.sm - 2),
+        color: selected ? t.raised : Colors.transparent,
+        borderRadius: BorderRadius.circular(Rad.md - 3),
+        boxShadow: selected && t.isLight ? Elevation.e1 : null,
       ),
-      child: Row(
+      child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(module.icon, size: 14, color: selected ? t.accent : color),
-          if (labelled) ...[
-            const SizedBox(width: Sp.s1),
-            Flexible(
-              child: Text(
-                module.label,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                style: LumenType.label().copyWith(color: color),
-              ),
+          Icon(tool.icon, size: 16, color: selected ? t.accent : color),
+          const SizedBox(height: 3),
+          Text(
+            tool.label,
+            overflow: TextOverflow.clip,
+            softWrap: false,
+            maxLines: 1,
+            style: LumenType.caption().copyWith(
+              fontSize: 10,
+              letterSpacing: 0,
+              color: color,
             ),
-          ],
+          ),
         ],
       ),
     );
     return Semantics(
       button: true,
       selected: selected,
-      label: module.label,
+      label: tool.label,
       excludeSemantics: true,
       child: Tooltip(
-        message: labelled ? '' : module.label,
+        message: tool.label,
         child: GestureDetector(
           onTap: onTap,
           child: MouseRegion(cursor: SystemMouseCursors.click, child: body),

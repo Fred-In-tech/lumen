@@ -17,7 +17,9 @@ class AiGlyph extends StatelessWidget {
     final icon = Icon(
       LucideIcons.sparkles,
       size: size,
-      color: neutral ? context.tokens.textPrimary : Colors.white,
+      color: neutral
+          ? (IconTheme.of(context).color ?? context.tokens.textPrimary)
+          : Colors.white,
     );
     if (neutral) return icon;
     return ShaderMask(

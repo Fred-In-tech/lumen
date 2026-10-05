@@ -5,15 +5,16 @@ import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
-import 'package:lumen/features/ai/ai_panel.dart';
+import 'package:lumen/features/ai/auto_panel.dart';
 import 'package:lumen/features/ai/prompt_bar.dart';
-import 'package:lumen/features/ai/styles_grid.dart';
 import 'package:lumen/features/crop/crop_overlay.dart';
 import 'package:lumen/features/crop/crop_panel.dart';
 import 'package:lumen/features/develop/sections.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
+import 'package:lumen/features/editor/editor_mode.dart';
 import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/editor/editor_session.dart';
+import 'package:lumen/features/editor/mode_switch.dart';
 import 'package:lumen/features/editor/module_overlay.dart';
 import 'package:lumen/features/editor/photo_canvas.dart';
 import 'package:lumen/features/export/export_dialog.dart';
@@ -42,7 +43,9 @@ enum _Tab {
   presets,
 }
 
-/// Phone editor: canvas on top, slider sheet + tool tabs below (DESIGN.md §3.4).
+/// Phone editor: canvas on top, the Auto | Manual switch, then the sheet.
+/// Auto shows the AI steps and the prompt; Manual shows one tool at a time
+/// with the tool tabs below (DESIGN.md §3.4).
 class PhoneEditor extends ConsumerStatefulWidget {
   const PhoneEditor({
     super.key,
@@ -60,10 +63,9 @@ class PhoneEditor extends ConsumerStatefulWidget {
 }
 
 class _PhoneEditorState extends ConsumerState<PhoneEditor> {
-  _Tab _tab = _Tab.ai;
+  _Tab _tab = _Tab.light;
 
   static const _tabs = {
-    _Tab.ai: ('AI', LucideIcons.sparkles),
     _Tab.portrait: ('Portrait', LucideIcons.scanFace),
     _Tab.light: ('Light', LucideIcons.sun),
     _Tab.color: ('Color', LucideIcons.palette),
@@ -88,24 +90,27 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
         _ => EditorModule.adjust,
       },
     );
+    ref.read(editorModeProvider.notifier).select(EditorMode.manual);
     setState(() => _tab = tab);
   }
 
-  Widget _sheet() {
+  Widget _sheet(_Tab tab) {
     final id = widget.session.assetId;
     final entry = widget.session.entry;
     final aspect = entry == null || entry.height == 0
         ? 1.5
         : entry.width / entry.height;
-    return switch (_tab) {
+    return switch (tab) {
       _Tab.ai => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AiPanel(session: widget.session, touch: true),
-          const SizedBox(height: Sp.s4),
-          StylesGrid(session: widget.session, horizontal: true),
-          const SizedBox(height: Sp.s3),
           PromptBar(session: widget.session, width: double.infinity),
+          const SizedBox(height: Sp.s3),
+          AutoSteps(
+            session: widget.session,
+            touch: true,
+            onFineTuneFaces: () => _select(_Tab.portrait),
+          ),
         ],
       ),
       _Tab.portrait => PortraitPanel(assetId: id, touch: true),
@@ -162,6 +167,9 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
         ? 1.5
         : entry.width / entry.height;
     final module = ref.watch(editorModuleProvider(id));
+    final auto = ref.watch(editorModeProvider) == EditorMode.auto;
+    final tab = auto ? _Tab.ai : _tab;
+    followManualTools(ref, id);
     // Search reveals a develop slider: show its tool tab.
     ref.listen<RevealRequest?>(revealControlProvider(id), (_, r) {
       if (r == null || r.entry.kind != ControlKind.developParam) return;
@@ -308,6 +316,10 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: Sp.s1_5),
+            child: ModeSwitch(assetId: id, touch: true),
+          ),
           Container(
             constraints: BoxConstraints(
               maxHeight: (height * 0.42).clamp(248.0, 420.0),
@@ -321,66 +333,65 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
             child: ListView(
               shrinkWrap: true,
               padding: const EdgeInsets.fromLTRB(Sp.s4, Sp.s3, Sp.s4, Sp.s4),
-              children: [_sheet()],
+              children: [_sheet(tab)],
             ),
           ),
-          Container(
-            height: Layout.phoneTabs,
-            decoration: BoxDecoration(
-              color: t.surface1,
-              border: Border(top: BorderSide(color: t.line)),
-            ),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (final e in _tabs.entries)
-                  Semantics(
-                    button: true,
-                    selected: e.key == _tab,
-                    label: e.value.$1,
-                    child: GestureDetector(
-                      onTap: () => _select(e.key),
-                      child: Container(
-                        width: 64,
-                        decoration: BoxDecoration(
-                          border: Border(
-                            top: BorderSide(
-                              color: e.key == _tab
-                                  ? t.accent
-                                  : Colors.transparent,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            e.key == _Tab.ai
-                                ? const AiGlyph(size: 22)
-                                : Icon(
-                                    e.value.$2,
-                                    size: 22,
-                                    color: e.key == _tab
-                                        ? t.accent
-                                        : t.textSecondary,
-                                  ),
-                            const SizedBox(height: 4),
-                            Text(
-                              e.value.$1,
-                              style: LumenType.caption().copyWith(
+          if (!auto)
+            Container(
+              height: Layout.phoneTabs,
+              decoration: BoxDecoration(
+                color: t.surface1,
+                border: Border(top: BorderSide(color: t.line)),
+              ),
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final e in _tabs.entries)
+                    Semantics(
+                      button: true,
+                      selected: e.key == _tab,
+                      label: e.value.$1,
+                      child: GestureDetector(
+                        onTap: () => _select(e.key),
+                        child: Container(
+                          width: 64,
+                          decoration: BoxDecoration(
+                            border: Border(
+                              top: BorderSide(
                                 color: e.key == _tab
-                                    ? t.textPrimary
-                                    : t.textSecondary,
+                                    ? t.accent
+                                    : Colors.transparent,
+                                width: 2,
                               ),
                             ),
-                          ],
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                e.value.$2,
+                                size: 22,
+                                color: e.key == _tab
+                                    ? t.accent
+                                    : t.textSecondary,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                e.value.$1,
+                                style: LumenType.caption().copyWith(
+                                  color: e.key == _tab
+                                      ? t.textPrimary
+                                      : t.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );

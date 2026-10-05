@@ -267,12 +267,12 @@ class _Chip extends StatelessWidget {
           duration: Motion.fast,
           height: 28,
           padding: const EdgeInsets.symmetric(horizontal: Sp.s3),
-          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? t.accentTint : t.surface2,
             borderRadius: BorderRadius.circular(Rad.pill),
-            border: Border.all(color: selected ? t.accent : t.lineStrong),
+            border: Border.all(color: selected ? t.accent : t.line),
           ),
+          // Hugs its label: a centring alignment would stretch the chip.
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

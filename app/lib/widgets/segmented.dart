@@ -45,8 +45,11 @@ class Segmented<T> extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: Sp.s2),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: e.key == value ? t.surface3 : Colors.transparent,
+                      color: e.key == value ? t.raised : Colors.transparent,
                       borderRadius: BorderRadius.circular(Rad.sm - 2),
+                      boxShadow: e.key == value && t.isLight
+                          ? Elevation.e1
+                          : null,
                     ),
                     child: Text(
                       e.value,

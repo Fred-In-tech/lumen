@@ -142,7 +142,8 @@ void main() {
     tester,
   ) async {
     final c = await _pump(tester);
-    await tester.tap(find.text('Eyes'));
+    await tester.tap(find.bySemanticsLabel('Face tools'));
+    await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     expect(find.text('Lower-lid protection'), findsNothing);
     final s = c.read(editorProvider('a')).value!.settings;

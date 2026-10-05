@@ -74,3 +74,6 @@ original ──► RETOUCH STAGE (pixel layer, cached) ──► DEVELOP (GPU ub
   - `phase2_on_device_test.dart`: retouch, mask, warp and backdrop GPU-vs-CPU parity on the real GPU.
   - `portrait_flow_test.dart`: imports `docs/samples/sample_portrait.jpg` (a drawn portrait with acne spots), opens it, detects the face, runs Auto Retouch, checks the frame is a real photo, checks a strong retouch changes only face pixels, then clicks the prompt bar and the photo and holds `\`.
   - Screenshots are in `docs/verification/phase2/`.
+
+### Studio redesign and RAW (2026-10-04)
+- **UI:** light "Studio" look and the Auto / Manual split, specified in `docs/DESIGN.md` §0. Portrait panel regrouped into Skin / Face / Shape / Scene with Auto Retouch on top. Screenshots: `docs/verification/studio/`.

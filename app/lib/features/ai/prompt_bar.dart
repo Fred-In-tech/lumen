@@ -132,7 +132,7 @@ class _PromptBarState extends ConsumerState<PromptBar> {
                 vertical: Sp.s1_5,
               ),
               decoration: BoxDecoration(
-                color: t.surface3,
+                color: t.raised,
                 borderRadius: BorderRadius.circular(Rad.pill),
                 boxShadow: Elevation.e2,
               ),
@@ -168,11 +168,11 @@ class _PromptBarState extends ConsumerState<PromptBar> {
               height: Layout.promptBarHeight,
               padding: const EdgeInsets.only(left: Sp.s3, right: Sp.s1_5),
               decoration: BoxDecoration(
-                color: t.surface3,
-                borderRadius: BorderRadius.circular(Rad.lg),
+                color: t.raised,
+                borderRadius: BorderRadius.circular(Rad.pill),
                 boxShadow: Elevation.e2,
                 border: Border.all(
-                  color: focused ? const Color(0xFFFF894B) : t.line,
+                  color: focused ? LumenTokens.aiEdge : t.line,
                 ),
               ),
               child: Row(

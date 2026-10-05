@@ -186,13 +186,13 @@ class LumenButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: fill,
             gradient: gradient,
-            borderRadius: BorderRadius.circular(Rad.sm),
+            borderRadius: BorderRadius.circular(Rad.md),
             border: border == null ? null : Border.all(color: border),
           ),
           foregroundDecoration: kind == ButtonKind.ai && hovered
               ? BoxDecoration(
                   color: t.hoverOverlay,
-                  borderRadius: BorderRadius.circular(Rad.sm),
+                  borderRadius: BorderRadius.circular(Rad.md),
                 )
               : null,
           child: content,
@@ -269,7 +269,7 @@ class StatusPill extends StatelessWidget {
       height: 28,
       padding: const EdgeInsets.symmetric(horizontal: Sp.s3),
       decoration: BoxDecoration(
-        color: elevated ? t.surface3 : t.surface2,
+        color: elevated ? t.raised : t.surface2,
         borderRadius: BorderRadius.circular(Rad.pill),
         boxShadow: elevated ? Elevation.e2 : null,
       ),

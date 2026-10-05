@@ -146,13 +146,21 @@ void main() {
       const SingleChildScrollView(child: PortraitPanel(assetId: 'a')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Face shape'), findsOneWidget);
-    expect(find.text('Liquify'), findsOneWidget);
+    // Scene: the backdrop groups.
+    await tester.tap(find.bySemanticsLabel('Scene tools'));
+    await tester.pumpAndSettle();
     expect(find.text('Background'), findsOneWidget);
     await tester.ensureVisible(find.byTooltip('Reset Background'));
     await tester.tap(find.byTooltip('Reset Background'));
     await tester.pumpAndSettle();
     expect(_settings(c).portrait.imageValue(PortraitIds.bgClean), 0);
+
+    // Shape: face shape sliders and liquify.
+    await tester.ensureVisible(find.bySemanticsLabel('Shape tools'));
+    await tester.tap(find.bySemanticsLabel('Shape tools'));
+    await tester.pumpAndSettle();
+    expect(find.text('Face shape'), findsOneWidget);
+    expect(find.text('Liquify'), findsOneWidget);
 
     // Tool toggles: the liquify button switches the canvas tool on and off.
     await tester.tap(find.text('Liquify'));

@@ -5,8 +5,8 @@ import 'type.dart';
 
 /// Builds the app theme. Material is only the scaffolding: ripples and
 /// surface tint are disabled and every visual comes from [LumenTokens].
-ThemeData buildLumenTheme({LumenTokens tokens = LumenTokens.dark}) {
-  final scheme = ColorScheme.dark(
+ThemeData buildLumenTheme({LumenTokens tokens = LumenTokens.light}) {
+  final scheme = (tokens.isLight ? ColorScheme.light : ColorScheme.dark)(
     surface: tokens.surface1,
     primary: tokens.accent,
     onPrimary: tokens.textOnAccent,
@@ -17,7 +17,7 @@ ThemeData buildLumenTheme({LumenTokens tokens = LumenTokens.dark}) {
   );
   final base = ThemeData(
     useMaterial3: true,
-    brightness: Brightness.dark,
+    brightness: tokens.brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: tokens.surface0,
     canvasColor: tokens.surface1,
@@ -36,14 +36,16 @@ ThemeData buildLumenTheme({LumenTokens tokens = LumenTokens.dark}) {
     ),
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(
-        color: tokens.surface3,
+        color: tokens.isLight ? tokens.textPrimary : tokens.surface3,
         borderRadius: BorderRadius.circular(Rad.sm),
       ),
-      textStyle: LumenType.caption().copyWith(color: tokens.textPrimary),
+      textStyle: LumenType.caption().copyWith(
+        color: tokens.isLight ? tokens.surface1 : tokens.textPrimary,
+      ),
       waitDuration: const Duration(milliseconds: 500),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: tokens.surface2,
+      backgroundColor: tokens.isLight ? tokens.surface1 : tokens.surface2,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Rad.lg),
@@ -57,6 +59,14 @@ ThemeData buildLumenTheme({LumenTokens tokens = LumenTokens.dark}) {
       thumbColor: WidgetStatePropertyAll(tokens.lineStrong),
       thickness: const WidgetStatePropertyAll(6),
       radius: const Radius.circular(Rad.pill),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: tokens.raised,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Rad.md),
+        side: BorderSide(color: tokens.line),
+      ),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(
       color: tokens.accent,

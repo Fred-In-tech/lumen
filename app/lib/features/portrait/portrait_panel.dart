@@ -16,12 +16,17 @@ import 'package:lumen/features/search/reveal.dart';
 import 'package:lumen/features/search/reveal_target.dart';
 import 'package:lumen/widgets/buttons.dart';
 
-typedef PortraitSection = ({String title, List<String> ids});
+typedef PortraitSection = ({
+  String title,
+  PortraitCategory category,
+  List<String> ids,
+});
 
 /// Retouch sections shown in the panel (features with a working engine).
 const List<PortraitSection> kPortraitSections = [
   (
     title: 'Skin',
+    category: PortraitCategory.skin,
     ids: [
       PortraitIds.skinSoftening,
       PortraitIds.skinEven,
@@ -31,10 +36,12 @@ const List<PortraitSection> kPortraitSections = [
   ),
   (
     title: 'Blemishes',
+    category: PortraitCategory.skin,
     ids: [PortraitIds.acne, PortraitIds.freckle, PortraitIds.mole],
   ),
   (
     title: 'Wrinkles',
+    category: PortraitCategory.skin,
     ids: [
       PortraitIds.wrinkleForehead,
       PortraitIds.wrinkleFrown,
@@ -45,6 +52,7 @@ const List<PortraitSection> kPortraitSections = [
   ),
   (
     title: 'Eyes',
+    category: PortraitCategory.face,
     ids: [
       PortraitIds.darkCircles,
       PortraitIds.eyeBags,
@@ -58,11 +66,17 @@ const List<PortraitSection> kPortraitSections = [
   ),
   (
     title: 'Teeth',
+    category: PortraitCategory.face,
     ids: [PortraitIds.teethBrightness, PortraitIds.teethDesaturate],
   ),
-  (title: 'Makeup', ids: [PortraitIds.lips, PortraitIds.blush]),
+  (
+    title: 'Makeup',
+    category: PortraitCategory.face,
+    ids: [PortraitIds.lips, PortraitIds.blush],
+  ),
   (
     title: 'Face shape',
+    category: PortraitCategory.shape,
     ids: [
       PortraitIds.faceWidth,
       PortraitIds.vShape,
@@ -74,6 +88,7 @@ const List<PortraitSection> kPortraitSections = [
   ),
   (
     title: 'Background',
+    category: PortraitCategory.scene,
     ids: [
       PortraitIds.bgClean,
       PortraitIds.bgUnify,
@@ -83,6 +98,7 @@ const List<PortraitSection> kPortraitSections = [
   ),
   (
     title: 'Clothing',
+    category: PortraitCategory.scene,
     ids: [PortraitIds.clothesWrinkles, PortraitIds.clothesLint],
   ),
 ];
@@ -106,6 +122,11 @@ class PortraitPanel extends ConsumerWidget {
     );
     final target = ui.target;
     final reveal = ref.watch(revealControlProvider(assetId));
+    final category = ui.category;
+    final sections = [
+      for (final s in kPortraitSections)
+        if (s.category == category) s,
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -114,35 +135,51 @@ class PortraitPanel extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              RevealTarget(
+                assetId: assetId,
+                id: 'autoRetouch',
+                child: AutoRetouchButton(
+                  assetId: assetId,
+                  height: touch ? 48 : 40,
+                ),
+              ),
+              const SizedBox(height: Sp.s3),
               PortraitFaceStatus(
                 assetId: assetId,
                 status: status,
                 showFaces: ui.showFaces,
               ),
               if (selected != null) ...[
-                const SizedBox(height: Sp.s3),
+                const SizedBox(height: Sp.s2),
                 FaceTagRow(assetId: assetId, face: selected),
               ],
-              const SizedBox(height: Sp.s3),
-              PortraitTargetTabs(assetId: assetId, ui: ui),
-              const SizedBox(height: Sp.s3),
-              RevealTarget(
-                assetId: assetId,
-                id: 'autoRetouch',
-                child: AutoRetouchButton(assetId: assetId),
+              const SizedBox(height: Sp.s2),
+              Row(
+                children: [
+                  Text(
+                    'Apply to',
+                    style: LumenType.caption().copyWith(
+                      color: context.tokens.textTertiary,
+                    ),
+                  ),
+                  const SizedBox(width: Sp.s2),
+                  Expanded(
+                    child: PortraitTargetTabs(assetId: assetId, ui: ui),
+                  ),
+                ],
               ),
+              const SizedBox(height: Sp.s4),
+              PortraitCategoryTabs(assetId: assetId, category: category),
             ],
           ),
         ),
-        for (final section in kPortraitSections) ...[
-          if (section.title == 'Background') ...[
-            LiquifyGroup(assetId: assetId, ui: ui),
-            BackgroundSwapGroup(assetId: assetId),
-          ],
+        if (category == PortraitCategory.scene)
+          BackgroundSwapGroup(assetId: assetId),
+        for (final section in sections) ...[
           DevelopGroup(
             key: ValueKey('portrait-${section.title}'),
             title: section.title,
-            initiallyOpen: section.title == 'Skin',
+            initiallyOpen: section == sections.first,
             openSignal: revealSignal(reveal, [
               ...section.ids,
               if (section.title == 'Blemishes') 'editSpots',
@@ -187,6 +224,8 @@ class PortraitPanel extends ConsumerWidget {
             ),
           ),
         ],
+        if (category == PortraitCategory.shape)
+          LiquifyGroup(assetId: assetId, ui: ui),
       ],
     );
   }
@@ -235,6 +274,81 @@ class PortraitPanel extends ConsumerWidget {
       s.copyWith(portrait: p),
       label: 'Reset ${section.title} · ${t.label}',
       kind: HistoryKind.reset,
+    );
+  }
+}
+
+/// The portrait part that holds control [id] (a slider, 'editSpots', or a
+/// tool of the Shape / Scene groups); null for controls shown in every part.
+PortraitCategory? categoryOfControl(String id) {
+  if (id == 'editSpots') return PortraitCategory.skin;
+  for (final s in kPortraitSections) {
+    if (s.ids.contains(id)) return s.category;
+  }
+  return null;
+}
+
+/// Skin · Face · Shape · Scene: equal-width tabs across the panel.
+class PortraitCategoryTabs extends ConsumerWidget {
+  const PortraitCategoryTabs({
+    super.key,
+    required this.assetId,
+    required this.category,
+  });
+
+  final String assetId;
+  final PortraitCategory category;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: t.surface2,
+        borderRadius: BorderRadius.circular(Rad.md),
+      ),
+      child: Row(
+        children: [
+          for (final c in PortraitCategory.values)
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: c == category,
+                label: '${c.label} tools',
+                excludeSemantics: true,
+                child: GestureDetector(
+                  onTap: () => ref
+                      .read(portraitUiProvider(assetId).notifier)
+                      .setCategory(c),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: AnimatedContainer(
+                      duration: Motion.fast,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: c == category ? t.raised : Colors.transparent,
+                        borderRadius: BorderRadius.circular(Rad.md - 3),
+                        boxShadow: c == category && t.isLight
+                            ? Elevation.e1
+                            : null,
+                      ),
+                      child: Text(
+                        c.label,
+                        style: LumenType.label().copyWith(
+                          color: c == category
+                              ? t.textPrimary
+                              : t.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

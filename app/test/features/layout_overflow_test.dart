@@ -136,7 +136,9 @@ Future<void> _openEditor(
   );
   await tester.pumpAndSettle();
   if (size.width < 600) {
-    // Phone: the module's tool tab.
+    // Phone: Manual mode, then the module's tool tab.
+    await tester.tap(find.bySemanticsLabel('Manual mode'));
+    await tester.pumpAndSettle();
     await tester.dragUntilVisible(
       find.text(tab),
       // The tool tabs: the last horizontal list on the phone editor.

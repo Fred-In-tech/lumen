@@ -31,7 +31,12 @@ class HistogramView extends StatelessWidget {
       child: SizedBox(
         height: height,
         child: CustomPaint(
-          painter: _HistPainter(h, grid: t.line, bg: t.surface0),
+          // Always a dark well: the additive RGB curves need one to read.
+          painter: _HistPainter(
+            h,
+            grid: t.isLight ? const Color(0x1FFFFFFF) : t.line,
+            bg: t.isLight ? const Color(0xFF1B1B1D) : t.surface0,
+          ),
           child: Stack(
             children: [
               Positioned(left: 4, top: 4, child: _Tri(on: lowClip, left: true)),
@@ -56,7 +61,7 @@ class _Tri extends StatelessWidget {
   @override
   Widget build(BuildContext context) => CustomPaint(
     size: const Size(10, 8),
-    painter: _TriPainter(on ? Colors.white : context.tokens.textDisabled, left),
+    painter: _TriPainter(on ? Colors.white : const Color(0xFF595959), left),
   );
 }
 
@@ -91,6 +96,12 @@ class _HistPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.clipRRect(
+      RRect.fromRectAndRadius(
+        Offset.zero & size,
+        const Radius.circular(Rad.md),
+      ),
+    );
     canvas.drawRect(Offset.zero & size, Paint()..color = bg);
     final g = Paint()..color = grid;
     for (var i = 1; i < 4; i++) {

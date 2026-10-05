@@ -3,14 +3,17 @@ import 'dart:ui' show Size, VoidCallback;
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/features/editor/editor_controller.dart';
+import 'package:lumen/features/editor/editor_mode.dart';
 import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/masks/mask_commands.dart';
+import 'package:lumen/features/portrait/portrait_panel.dart';
 import 'package:lumen/features/portrait/portrait_state.dart';
 import 'package:lumen/features/remove/remove_ui_state.dart';
 import 'package:lumen/features/search/control_index.dart';
 import 'package:lumen/features/search/reveal.dart';
 
-/// Opens [e] in [assetId]'s editor: switches module, reveals the control and
+/// Opens [e] in [assetId]'s editor: switches mode (Auto edit lives in Auto,
+/// everything else in Manual) and module, reveals the control and
 /// performs one-step actions (add a manual mask at [sourceSize], pick a
 /// Remove tool, start the spot editor, run Auto edit via [runAuto]).
 void openControl(
@@ -22,6 +25,15 @@ void openControl(
 }) {
   read(editorProvider(assetId).notifier).setCropMode(false);
   read(editorModuleProvider(assetId).notifier).select(e.module);
+  read(presetsOpenProvider(assetId).notifier).set(false);
+  read(editorModeProvider.notifier)
+      .select(e.id == 'auto' ? EditorMode.auto : EditorMode.manual);
+  final category = e.module == EditorModule.portrait
+      ? categoryOfControl(e.id)
+      : null;
+  if (category != null) {
+    read(portraitUiProvider(assetId).notifier).setCategory(category);
+  }
   switch (e.kind) {
     case ControlKind.mask:
       final kind = MaskKind.parse(e.id);

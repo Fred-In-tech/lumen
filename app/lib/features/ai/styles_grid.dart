@@ -161,14 +161,23 @@ class StylesGrid extends ConsumerWidget {
         ),
       );
     }
-    return GridView.count(
-      crossAxisCount: columns,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: Sp.s3,
-      crossAxisSpacing: Sp.s3,
-      childAspectRatio: 0.82,
-      children: [for (final s in AiStyle.values) tile(s)],
+    return LayoutBuilder(
+      builder: (context, c) {
+        const gap = Sp.s2;
+        // A square preview, then the gap and one line of label.
+        final side = (c.maxWidth - gap * (columns - 1)) / columns;
+        return GridView(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: gap,
+            crossAxisSpacing: gap,
+            mainAxisExtent: side + Sp.s1_5 + 18,
+          ),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [for (final s in AiStyle.values) tile(s)],
+        );
+      },
     );
   }
 }

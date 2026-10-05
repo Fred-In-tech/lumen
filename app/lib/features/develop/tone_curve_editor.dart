@@ -21,7 +21,6 @@ class _ToneCurveEditorState extends ConsumerState<ToneCurveEditor> {
   CurvePoint? _readout;
 
   static const _channelColors = {
-    CurveChannel.master: Color(0xFFEDEDED),
     CurveChannel.red: Color(0xFFFF5A5A),
     CurveChannel.green: Color(0xFF5AD17A),
     CurveChannel.blue: Color(0xFF5A8CFF),
@@ -150,7 +149,7 @@ class _ToneCurveEditorState extends ConsumerState<ToneCurveEditor> {
                           width: 7,
                           height: 7,
                           decoration: BoxDecoration(
-                            color: _channelColors[c],
+                            color: _channelColors[c] ?? t.textPrimary,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -194,7 +193,7 @@ class _ToneCurveEditorState extends ConsumerState<ToneCurveEditor> {
                   size: Size.square(size),
                   painter: _CurvePainter(
                     curve: curve,
-                    color: _channelColors[_channel]!,
+                    color: _channelColors[_channel] ?? t.textPrimary,
                     grid: t.line,
                     base: t.lineStrong,
                     bg: t.surface0,

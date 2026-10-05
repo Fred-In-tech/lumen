@@ -91,9 +91,10 @@ class PortraitTargetTabs extends ConsumerWidget {
 }
 
 class AutoRetouchButton extends ConsumerStatefulWidget {
-  const AutoRetouchButton({super.key, required this.assetId});
+  const AutoRetouchButton({super.key, required this.assetId, this.height = 40});
 
   final String assetId;
+  final double height;
 
   @override
   ConsumerState<AutoRetouchButton> createState() => _AutoRetouchState();
@@ -211,7 +212,8 @@ class _AutoRetouchState extends ConsumerState<AutoRetouchButton> {
     label: _busy ? 'Measuring faces…' : 'Auto Retouch',
     kind: ButtonKind.ai,
     expand: true,
-    icon: const AiGlyph(size: 14, neutral: true),
+    height: widget.height,
+    icon: const AiGlyph(size: 16, neutral: true),
     tooltip: 'Skin, eyes and teeth retouch scaled to what each face needs',
     onPressed: _busy ? null : _run,
   );

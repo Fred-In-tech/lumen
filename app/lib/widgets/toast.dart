@@ -38,12 +38,12 @@ void showToast(
     ..showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: t.surface3,
+        backgroundColor: t.isLight ? t.textPrimary : t.surface3,
         elevation: 0,
         duration: duration,
         width: 420,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Rad.md),
+          borderRadius: BorderRadius.circular(Rad.lg),
         ),
         content: Row(
           children: [
@@ -51,7 +51,9 @@ void showToast(
             Expanded(
               child: Text(
                 message,
-                style: LumenType.body().copyWith(color: t.textPrimary),
+                style: LumenType.body().copyWith(
+                  color: t.isLight ? t.surface1 : t.textPrimary,
+                ),
               ),
             ),
           ],
@@ -60,7 +62,7 @@ void showToast(
             ? null
             : SnackBarAction(
                 label: actionLabel,
-                textColor: t.accent,
+                textColor: t.isLight ? t.focusRing : t.accent,
                 onPressed: onAction ?? () {},
               ),
       ),

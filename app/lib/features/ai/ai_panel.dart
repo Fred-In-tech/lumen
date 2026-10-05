@@ -29,12 +29,12 @@ class AiPanel extends ConsumerStatefulWidget {
 
 class _AiPanelState extends ConsumerState<AiPanel> {
   double _amount = 100;
-  bool _explainOpen = true;
+  bool _explainOpen = false;
 
   Future<void> _auto(AiStyle style) async {
     setState(() {
       _amount = 100;
-      _explainOpen = true;
+      _explainOpen = false;
     });
     final r = await runAiAuto(ref, widget.session, style: style);
     if (!mounted || r == null) return;
@@ -64,7 +64,7 @@ class _AiPanelState extends ConsumerState<AiPanel> {
     if (reference == null || !mounted) return;
     setState(() {
       _amount = 100;
-      _explainOpen = true;
+      _explainOpen = false;
     });
     final n = await runColorMatch(ref, id, reference);
     if (!mounted || n == null) return;
@@ -94,18 +94,18 @@ class _AiPanelState extends ConsumerState<AiPanel> {
           children: [
             Expanded(
               child: LumenButton(
-                label: busy ? (state?.aiStatus ?? 'Developing…') : 'Auto',
+                label: busy ? (state?.aiStatus ?? 'Developing…') : 'Enhance',
                 icon: busy
                     ? SizedBox(
                         width: 14,
                         height: 14,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: vision ? t.textOnAccent : t.textPrimary,
+                          color: t.textOnAccent,
                         ),
                       )
                     : const AiGlyph(size: 16, neutral: true),
-                kind: vision ? ButtonKind.ai : ButtonKind.secondary,
+                kind: vision ? ButtonKind.ai : ButtonKind.primary,
                 height: widget.touch ? 48 : 40,
                 expand: true,
                 tooltip: vision
@@ -231,7 +231,7 @@ class _Explain extends StatelessWidget {
         borderRadius: BorderRadius.circular(Rad.md),
         border: Border(
           left: BorderSide(
-            color: model ? const Color(0xFFFF894B) : t.lineStrong,
+            color: model ? LumenTokens.aiEdge : t.lineStrong,
             width: 3,
           ),
         ),

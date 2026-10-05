@@ -32,12 +32,8 @@ class Filmstrip extends ConsumerWidget {
       for (final id in assetIds)
         if (entries.containsKey(id)) id,
     ];
-    return Container(
+    return SizedBox(
       height: Layout.filmstrip,
-      decoration: BoxDecoration(
-        color: t.surface1,
-        border: Border(top: BorderSide(color: t.line)),
-      ),
       child: Row(
         children: [
           Expanded(
@@ -45,7 +41,7 @@ class Filmstrip extends ConsumerWidget {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(
                 horizontal: Sp.s3,
-                vertical: Sp.s3,
+                vertical: Sp.s2,
               ),
               itemCount: ids.length,
               separatorBuilder: (_, _) => const SizedBox(width: Sp.s1),
@@ -69,14 +65,14 @@ class Filmstrip extends ConsumerWidget {
                         child: Container(
                           width: 64 * aspect,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(Rad.xs + 2),
+                            borderRadius: BorderRadius.circular(Rad.sm + 2),
                             border: Border.all(
                               color: isCurrent ? t.accent : Colors.transparent,
                               width: 2,
                             ),
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(Rad.xs),
+                            borderRadius: BorderRadius.circular(Rad.sm),
                             child: ThumbImage(entry: e),
                           ),
                         ),

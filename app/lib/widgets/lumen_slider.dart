@@ -320,12 +320,12 @@ class _LumenSliderState extends State<LumenSlider> {
             gradient: widget.trackGradient,
             line: t.lineStrong,
             fill: t.accent,
-            thumb: t.textPrimary,
+            thumb: t.thumb,
             tick: t.textTertiary,
             thumbRadius: (widget.touch
                 ? (_dragging ? 12.0 : 10.0)
                 : (_dragging ? 8.0 : (_hover ? 7.0 : 6.0))),
-            trackWidth: widget.touch ? 3 : 2,
+            trackWidth: widget.touch ? 4 : 3,
             focused:
                 _focus.hasFocus &&
                 FocusManager.instance.highlightMode ==

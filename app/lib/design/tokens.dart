@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
-/// Design tokens for the "Darkroom editorial" direction (docs/DESIGN.md §2).
+/// Design tokens (docs/DESIGN.md §2). The default theme is the light
+/// "Studio" look ([light]); [dark] is the original darkroom palette.
 ///
 /// Widgets read tokens via `context.tokens`; they never hard-code colors,
 /// radii, spacing or durations.
 @immutable
 class LumenTokens extends ThemeExtension<LumenTokens> {
   const LumenTokens({
+    required this.brightness,
     required this.surface0,
     required this.surface1,
     required this.surface2,
@@ -27,7 +29,31 @@ class LumenTokens extends ThemeExtension<LumenTokens> {
     required this.warning,
   });
 
+  /// Light studio: soft grey workspace, white panels, one blue accent.
+  static const light = LumenTokens(
+    brightness: Brightness.light,
+    surface0: Color(0xFFF3F3F1),
+    surface1: Color(0xFFFFFFFF),
+    surface2: Color(0xFFEFEFEC),
+    surface3: Color(0xFFE4E4E0),
+    line: Color(0xFFE6E6E3),
+    lineStrong: Color(0xFFD0D0CB),
+    textPrimary: Color(0xFF161616),
+    textSecondary: Color(0xFF55554F),
+    textTertiary: Color(0xFF74746D),
+    textDisabled: Color(0xFFB4B4AE),
+    textOnAccent: Color(0xFFFFFFFF),
+    accent: Color(0xFF2563EB),
+    accentHover: Color(0xFF3B76F6),
+    accentPressed: Color(0xFF1D4FCC),
+    focusRing: Color(0xFF7AA5FF),
+    danger: Color(0xFFD92D20),
+    success: Color(0xFF16A34A),
+    warning: Color(0xFFB45309),
+  );
+
   static const dark = LumenTokens(
+    brightness: Brightness.dark,
     surface0: Color(0xFF111111),
     surface1: Color(0xFF181818),
     surface2: Color(0xFF212121),
@@ -48,6 +74,7 @@ class LumenTokens extends ThemeExtension<LumenTokens> {
     warning: Color(0xFFE7B643),
   );
 
+  final Brightness brightness;
   final Color surface0;
   final Color surface1;
   final Color surface2;
@@ -68,22 +95,37 @@ class LumenTokens extends ThemeExtension<LumenTokens> {
   final Color warning;
 
   Color get accentTint => accent.withValues(alpha: 0.14);
-  Color get hoverOverlay => const Color(0x0DFFFFFF);
-  Color get pressedOverlay => const Color(0x17FFFFFF);
-  Color get scrim => const Color(0x8C000000);
+  bool get isLight => brightness == Brightness.light;
+  Color get hoverOverlay =>
+      isLight ? const Color(0x0A000000) : const Color(0x0DFFFFFF);
+  Color get pressedOverlay =>
+      isLight ? const Color(0x14000000) : const Color(0x17FFFFFF);
+  Color get scrim =>
+      isLight ? const Color(0x52000000) : const Color(0x8C000000);
+
+  /// Fill of things that sit above a panel: the selected segment, floating
+  /// pills, menus and the prompt bar.
+  Color get raised => isLight ? surface1 : surface3;
+
+  /// Slider thumb.
+  Color get thumb => isLight ? surface1 : textPrimary;
 
   /// The AI signature. Only for decisions a model made (DESIGN.md §7).
   static const aiGradient = LinearGradient(
     begin: Alignment(-1, -1),
     end: Alignment(1, 1),
-    colors: [Color(0xFFFCB442), Color(0xFFFF894B), Color(0xFFF45693)],
+    colors: [Color(0xFF7C3AED), Color(0xFF5B4FE9), Color(0xFF2563EB)],
     stops: [0, 0.5, 1],
   );
 
-  static const aiGlow = Color(0x59FF894B);
+  static const aiGlow = Color(0x595B4FE9);
+
+  /// Solid edge for AI surfaces (focused prompt bar, "What I changed").
+  static const aiEdge = Color(0xFF5B4FE9);
 
   @override
   LumenTokens copyWith({Color? surface0, Color? accent}) => LumenTokens(
+    brightness: brightness,
     surface0: surface0 ?? this.surface0,
     surface1: surface1,
     surface2: surface2,
@@ -140,12 +182,12 @@ abstract final class Rad {
 
 /// Layout constants (DESIGN.md §2.7).
 abstract final class Layout {
-  static const double topBar = 48;
+  static const double topBar = 56;
   static const double rail = 56;
   static const double flyout = 280;
   static const double developPanel = 320;
   static const double developPanelWide = 352;
-  static const double filmstrip = 88;
+  static const double filmstrip = 72;
   static const double phoneTabs = 64;
   static const double promptBarHeight = 48;
   static const double phoneBreakpoint = 600;
@@ -172,12 +214,16 @@ abstract final class Motion {
 
 /// Elevation recipes (DESIGN.md §2.9).
 abstract final class Elevation {
+  static const List<BoxShadow> e1 = [
+    BoxShadow(color: Color(0x0A000000), offset: Offset(0, 1), blurRadius: 2),
+    BoxShadow(color: Color(0x0F000000), offset: Offset(0, 2), blurRadius: 8),
+  ];
   static const List<BoxShadow> e2 = [
-    BoxShadow(color: Color(0x66000000), offset: Offset(0, 1), blurRadius: 2),
-    BoxShadow(color: Color(0x73000000), offset: Offset(0, 12), blurRadius: 32),
+    BoxShadow(color: Color(0x0F000000), offset: Offset(0, 1), blurRadius: 2),
+    BoxShadow(color: Color(0x1F000000), offset: Offset(0, 10), blurRadius: 28),
   ];
   static const List<BoxShadow> e3 = [
-    BoxShadow(color: Color(0x99000000), offset: Offset(0, 24), blurRadius: 64),
+    BoxShadow(color: Color(0x38000000), offset: Offset(0, 24), blurRadius: 64),
   ];
 }
 
@@ -195,5 +241,5 @@ const List<Color> kHslBandColors = [
 
 extension LumenTokensX on BuildContext {
   LumenTokens get tokens =>
-      Theme.of(this).extension<LumenTokens>() ?? LumenTokens.dark;
+      Theme.of(this).extension<LumenTokens>() ?? LumenTokens.light;
 }

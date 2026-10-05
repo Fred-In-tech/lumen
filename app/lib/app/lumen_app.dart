@@ -14,8 +14,7 @@ class LumenApp extends StatelessWidget {
       title: kBrand.name,
       debugShowCheckedModeBanner: false,
       theme: buildLumenTheme(),
-      darkTheme: buildLumenTheme(),
-      themeMode: ThemeMode.dark,
+      themeMode: ThemeMode.light,
       home: const LibraryScreen(),
     );
   }

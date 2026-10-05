@@ -25,6 +25,19 @@ class PortraitTarget {
   int get hashCode => Object.hash(group, personId);
 }
 
+/// The part of a portrait the panel is showing: a few groups at a time
+/// instead of every retouch group in one long list.
+enum PortraitCategory {
+  skin('Skin'),
+  face('Face'),
+  shape('Shape'),
+  scene('Scene');
+
+  const PortraitCategory(this.label);
+
+  final String label;
+}
+
 /// What a pointer on the Portrait canvas does.
 enum PortraitCanvasTool { faces, spots, liquify, pen }
 
@@ -34,6 +47,7 @@ class PortraitUiState {
     this.target = const PortraitTarget.group(FaceGroup.all),
     this.selectedFaceId,
     this.showFaces = true,
+    this.category = PortraitCategory.skin,
     this.tool = PortraitCanvasTool.faces,
     this.liquifyTool = LiquifyTool.push,
     this.liquifyRadius = 0.06,
@@ -47,6 +61,7 @@ class PortraitUiState {
   final PortraitTarget target;
   final String? selectedFaceId;
   final bool showFaces;
+  final PortraitCategory category;
 
   final PortraitCanvasTool tool;
 
@@ -69,6 +84,7 @@ class PortraitUiState {
     String? selectedFaceId,
     bool clearSelection = false,
     bool? showFaces,
+    PortraitCategory? category,
     PortraitCanvasTool? tool,
     LiquifyTool? liquifyTool,
     double? liquifyRadius,
@@ -83,6 +99,7 @@ class PortraitUiState {
         ? null
         : (selectedFaceId ?? this.selectedFaceId),
     showFaces: showFaces ?? this.showFaces,
+    category: category ?? this.category,
     tool: tool ?? this.tool,
     liquifyTool: liquifyTool ?? this.liquifyTool,
     liquifyRadius: liquifyRadius ?? this.liquifyRadius,
@@ -119,6 +136,8 @@ class PortraitUiNotifier extends Notifier<PortraitUiState> {
   );
 
   void setShowFaces(bool v) => state = state.copyWith(showFaces: v);
+
+  void setCategory(PortraitCategory c) => state = state.copyWith(category: c);
 
   void setSpotEdit(bool v) =>
       setTool(v ? PortraitCanvasTool.spots : PortraitCanvasTool.faces);
