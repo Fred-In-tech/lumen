@@ -33,9 +33,11 @@ final _log = Logger('GpuPhotoRenderer');
 /// source for the photo (camera RAW, 16-bit PNG, 10-bit HEIC) and the
 /// device passes the float probe, the render graph develops a float32
 /// preview of it, so exposure, white balance, highlights and shadows work
-/// on real headroom and precision. The 8-bit decode stays for [before],
-/// the analysis proxy, heal patches and backdrop mattes. Any failure on
-/// the way keeps the 8-bit path.
+/// on real headroom and precision. [before], the analysis proxy and the
+/// 8-bit pixels heals and backdrop mattes are built from are then the
+/// float preview developed with default settings (the same picture as the
+/// JPEG rendition, pixel-aligned with the frames). Any failure on the way
+/// keeps the 8-bit path.
 class GpuPhotoRenderer
     implements
         PhotoRenderer,
@@ -126,14 +128,14 @@ class GpuPhotoRenderer
       return;
     }
     final size = await probeSize(original);
-    final source = _source = await decodePhoto(
-      original,
-      maxLongEdge: previewLongEdge,
-    );
-    final float = await _openFloat(shaders, source.width, source.height);
+    final preview = decodedSizeFor(size.width, size.height, previewLongEdge);
+    final float = await _openFloat(shaders, size, preview);
     _float = float?.source;
     _floatImage = float?.image;
-    final base = float?.image ?? source;
+    final decoded = float == null
+        ? await decodePhoto(original, maxLongEdge: previewLongEdge)
+        : null;
+    final base = float?.image ?? decoded!;
     final aux = _aux = await AuxTextures.build(base, float: float != null);
     final graph = _graph =
         RenderGraph(
@@ -148,6 +150,11 @@ class GpuPhotoRenderer
           ..maskRasters = _rasters
           ..retouchMaps = _retouchMaps
           ..faceAnalysis = _faces;
+    // Float photos: the unedited 8-bit preview is the float one developed
+    // with defaults, so before / after and every 8-bit consumer line up
+    // with the frames exactly.
+    final source = _source =
+        decoded ?? await graph.render(DevelopSettings.defaults);
     _warp = WarpFieldService(
       sourceWidth: source.width,
       sourceHeight: source.height,
@@ -180,14 +187,14 @@ class GpuPhotoRenderer
     proxyImg.dispose();
   }
 
-  /// The float preview of this photo at exactly [width]×[height] (the size
-  /// of the 8-bit preview, so heals, masks and maps line up), or null when
-  /// the photo has no float source, the device fails the float probe or
-  /// the decode fails.
+  /// The float preview of this photo at [preview] (the size the 8-bit
+  /// decode of the [pixelSource]-sized rendition would have, so masks and
+  /// maps line up either way), or null when the photo has no float source,
+  /// the device fails the float probe or the decode fails.
   Future<({ui.Image image, FloatSource source})?> _openFloat(
     ShaderLibrary shaders,
-    int width,
-    int height,
+    ({int width, int height}) pixelSource,
+    ({int width, int height}) preview,
   ) async {
     final loader = floatSource;
     if (loader == null) return null;
@@ -196,17 +203,26 @@ class GpuPhotoRenderer
       final source = await loader(assetId);
       if (source == null) return null;
       // Both decodes must be the same upright picture.
-      final skew = (source.width * height - source.height * width).abs();
+      final skew =
+          (source.width * pixelSource.height -
+                  source.height * pixelSource.width)
+              .abs();
       if (skew > source.width + source.height) {
         _log.warning(
-          'float source is ${source.width}x${source.height}, preview '
-          '${width}x$height: keeping the 8-bit path',
+          'float source is ${source.width}x${source.height}, the pixel '
+          'source ${pixelSource.width}x${pixelSource.height}: keeping the '
+          '8-bit path',
         );
         return null;
       }
-      final px = await source.render(fullWidth: width, fullHeight: height);
-      final image = await uploadFloat(px.rgba, width, height);
-      _log.info('float path on for $assetId (${width}x$height)');
+      final px = await source.render(
+        fullWidth: preview.width,
+        fullHeight: preview.height,
+      );
+      final image = await uploadFloat(px.rgba, preview.width, preview.height);
+      _log.info(
+        'float path on for $assetId (${preview.width}x${preview.height})',
+      );
       return (image: image, source: source);
     } on Exception catch (e) {
       _log.warning('float source unavailable, using the 8-bit path: $e');

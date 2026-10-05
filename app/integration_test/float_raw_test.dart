@@ -29,6 +29,7 @@ import 'package:lumen/engine/gpu_pass.dart';
 import 'package:lumen/engine/hbd_capability.dart';
 import 'package:lumen/features/editor/renderer/gpu_float_export.dart';
 import 'package:lumen/features/editor/renderer/gpu_photo_renderer.dart';
+import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/editor/renderer/renderer_factory.dart';
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/export/export_service.dart';
@@ -359,6 +360,20 @@ void main() {
       final f0 = (await _frame(onFloat, defaults)).pixels!;
       final b0 = (await _frame(onBytes, defaults)).pixels!;
       expect((f0.width, f0.height), (b0.width, b0.height));
+      // Before / after: the float path's "before" is its own default frame.
+      final before = await rgbaFromImage(onFloat.before!);
+      var beforeWorst = 0;
+      for (var i = 0; i < f0.data.length; i++) {
+        beforeWorst = math.max(
+          beforeWorst,
+          (f0.data[i] - before.data[i]).abs(),
+        );
+      }
+      _r(
+        'before image vs the default frame on the float path: max '
+        '$beforeWorst/255',
+      );
+      expect(beforeWorst, lessThanOrEqualTo(1));
       var sum = 0, worst = 0, big = 0;
       for (var i = 0; i < f0.data.length; i++) {
         final d = (f0.data[i] - b0.data[i]).abs();

@@ -10,6 +10,29 @@ class DecodeException implements Exception {
   String toString() => message;
 }
 
+/// The size [decodePhoto] gives a [width]×[height] image with
+/// [maxLongEdge]: the long edge capped, the other one rounded (never
+/// upscaled). Other decoders of the same photo (the float preview) ask for
+/// exactly this size so their pixels line up.
+({int width, int height}) decodedSizeFor(
+  int width,
+  int height,
+  int? maxLongEdge,
+) {
+  if (maxLongEdge == null || (width <= maxLongEdge && height <= maxLongEdge)) {
+    return (width: width, height: height);
+  }
+  return width >= height
+      ? (
+          width: maxLongEdge,
+          height: (height * maxLongEdge / width).round().clamp(1, maxLongEdge),
+        )
+      : (
+          width: (width * maxLongEdge / height).round().clamp(1, maxLongEdge),
+          height: maxLongEdge,
+        );
+}
+
 /// Decodes encoded bytes with the engine codec, optionally downscaled so the
 /// long edge is at most [maxLongEdge] (decoders use scaled decode where they can).
 ///
@@ -21,13 +44,9 @@ Future<ui.Image> decodePhoto(Uint8List bytes, {int? maxLongEdge}) async {
     final w = descriptor.width, h = descriptor.height;
     int? tw, th;
     if (maxLongEdge != null && (w > maxLongEdge || h > maxLongEdge)) {
-      if (w >= h) {
-        tw = maxLongEdge;
-        th = (h * maxLongEdge / w).round().clamp(1, maxLongEdge);
-      } else {
-        th = maxLongEdge;
-        tw = (w * maxLongEdge / h).round().clamp(1, maxLongEdge);
-      }
+      final target = decodedSizeFor(w, h, maxLongEdge);
+      tw = target.width;
+      th = target.height;
     }
     final codec = await descriptor.instantiateCodec(
       targetWidth: tw,

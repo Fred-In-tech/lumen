@@ -3,11 +3,14 @@ import 'package:lumen/engine/aux_cache.dart';
 import 'package:lumen/engine/export_renderer.dart';
 import 'package:lumen/engine/float_source.dart';
 import 'package:lumen/engine/gpu_pass.dart';
+import 'package:lumen/engine/render_graph.dart';
 import 'package:lumen/engine/shader_library.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import '../support/test_images.dart';
+import 'backdrop_harness.dart';
 import 'float_harness.dart';
+import 'retouch_harness.dart';
 
 /// Windowed float export (docs/HIGH_BIT_DEPTH.md §Export): every tile is
 /// developed from its own source window, and the result must equal one
@@ -163,6 +166,96 @@ void main() {
       export(s, healOverlay: RgbaBuffer(10, 10)),
       throwsArgumentError,
     );
+    expect(EngineImages.live, 0);
+  });
+
+  /// A windowed export of [src] against one float graph pass over all of
+  /// it, both with the same retouch / backdrop inputs.
+  Future<({int max, double mean})> againstGraph(
+    FloatBuffer src,
+    DevelopSettings s, {
+    RetouchMaps? retouchMaps,
+    FaceAnalysis? faces,
+    BackdropAssets? backdrop,
+  }) async {
+    final shaders = await ShaderLibrary.load();
+    final aux = await AuxTextures.fromFloatProxy(src);
+    final image = await imageFromFloat(src);
+    final graph =
+        RenderGraph(shaders: shaders, source: image, aux: aux, float: true)
+          ..retouchMaps = retouchMaps
+          ..faceAnalysis = faces
+          ..backdropAssets = backdrop;
+    try {
+      final out = await graph.render(s);
+      final ref = RgbaBuffer(out.width, out.height, await readRgba(out));
+      EngineImages.dispose(out);
+      final px = await ExportRenderer(shaders).renderFloat(
+        source: MemoryFloatSource(src),
+        aux: aux,
+        settings: s,
+        tileSize: 96,
+        retouchMaps: retouchMaps,
+        faceAnalysis: faces,
+        backdropAssets: backdrop,
+      );
+      return diffStats(RgbaBuffer(px.width, px.height, px.rgba), ref);
+    } finally {
+      graph.dispose();
+      aux.dispose();
+      EngineImages.dispose(image);
+    }
+  }
+
+  test('retouch runs on each window (maps at the full-source uv)', () async {
+    if (!await floatPathOrSkip()) return;
+    final one = onePortrait();
+    final s = DevelopSettings.defaults
+        .withValue(P.exposure, -0.6)
+        .copyWith(
+          portrait: portraitOf({'skin.softening': 80, 'skin.even': 60}),
+        );
+    final d = await againstGraph(
+      hotScene(one.p.image, peak: 1.6),
+      s,
+      retouchMaps: one.maps,
+      faces: one.p.analysis,
+    );
+    result(
+      'windowed export with retouch vs single pass: max ${d.max}/255, '
+      'mean ${d.mean.toStringAsFixed(4)}',
+    );
+    expect(d.max, lessThanOrEqualTo(2));
+    expect(d.mean, lessThanOrEqualTo(0.05));
+    expect(EngineImages.live, 0);
+  });
+
+  test('backdrop runs on each window, with the composite aux maps', () async {
+    if (!await floatPathOrSkip()) return;
+    final swap = SwapScene.make();
+    const blue = BackdropChange(
+      mode: BackdropMode.color,
+      color: 0xFF2050C0,
+      spill: 60,
+    );
+    final assets = BackdropAssets.build(
+      BackdropBase.build(swap.image, people: swap.people),
+      blue,
+    );
+    final s = DevelopSettings.defaults
+        .withValues({P.exposure: -0.5, P.shadows: 40})
+        .copyWith(backdrop: blue);
+    final d = await againstGraph(
+      hotScene(swap.image, peak: 1.5),
+      s,
+      backdrop: assets,
+    );
+    result(
+      'windowed export with backdrop vs single pass: max ${d.max}/255, '
+      'mean ${d.mean.toStringAsFixed(4)}',
+    );
+    expect(d.max, lessThanOrEqualTo(2));
+    expect(d.mean, lessThanOrEqualTo(0.05));
     expect(EngineImages.live, 0);
   });
 
