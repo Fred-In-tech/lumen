@@ -22,3 +22,4 @@ coverage/
 
 # Downloaded on-device models for local development (see docs/MODEL_LICENSES.md)
 .dev_models/
+dist/

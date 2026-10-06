@@ -25,6 +25,18 @@ Lumen is a Lightroom-style photo editor for **macOS, Windows, iOS and Android** 
 - **On-device engine (always on, free, offline):** analyses the photo (histograms, white balance, scene key, haze, skin, chroma) and solves for slider values against the app's own renderer. This is the "Basic auto (offline)" engine.
 - **Vision engine (optional):** the app sends a 1024-px preview, with no EXIF or GPS, to the **Lumen AI gateway** (`server/`). The gateway asks Claude (`claude-opus-5-5` by default) for structured slider values and a reason per change. Values are clamped and damped on both the server and the app. On refusal, timeout or no key, the app quietly falls back to the on-device engine.
 
+## Install on a Mac (testers)
+
+One line in Terminal installs the latest build into `/Applications` and opens it (Apple silicon Mac, macOS 14 or newer):
+
+```bash
+GITHUB_TOKEN=<your token> bash -c "$(curl -fsSL -H 'Authorization: Bearer <your token>' https://raw.githubusercontent.com/Fred-In-tech/lumen/main/install.sh)"
+```
+
+The repository is private, so the tester needs to be added as a collaborator and to create a GitHub token (Settings → Developer settings → Fine-grained tokens, this repository, "Contents: read"). The app is not notarized yet; the installer clears macOS's quarantine flag so it opens without the "unidentified developer" block. The on-device AI models it needs are either inside the app or downloaded on first use and checked against their published hashes (`docs/MODEL_LICENSES.md`).
+
+Maintainers publish a build with `bash tool/release_macos.sh --publish` (bumps nothing: set `version:` in `app/pubspec.yaml` first).
+
 ## Repository layout
 ```
 app/                 Flutter app (package `lumen`), all platforms
