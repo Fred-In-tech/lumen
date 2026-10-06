@@ -32,7 +32,7 @@ if [[ -n "${GITHUB_TOKEN:-}" ]]; then
 fi
 
 echo "Looking up the latest Lumen release in $REPO…"
-release=$(curl -fsSL "${auth[@]}" -H "Accept: application/vnd.github+json" "$API") || {
+release=$(curl -fsSL ${auth[@]+"${auth[@]}"} -H "Accept: application/vnd.github+json" "$API") || {
   echo "Could not read the release. For a private repository set GITHUB_TOKEN." >&2
   exit 1
 }
@@ -62,7 +62,7 @@ fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 echo "Downloading Lumen $tag…"
-curl -fsSL "${auth[@]}" -H "Accept: application/octet-stream" -o "$tmp/lumen.zip" "$asset_url"
+curl -fsSL ${auth[@]+"${auth[@]}"} -H "Accept: application/octet-stream" -o "$tmp/lumen.zip" "$asset_url"
 
 echo "Installing to $DEST/$APP_NAME…"
 ditto -x -k "$tmp/lumen.zip" "$tmp/unzipped"
