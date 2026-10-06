@@ -27,7 +27,7 @@ Lumen is a Lightroom-style photo editor for **macOS, Windows, iOS and Android** 
 
 ## Install on a Mac (testers)
 
-One line in Terminal installs the latest build into `/Applications` and opens it (macOS 14 or newer, Apple silicon or Intel):
+Step-by-step tester guide: **[INSTALL.md](INSTALL.md)**. One line in Terminal installs the latest build into `/Applications`, opens it and sets up automatic updates (macOS 14 or newer, Apple silicon or Intel):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Fred-In-tech/lumen/main/install.sh | bash
@@ -41,7 +41,7 @@ GITHUB_TOKEN=<token> bash -c "$(curl -fsSL -H 'Authorization: Bearer <token>' ht
 
 The app is not notarized yet; the installer clears macOS's quarantine flag so it opens without the "unidentified developer" block. The on-device AI models it needs are either inside the app or downloaded on first use and checked against their published hashes (`docs/MODEL_LICENSES.md`).
 
-Maintainers publish a build with `bash tool/release_macos.sh --publish` (bumps nothing: set `version:` in `app/pubspec.yaml` first).
+**Shipping an update to testers:** raise `version:` in `app/pubspec.yaml` (e.g. `1.0.1+2`), commit, push, then run `bash tool/release_macos.sh --publish`. Every installed copy picks it up within 6 hours (at the next login or check) the next time Lumen is closed. The updater only installs a version number higher than the installed one.
 
 ## Repository layout
 ```
