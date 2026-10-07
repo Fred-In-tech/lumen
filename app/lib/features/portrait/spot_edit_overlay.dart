@@ -43,7 +43,7 @@ List<SpotView> layoutSpots(
           personId: face?.personId ?? face?.id,
         ) /
         100;
-    final iodUv = info.iod / maps.width;
+    final iodUv = info.iod / maps.transformOf(info).sx;
     final tol = (kAnchorMatchIod + 0.5 * c.radiusIod) * iodUv;
     bool near(SpotAnchor a) =>
         math.sqrt(math.pow(a.u - c.u, 2) + math.pow(a.v - c.v, 2)) <=

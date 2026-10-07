@@ -114,7 +114,7 @@ void main() {
     expect(graph.retouchRuns, 2);
     await render(base.withValue(P.noiseLuminance, 40));
     expect(graph.retouchRuns, 3);
-    graph.retouchMaps = computeRetouchMaps(p.image, p.analysis, longEdge: 256);
+    graph.retouchMaps = computeRetouchMaps(p.image, p.analysis, targetIod: 64);
     await render(base);
     expect(graph.retouchCache.uploads, 2);
     expect(graph.retouchRuns, 4);

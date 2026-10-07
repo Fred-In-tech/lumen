@@ -16,6 +16,7 @@ import 'face_regions.dart';
 import 'filters.dart';
 import 'glare.dart';
 import 'lab_planes.dart';
+import 'map_rect.dart';
 import 'shine_core.dart';
 import 'skin_deltas.dart';
 import 'spot_anchors.dart';
@@ -70,22 +71,33 @@ class FaceMapPlanes {
   final WrinklePlanes wrinkles;
 }
 
-/// Computes the per-face planes on the map grid [grid] (the `Rres` image).
+/// Computes the per-face planes of [f] on a `gridW × gridH` map grid.
+/// [pixels] holds the grid window that starts at ([originX], [originY])
+/// and covers `f.rect` (the whole grid by default; a per-face tile in
+/// `face_tiles.dart`).
 FaceMapPlanes computeFaceMaps(
   FaceFrame f,
-  RgbaBuffer grid, {
+  RgbaBuffer pixels, {
+  int originX = 0,
+  int originY = 0,
+  int? gridW,
+  int? gridH,
   FaceParsingPlanes? parsing,
   BlemishOverrides overrides = BlemishOverrides.none,
 }) {
   final rect = f.rect, w = rect.w, h = rect.h, n = rect.area;
-  final lab = LabPlanes.fromRgba(grid, rect);
+  final gw = gridW ?? pixels.width, gh = gridH ?? pixels.height;
+  final local = MapRect(rect.x0 - originX, rect.y0 - originY, w, h);
+  final read = LabPlanes.fromRgba(pixels, local);
+  final lab = LabPlanes(rect, read.l, read.a, read.b);
+  final grid = (width: gw, height: gh);
   final regions = buildFaceRegions(
     f,
     lab,
     gridW: grid.width,
     gridH: grid.height,
     parsing: parsing,
-    clip: clipPlane(grid, rect),
+    clip: clipPlane(pixels, local),
   );
   final detected = detectBlemishes(
     f,

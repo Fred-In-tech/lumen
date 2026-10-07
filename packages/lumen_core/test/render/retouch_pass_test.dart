@@ -36,7 +36,8 @@ RetouchMaps _maps({List<int> slots = const [0, 2]}) {
 }
 
 void main() {
-  test('packs size, tile, map info, face info and rows (318 floats)', () {
+  test('packs size, tile, map info, face info, rows and face maps '
+      '(382 floats)', () {
     const smooth = FaceRetouchParams(smooth: 0.5);
     const u = RetouchUniforms([smooth, FaceRetouchParams.identity, smooth]);
     final f = RetouchPassUniforms.pack(
@@ -49,12 +50,13 @@ void main() {
       fullWidth: 1000,
       fullHeight: 500,
     );
-    expect(kRetouchPassFloatCount, 318);
+    expect(kRetouchPassFloatCount, 382);
     expect(RetouchPassIndex.backdropInfo, 106);
     expect(RetouchPassIndex.header, 114);
     expect(RetouchPassIndex.rows, 118);
     expect(RetouchPassIndex.backdropParams, 310);
     expect(RetouchPassIndex.clothesParams, 314);
+    expect(RetouchPassIndex.faceMaps, 318);
     expect(f.length, kRetouchPassFloatCount);
     expect(f.sublist(0, 6), [64, 32, 128, 96, 1000, 500]);
     expect(f.sublist(6, 9), [4, 2, 2]); // map W, H, face count
@@ -97,7 +99,16 @@ void main() {
       ),
       [0, 0, 0, 0],
     );
-    expect(f.sublist(RetouchPassIndex.clothesParams), [0, 0, 0, 0]);
+    expect(
+      f.sublist(RetouchPassIndex.clothesParams, RetouchPassIndex.faceMaps),
+      [0, 0, 0, 0],
+    );
+    // uFaceMap[2k] = transform (whole-grid default: W, H, 0, 0),
+    // uFaceMap[2k+1] = tile bounds; empty slots are zero.
+    final fm = RetouchPassIndex.faceMaps;
+    expect(f.sublist(fm, fm + 8), [4, 2, 0, 0, 0, 0, 4, 2]);
+    expect(f.sublist(fm + 8, fm + 16), List.filled(8, 0));
+    expect(f.sublist(fm + 16, fm + 24), [4, 2, 0, 0, 0, 0, 4, 2]);
   });
 
   group('clothes', () {
@@ -121,12 +132,10 @@ void main() {
         '(uClothesParams)', () {
       final m = clothesMaps(ClothesState.ready);
       final f = RetouchPassUniforms.pack(m, u, width: 8, height: 8);
-      expect(f.sublist(RetouchPassIndex.clothesParams), [
-        closeTo(0.6, 1e-6),
-        closeTo(0.2, 1e-6),
-        1,
-        0,
-      ]);
+      expect(
+        f.sublist(RetouchPassIndex.clothesParams, RetouchPassIndex.faceMaps),
+        [closeTo(0.6, 1e-6), closeTo(0.2, 1e-6), 1, 0],
+      );
       expect(f[RetouchPassIndex.backdropInfo + 2], 0, reason: 'backdrop');
       expect(
         f.sublist(

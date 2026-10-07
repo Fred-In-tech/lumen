@@ -27,7 +27,12 @@ void main() {
   group('layout', () {
     test('textures have the documented sizes and A = 255 everywhere', () {
       final n = maps.width * maps.height * 4;
-      expect([maps.width, maps.height], [576, 420]);
+      // One atlas of per-face tiles (IOD 100 / 90 < 224: native size).
+      expect(maps.width, lessThanOrEqualTo(kAtlasShelfPx));
+      expect(maps.faces.map((f) => f.iod), [
+        closeTo(100, 0.5),
+        closeTo(90, 0.5),
+      ]);
       expect(maps.low, hasLength(n));
       for (final t in [
         maps.deltaA,
@@ -82,7 +87,10 @@ void main() {
       for (final (f, id) in [(_a, 1), (_b, 2)]) {
         for (final (x, y) in const [(0.5, 0.4), (-0.5, 0.4), (0.0, 1.3)]) {
           final q = f.toPx(x, y);
-          expect(maps.nearest(RetouchChannel.faceId, q.x / 576, q.y / 420), id);
+          expect(
+            maps.sourceNearest(RetouchChannel.faceId, q.x / 576, q.y / 420),
+            id,
+          );
         }
       }
     });
@@ -91,7 +99,7 @@ void main() {
       final info = maps.packInfo();
       expect(info, hasLength(kRetouchInfoFloats));
       expect(kRetouchInfoFloats, 108);
-      expect(info.sublist(0, 3), [576, 420, 2]);
+      expect(info.sublist(0, 3), [maps.width, maps.height, 2]);
       final a = maps.faceInSlot(0)!;
       expect(info[4], closeTo(_a.scleraL, 0.02));
       expect(info[5], 1);
@@ -101,12 +109,15 @@ void main() {
       expect(info[9], closeTo(a.lipShiftL, 1e-6));
       expect(info[10], closeTo(a.blushA, 1e-6));
       expect(info[11], closeTo(a.blushB, 1e-6));
-      // Iris centres (map px = image px here).
+      // Iris centres in map px: image px through the face's transform.
       final r = _a.toPx(-0.5, 0), l = _a.toPx(0.5, 0);
-      expect(info[12], closeTo(r.x, 0.01));
-      expect(info[13], closeTo(r.y, 0.01));
-      expect(info[14], closeTo(l.x, 0.01));
-      expect(info[15], closeTo(l.y, 0.01));
+      final t = maps.transformOf(a);
+      expect(t.sx, 576);
+      expect(t.sy, 420);
+      expect(info[12], closeTo(r.x + t.tx, 0.01));
+      expect(info[13], closeTo(r.y + t.ty, 0.01));
+      expect(info[14], closeTo(l.x + t.tx, 0.01));
+      expect(info[15], closeTo(l.y + t.ty, 0.01));
       expect(info[16 + 1], 1, reason: 'slot 1 has maps');
       expect(info[4 + 12 * 2 + 1], 0, reason: 'slot 2 has no maps');
       expect(info[4 + 12 * 2 + 4], 1, reason: 'neutral lip gain');
@@ -137,12 +148,52 @@ void main() {
     });
   });
 
-  group('analysis grid Rres (§3.0)', () {
-    test('aims for an IOD of 160 within 1024–2048, never above the source', () {
-      expect(retouchMapLongEdge(4000, 400), 1600);
-      expect(retouchMapLongEdge(4000, 100), kRetouchMaxLongEdge);
-      expect(retouchMapLongEdge(6000, 3000), kRetouchMinLongEdge);
-      expect(retouchMapLongEdge(800, 50), 800);
+  group('per-face tiles', () {
+    test('aim for an IOD of 224, never above the source', () {
+      final big = renderSynthPortrait(900, 700, [
+        const SynthFace(id: 'big', cx: 450, cy: 330, iod: 300),
+      ]);
+      final plans = planFaceTiles(big.analysis, 900, 700);
+      expect(plans, hasLength(1));
+      expect(plans.single.gridW / 900, closeTo(224 / 300, 0.01));
+      final small = planFaceTiles(p.analysis, 576, 420);
+      expect(small.map((t) => (t.gridW, t.gridH)), [(576, 420), (576, 420)]);
+      // The tile covers the work rect and reaches below the chin.
+      final f = FaceFrame.tryCreate(p.analysis.faces[0], 0, 576, 420)!;
+      final w = small.first.window;
+      expect(w.x0, lessThanOrEqualTo(f.rect.x0));
+      expect(w.x1, greaterThanOrEqualTo(f.rect.x1));
+      expect(w.y1, greaterThan(f.rect.y1));
+    });
+
+    test('many faces share one pixel budget', () {
+      final plans = planFaceTiles(p.analysis, 576, 420, budgetPx: 20000);
+      final area = plans.fold(0, (a, t) => a + t.width * t.height);
+      expect(area, lessThanOrEqualTo(20000 * 1.1));
+      expect(plans.first.gridW, lessThan(576));
+      // One shared factor: both faces keep their relative scale.
+      expect(plans[0].gridW, plans[1].gridW);
+    });
+
+    test('atlas packing keeps tiles apart and inside', () {
+      final a = packAtlas([(w: 10, h: 20), (w: 4000, h: 5), (w: 30, h: 8)]);
+      final r = [
+        for (var i = 0; i < 3; i++)
+          MapRect(
+            a.origins[i].x,
+            a.origins[i].y,
+            [10, 4000, 30][i],
+            [20, 5, 8][i],
+          ),
+      ];
+      for (var i = 0; i < 3; i++) {
+        expect(r[i].x0, greaterThanOrEqualTo(kAtlasGutterPx));
+        expect(r[i].x1, lessThanOrEqualTo(a.width - kAtlasGutterPx));
+        expect(r[i].y1, lessThanOrEqualTo(a.height - kAtlasGutterPx));
+        for (var j = i + 1; j < 3; j++) {
+          expect(r[i].intersect(r[j]).isEmpty, isTrue);
+        }
+      }
     });
 
     test('faces under 24 px IOD get no maps', () {
@@ -152,9 +203,9 @@ void main() {
       expect(computeRetouchMaps(tiny.image, tiny.analysis).hasFaces, isFalse);
     });
 
-    test('maps on a coarser grid are sampled in source uv', () {
-      final coarse = computeRetouchMaps(p.image, p.analysis, longEdge: 288);
-      expect([coarse.width, coarse.height], [288, 210]);
+    test('coarser tiles are still sampled in source uv', () {
+      final coarse = computeRetouchMaps(p.image, p.analysis, targetIod: 50);
+      expect(coarse.faces.first.iod, closeTo(50, 1));
       final q = _a.toPx(0.55, 0.24);
       double skin(RetouchMaps m) =>
           regionAt(m, RetouchChannel.skin, q.x.floor(), q.y.floor(), 576, 420);
@@ -172,6 +223,47 @@ void main() {
         ),
       );
       expect(out.data, isNot(p.image.data));
+    });
+
+    test('supplied full-resolution tiles set the analysed IOD', () {
+      // The "original" is twice the decode: the tiles come from it.
+      final full = renderSynthPortrait(1152, 840, [
+        const SynthFace(
+          id: 'a',
+          cx: 300,
+          cy: 300,
+          iod: 200,
+          group: FaceGroup.female,
+        ),
+        const SynthFace(id: 'b', cx: 840, cy: 320, iod: 180),
+      ]);
+      final plans = planFaceTiles(p.analysis, 1152, 840);
+      final tiles = [
+        for (final t in plans) FaceTileImage(t, resampleTile(full.image, t)),
+      ];
+      final hi = computeRetouchMaps(p.image, p.analysis, tiles: tiles);
+      expect(hi.faces.map((f) => f.iod), [closeTo(200, 1), closeTo(180, 1)]);
+      // A tile whose face id does not match is ignored (decode fallback).
+      final wrong = FaceTileImage(
+        FaceTilePlan(
+          slot: 0,
+          faceId: 'zz',
+          gridW: plans[0].gridW,
+          gridH: plans[0].gridH,
+          window: plans[0].window,
+        ),
+        tiles[0].pixels,
+      );
+      final lo = computeRetouchMaps(p.image, p.analysis, tiles: [wrong]);
+      expect(lo.faces.first.iod, closeTo(100, 1));
+      expect(
+        () => FaceTileImage(plans[0], RgbaBuffer(3, 3)),
+        throwsArgumentError,
+      );
+      // The same face is found at the same source uv in both.
+      final q = _a.toPx(0, 0.4);
+      expect(hi.sourceNearest(RetouchChannel.faceId, q.x / 576, q.y / 420), 1);
+      expect(lo.sourceNearest(RetouchChannel.faceId, q.x / 576, q.y / 420), 1);
     });
   });
 
@@ -238,7 +330,7 @@ void main() {
       final w = p.image.width;
       var changedA = 0;
       for (var i = 0; i < w * p.image.height; i++) {
-        final slot = maps.nearest(
+        final slot = maps.sourceNearest(
           RetouchChannel.faceId,
           (i % w + 0.5) / w,
           (i ~/ w + 0.5) / p.image.height,

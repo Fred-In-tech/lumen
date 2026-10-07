@@ -20,7 +20,7 @@ void main() {
     final one = onePortrait();
     p = one.p;
     maps = one.maps;
-    lowMaps = computeRetouchMaps(p.image, p.analysis, longEdge: 256);
+    lowMaps = computeRetouchMaps(p.image, p.analysis, targetIod: 64);
   });
 
   Future<({int max, double mean, int changed})> check(
@@ -43,7 +43,7 @@ void main() {
       }
       if (!same) changed++;
       final x = (i ~/ 4) % w, y = (i ~/ 4) ~/ w;
-      final face = m.nearest(
+      final face = m.sourceNearest(
         RetouchChannel.faceId,
         (x + 0.5) / w,
         (y + 0.5) / h,
@@ -488,5 +488,60 @@ void main() {
     final tiled = await gpuRetouch(p.image, maps, u, tileSize: 100);
     expect(tiled.data, single.data);
     expect(EngineImages.live, 0);
+  });
+
+  test('per-face tiles: overlapping faces at different scales', () async {
+    final two = renderSynthPortrait(384, 300, const [
+      SynthFace(id: 'a', cx: 150, cy: 120, iod: 80),
+      SynthFace(id: 'b', cx: 250, cy: 135, iod: 60),
+    ]);
+    // Face a is analysed on a 2× "original", face b on the decode.
+    final big = renderSynthPortrait(768, 600, const [
+      SynthFace(id: 'a', cx: 300, cy: 240, iod: 160),
+      SynthFace(id: 'b', cx: 500, cy: 270, iod: 120),
+    ]);
+    final plans = planFaceTiles(two.analysis, 768, 600);
+    final m = computeRetouchMaps(
+      two.image,
+      two.analysis,
+      tiles: [FaceTileImage(plans[0], resampleTile(big.image, plans[0]))],
+    );
+    expect(m.faces.map((f) => f.iod.round()), [160, 60]);
+    final u = RetouchUniforms.fromSettings(
+      portraitOf({
+        PortraitIds.skinSoftening: 80,
+        PortraitIds.skinEven: 60,
+        PortraitIds.acne: 100,
+        PortraitIds.iris: 80,
+        PortraitIds.skinTexture: -50,
+      }),
+      two.analysis,
+    );
+    final cpu = applyRetouch(two.image, m, u);
+    final gpu = await gpuRetouch(two.image, m, u);
+    final d = diffStats(gpu, cpu);
+    var leaked = 0, changed = 0;
+    final w = two.image.width, h = two.image.height;
+    for (var i = 0; i < cpu.data.length; i += 4) {
+      if (cpu.data[i] != two.image.data[i]) changed++;
+      final x = (i ~/ 4) % w, y = (i ~/ 4) ~/ w;
+      if (m.sourceNearest(
+            RetouchChannel.faceId,
+            (x + 0.5) / w,
+            (y + 0.5) / h,
+          ) !=
+          0) {
+        continue;
+      }
+      for (var c = 0; c < 3; c++) {
+        if (gpu.data[i + c] != two.image.data[i + c]) leaked++;
+      }
+    }
+    expect(changed, greaterThan(1000));
+    expect(leaked, 0);
+    expect(d.max, lessThanOrEqualTo(3));
+    expect(d.mean, lessThanOrEqualTo(1));
+    final tiled = await gpuRetouch(two.image, m, u, tileSize: 70);
+    expect(tiled.data, gpu.data);
   });
 }

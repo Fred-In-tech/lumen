@@ -49,9 +49,17 @@ import 'skin_deltas.dart' show SkinMeasure;
 /// Faces with their own uniform row (more faces are not retouched).
 const int kMaxRetouchFaces = 8;
 
+/// Texels the nearest-texel lookup of `RetouchMaps.locate` (and the
+/// shader's `LOCATE`) is shifted by, off exact texel edges.
+const double kLocateBias = 0.01;
+
 /// Floats of [RetouchMaps.packInfo]: `uMapInfo`, 3 vec4 per face, then
 /// the backdrop info (2 vec4).
 const int kRetouchInfoFloats = 4 + 12 * kMaxRetouchFaces + kBackdropInfoFloats;
+
+/// Floats of [RetouchMaps.packFaceMaps]: 2 vec4 per face (transform and
+/// tile bounds).
+const int kRetouchFaceMapFloats = 8 * kMaxRetouchFaces;
 
 /// Signed encoding ranges of the heal deltas (OkLab L, a, b).
 const double kHealRangeL = 0.5;
@@ -155,7 +163,19 @@ class RetouchFaceInfo {
     this.centerX = 0,
     this.centerY = 0,
     this.skin = const SkinMeasure(),
+    this.mapScaleX,
+    this.mapScaleY,
+    this.mapOffsetX = 0,
+    this.mapOffsetY = 0,
   });
+
+  /// Source uv → map pixels of this face: `x = u · mapScaleX + mapOffsetX`
+  /// (likewise y). Null scales mean the whole-frame grid (`W`, `H`). A
+  /// per-face tile (`face_tiles.dart`) has its own scale and offset.
+  final double? mapScaleX;
+  final double? mapScaleY;
+  final double mapOffsetX;
+  final double mapOffsetY;
 
   /// Measured state of this face's skin (inputs of Auto Retouch).
   final SkinMeasure skin;
@@ -368,6 +388,96 @@ class RetouchMaps {
 
   /// Clamp-to-edge texel index (no `num.clamp`: hot path).
   static int _ci(int i, int size) => i < 0 ? 0 : (i >= size ? size - 1 : i);
+
+  /// Map-pixel transform of [f]: `(scaleX, scaleY, offsetX, offsetY)`.
+  ({double sx, double sy, double tx, double ty}) transformOf(
+    RetouchFaceInfo f,
+  ) => (
+    sx: f.mapScaleX ?? width.toDouble(),
+    sy: f.mapScaleY ?? height.toDouble(),
+    tx: f.mapOffsetX,
+    ty: f.mapOffsetY,
+  );
+
+  /// The face whose tile holds source uv `(u, v)` and owns it (its face id
+  /// is there), or -1; with a face, [out] gets the map uv to sample at
+  /// (`out[0..1]`) and the nearest texel (`out[2..3]`, for the face id,
+  /// spot code and wrinkle zone). Mirrors `LOCATE` in `retouch.frag`:
+  /// faces in slot order, the first tile whose bounds contain the point
+  /// and whose nearest face-id texel is that face wins. The nearest texel
+  /// is taken [kLocateBias] texels on: a tile finer than the image puts
+  /// pixel centres exactly on texel edges, where float32 (GPU) and
+  /// float64 (CPU) would round to different texels.
+  int locate(double u, double v, List<double> out) {
+    for (final f in faces) {
+      final t = transformOf(f);
+      final x = u * t.sx + t.tx, y = v * t.sy + t.ty;
+      final r = f.rect;
+      if (x < r.x0 || y < r.y0 || x >= r.x1 || y >= r.y1) continue;
+      final qx = _ci((x + kLocateBias).floor(), width);
+      final qy = _ci((y + kLocateBias).floor(), height);
+      if (nearestTexel(RetouchChannel.faceId, qx, qy) != f.slot + 1) continue;
+      out[0] = x / width;
+      out[1] = y / height;
+      if (out.length >= 4) {
+        out[2] = qx.toDouble();
+        out[3] = qy.toDouble();
+      }
+      return f.slot;
+    }
+    return -1;
+  }
+
+  /// Byte of [c] at texel `(x, y)` of its tile.
+  int nearestTexel(RetouchChannel c, int x, int y) {
+    final tex = c.texture == 0 ? regionA : regionB;
+    return tex[(y * 2 * width + c.tile * width + x) * 4 + c.channel];
+  }
+
+  /// [nearest] of [c] at *source* uv `(u, v)`: 0 where no face owns the
+  /// point (UI hit tests, tests).
+  int sourceNearest(RetouchChannel c, double u, double v) {
+    final uv = Float64List(4);
+    if (locate(u, v, uv) < 0) return 0;
+    return nearestTexel(c, uv[2].toInt(), uv[3].toInt());
+  }
+
+  /// Bilinear byte value (0..255) of region channel [c] at *source* uv
+  /// `(u, v)`: 0 where no face owns the point.
+  double sourceRegion(RetouchChannel c, double u, double v) {
+    final uv = Float64List(4), out = Float64List(3);
+    if (locate(u, v, uv) < 0) return 0;
+    sampleTile(
+      c.texture == 0 ? regionA : regionB,
+      c.tile,
+      uv[0],
+      uv[1],
+      out,
+      0,
+    );
+    return out[c.channel];
+  }
+
+  /// Face map uniforms for `retouch.frag` ([kRetouchFaceMapFloats]): per
+  /// slot k, `uFaceMap[2k]` = (scaleX, scaleY, offsetX, offsetY) and
+  /// `uFaceMap[2k+1]` = tile bounds (x0, y0, x1, y1), all in map px.
+  /// Empty slots are zero (their bounds contain nothing).
+  Float32List packFaceMaps() {
+    final out = Float32List(kRetouchFaceMapFloats);
+    for (final f in faces) {
+      final t = transformOf(f), o = 8 * f.slot, r = f.rect;
+      out
+        ..[o] = t.sx
+        ..[o + 1] = t.sy
+        ..[o + 2] = t.tx
+        ..[o + 3] = t.ty
+        ..[o + 4] = r.x0.toDouble()
+        ..[o + 5] = r.y0.toDouble()
+        ..[o + 6] = r.x1.toDouble()
+        ..[o + 7] = r.y1.toDouble();
+    }
+    return out;
+  }
 
   /// Analysis uniforms for `retouch.frag` (change only when the maps are
   /// rebuilt), [kRetouchInfoFloats] floats:

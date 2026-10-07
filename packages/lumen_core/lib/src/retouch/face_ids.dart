@@ -10,10 +10,14 @@ import 'kernel_constants.dart';
 import 'map_rect.dart';
 import 'retouch_maps.dart';
 
-/// Per grid pixel, the slot of the face that owns it (−1 = none): among
-/// the faces whose work rect contains the pixel, the one whose
-/// size-normalized centre is nearest; ties go to the larger face. With
-/// [within], only texels inside it are resolved (the rest stay −1).
+/// Per map texel, the slot of the face that owns it (−1 = none). A texel
+/// of face f's rect stands for a source point; f owns it unless another
+/// face whose rect also covers that point (through its own transform,
+/// `RetouchMaps.transformOf`) has its size-normalized centre nearer; ties
+/// go to the larger face. On one shared grid this is the classic
+/// "nearest centre among the rects that contain the pixel"; with
+/// per-face tiles it resolves overlaps in source space. With [within],
+/// only texels inside it are resolved (the rest stay −1).
 Int8List faceOwners(
   List<RetouchFaceInfo> faces,
   int w,
@@ -21,20 +25,46 @@ Int8List faceOwners(
   MapRect? within,
 }) {
   final owner = Int8List(w * h)..fillRange(0, w * h, -1);
-  final dist = Float32List(w * h)..fillRange(0, w * h, double.infinity);
-  final bySize = [...faces]..sort((a, b) => b.iod.compareTo(a.iod));
-  for (final f in bySize) {
+  final ts = [
+    for (final f in faces)
+      (
+        sx: f.mapScaleX ?? w.toDouble(),
+        sy: f.mapScaleY ?? h.toDouble(),
+        tx: f.mapOffsetX,
+        ty: f.mapOffsetY,
+      ),
+  ];
+  // Larger first (source size: IOD in uv), so ties go to the larger face.
+  final order = List.generate(faces.length, (i) => i)
+    ..sort(
+      (a, b) => (faces[b].iod / ts[b].sx).compareTo(faces[a].iod / ts[a].sx),
+    );
+  final rank = List.filled(faces.length, 0);
+  for (var i = 0; i < order.length; i++) {
+    rank[order[i]] = i;
+  }
+  for (var k = 0; k < faces.length; k++) {
+    final f = faces[k], t = ts[k];
     final r = within == null ? f.rect : f.rect.intersect(within);
     for (var y = r.y0; y < r.y1; y++) {
+      final v = (y + 0.5 - t.ty) / t.sy;
       final dy = y + 0.5 - f.centerY;
       for (var x = r.x0; x < r.x1; x++) {
         final dx = x + 0.5 - f.centerX;
-        final i = y * w + x;
         final d = math.sqrt(dx * dx + dy * dy) / f.iod;
-        if (d < dist[i]) {
-          dist[i] = d;
-          owner[i] = f.slot;
+        final u = (x + 0.5 - t.tx) / t.sx;
+        var mine = true;
+        for (var j = 0; j < faces.length && mine; j++) {
+          if (j == k) continue;
+          final g = faces[j], tg = ts[j];
+          final qx = u * tg.sx + tg.tx, qy = v * tg.sy + tg.ty;
+          final gr = g.rect;
+          if (qx < gr.x0 || qy < gr.y0 || qx >= gr.x1 || qy >= gr.y1) continue;
+          final ex = qx - g.centerX, ey = qy - g.centerY;
+          final dg = math.sqrt(ex * ex + ey * ey) / g.iod;
+          if (dg < d || (dg == d && rank[j] < rank[k])) mine = false;
         }
+        if (mine) owner[y * w + x] = f.slot;
       }
     }
   }

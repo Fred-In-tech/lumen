@@ -99,18 +99,8 @@ double _annulus(
 }
 
 /// Region weight (0..1) of [c] at pixel `(x, y)` of a `w × h` image.
-double regionAt(RetouchMaps m, RetouchChannel c, int x, int y, int w, int h) {
-  final out = Float64List(3);
-  m.sampleTile(
-    c.texture == 0 ? m.regionA : m.regionB,
-    c.tile,
-    (x + 0.5) / w,
-    (y + 0.5) / h,
-    out,
-    0,
-  );
-  return out[c.channel] / 255;
-}
+double regionAt(RetouchMaps m, RetouchChannel c, int x, int y, int w, int h) =>
+    m.sourceRegion(c, (x + 0.5) / w, (y + 0.5) / h) / 255;
 
 /// Erosion of a 0/1 [mask] by a square of radius [r] (box-count based).
 Uint8List erodeMask(Uint8List mask, int w, int h, int r) {

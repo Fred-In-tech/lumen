@@ -80,6 +80,13 @@ const double kStatsMaxHair = 0.3;
 /// Smoothing keeps at least this share of its bands under hair (§4.2 8).
 const double kHairSmoothKeep = 0.75;
 
+/// With a parsing model, skin it finds outside the face prior (neck, ears,
+/// a hand near the face) gets at most this share of the face's effects.
+const double kOffFaceSkinCap = 0.6;
+
+/// Accessories (glasses frames, jewellery) count this much as non-skin.
+const double kParsingAccessoryWeight = 0.8;
+
 /// Skin masks of one face over its work rect (all planes 0..1).
 class SkinMasks {
   const SkinMasks({
@@ -145,9 +152,14 @@ SkinMasks buildSkinMasks(
     (c) => gaussianBlur(c, w, h, kSkinColorBlurIod * iod),
   );
   final pColor = model.probabilityPlane(soft);
-  final prior = parsing == null
-      ? _prior(f)
-      : _parsingPrior(f, parsing, gridW, gridH);
+  // The geometry prior is the face; a parsing model removes hair (blond and
+  // grey included), clothes and accessories from it and adds the skin it
+  // finds around it (capped below).
+  final face = _prior(f);
+  final parse = parsing == null
+      ? null
+      : _parsingPlanes(f, parsing, gridW, gridH);
+  final prior = parse == null ? face : _withParsing(face, parse);
   // Provisional skin, then the local skin lightness it implies.
   final m0 = Float32List(n);
   for (var i = 0; i < n; i++) {
@@ -217,13 +229,16 @@ SkinMasks buildSkinMasks(
   );
   final effect = Float32List(n);
   for (var i = 0; i < n; i++) {
-    final v = clamp01(feathered[i]) * clamp01(2 * reach[i]) * (1 - protect[i]);
+    var v = clamp01(feathered[i]) * clamp01(2 * reach[i]) * (1 - protect[i]);
+    if (parse != null) v *= face[i] + (1 - face[i]) * kOffFaceSkinCap;
     effect[i] = v < 0.004 ? 0 : v;
   }
   final core = erode(filled, w, h, px(kStatsErodeIod));
   final stats = Float32List(n), spots = Float32List(n);
   for (var i = 0; i < n; i++) {
     if (core[i] < 0.5) continue;
+    // Measurements and spots stay on the face itself.
+    if (parse != null && face[i] < 0.5) continue;
     if (holes[i] == 1) spots[i] = 1;
     if (hair[i] > kStatsMaxHair || holes[i] == 1) continue;
     if (clip != null && clip[i] > 0.25) continue;
@@ -305,30 +320,44 @@ Float32List _prior(FaceFrame f) {
   return gaussianBlur(grown, rect.w, rect.h, kSkinPriorFeatherIod * iod);
 }
 
-/// Multiclass skin (face ∪ body) minus hair and accessories.
-Float32List _parsingPrior(
+/// Parsing planes over `f.rect`: skin (face ∪ body) and how much of the
+/// pixel is not hair, clothes or accessories.
+typedef _Parse = ({Float32List skin, Float32List keep});
+
+_Parse _parsingPlanes(
   FaceFrame f,
   FaceParsingPlanes planes,
   int gridW,
   int gridH,
 ) {
   final rect = f.rect;
-  final out = Float32List(rect.area);
+  final skin = Float32List(rect.area), keep = Float32List(rect.area);
   for (var y = rect.y0; y < rect.y1; y++) {
     final v = (y + 0.5) / gridH;
     for (var x = rect.x0; x < rect.x1; x++) {
-      final u = (x + 0.5) / gridW;
-      final skin = math.max(
+      final u = (x + 0.5) / gridW, i = rect.index(x, y);
+      skin[i] = math.max(
         planes.sample(ParsingClass.faceSkin, u, v),
         planes.sample(ParsingClass.bodySkin, u, v),
       );
-      if (skin <= 0) continue;
-      out[rect.index(x, y)] =
-          skin *
+      keep[i] =
           (1 - planes.sample(ParsingClass.hair, u, v)) *
           (1 - planes.sample(ParsingClass.clothes, u, v)) *
-          (1 - 0.8 * planes.sample(ParsingClass.accessories, u, v));
+          (1 -
+              kParsingAccessoryWeight *
+                  planes.sample(ParsingClass.accessories, u, v));
     }
+  }
+  return (skin: skin, keep: keep);
+}
+
+/// The face prior without what the parser calls hair / clothes /
+/// accessories, plus the skin it finds outside the face.
+Float32List _withParsing(Float32List face, _Parse p) {
+  final out = Float32List(face.length);
+  for (var i = 0; i < out.length; i++) {
+    final k = clamp01(p.keep[i]);
+    out[i] = math.max(face[i] * k, (1 - face[i]) * p.skin[i] * k);
   }
   return out;
 }

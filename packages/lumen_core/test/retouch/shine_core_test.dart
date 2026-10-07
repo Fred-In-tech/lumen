@@ -59,7 +59,7 @@ void main() {
     final i = (c.y.floor() * _w + c.x.floor()) * 4;
     expect(p.image.data[i], 255);
     expect(
-      maps.nearest(RetouchChannel.spotCode, c.x / _w, c.y / _h),
+      maps.sourceNearest(RetouchChannel.spotCode, c.x / _w, c.y / _h),
       kShineCoreCode,
     );
     expect(spotSelection(kShineCoreCode, 1, 1, 1, 0), 0);

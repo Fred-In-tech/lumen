@@ -35,28 +35,30 @@ import 'retouch_maps.dart';
 const double kPenSpotReachIod = 0.12;
 
 /// [base] (pen-free maps) with [strokes] applied; [base] itself when no
-/// stroke reaches a face. Only the strokes' bounding box is touched.
+/// stroke reaches a face. Only the strokes' bounding box is touched. Each
+/// face maps the strokes (source uv) through its own transform
+/// (`RetouchMaps.transformOf`), so per-face tiles get the same strokes.
 RetouchMaps applySkinPen(RetouchMaps base, List<BrushStroke> strokes) {
   if (strokes.isEmpty || !base.hasFaces) return base;
   final w = base.width, h = base.height;
-  final box = _strokesBox(strokes, w, h);
-  if (box == null) return base;
-  final maxIod = base.faces.map((f) => f.iod).reduce(math.max);
-  final pad = (kPenSpotReachIod * maxIod).ceil() + 2;
-  final region = MapRect(
-    box.x0 - pad,
-    box.y0 - pad,
-    box.w + 2 * pad,
-    box.h + 2 * pad,
-  ).intersect(MapRect(0, 0, w, h));
   Uint8List? ra, rb;
-  Int8List? owner;
   for (final f in base.faces) {
+    final t = base.transformOf(f);
+    final box = _strokesBox(strokes, t, f.rect);
+    if (box == null) continue;
+    final pad = (kPenSpotReachIod * f.iod).ceil() + 2;
+    final region = MapRect(
+      box.x0 - pad,
+      box.y0 - pad,
+      box.w + 2 * pad,
+      box.h + 2 * pad,
+    ).intersect(MapRect(0, 0, w, h));
     final sub = f.rect.intersect(region);
     if (sub.isEmpty) continue;
     Float32List? skin, keep, cap;
+    Int8List? owner;
     for (final s in strokes) {
-      final st = penStrokeStrength(s, sub, w, h);
+      final st = penStrokeStrength(s, sub, t.sx, t.sy, ox: t.tx, oy: t.ty);
       if (st == null) continue;
       ra ??= Uint8List.fromList(base.regionA);
       rb ??= Uint8List.fromList(base.regionB);
@@ -88,42 +90,54 @@ RetouchMaps applySkinPen(RetouchMaps base, List<BrushStroke> strokes) {
       }
     }
     if (skin == null || keep == null || owner == null) continue;
-    _write(base, f, sub, w, h, owner, skin, keep, ra!, rb!);
+    _write(base, f, t, sub, w, owner, skin, keep, ra!, rb!);
     assignFaceIds(f, w, owner, base.deltaB, ra, rb, within: sub);
   }
   if (ra == null || rb == null) return base;
   return base.withRegions(ra, rb);
 }
 
-/// Grid-pixel bounding box of every stroke (brush radius included), or
-/// null when no stroke can paint.
-MapRect? _strokesBox(List<BrushStroke> strokes, int w, int h) {
+typedef _Transform = ({double sx, double sy, double tx, double ty});
+
+/// Map-pixel bounding box (brush radius included) of every stroke for a
+/// face with transform [t], clipped to [rect]; null when nothing can
+/// paint there.
+MapRect? _strokesBox(List<BrushStroke> strokes, _Transform t, MapRect rect) {
   var x0 = double.infinity, y0 = double.infinity;
   var x1 = -double.infinity, y1 = -double.infinity;
-  final le = math.max(w, h);
+  final le = math.max(t.sx, t.sy);
   for (final s in strokes) {
     if (s.points.isEmpty || s.flow <= 0) continue;
     final r = s.radius * le + 1;
     for (final p in s.points) {
-      x0 = math.min(x0, p.$1 * w - r);
-      y0 = math.min(y0, p.$2 * h - r);
-      x1 = math.max(x1, p.$1 * w + r);
-      y1 = math.max(y1, p.$2 * h + r);
+      final x = p.$1 * t.sx + t.tx, y = p.$2 * t.sy + t.ty;
+      x0 = math.min(x0, x - r);
+      y0 = math.min(y0, y - r);
+      x1 = math.max(x1, x + r);
+      y1 = math.max(y1, y + r);
     }
   }
   if (x1 < x0) return null;
   final a = x0.floor(), b = y0.floor();
   final box = MapRect(a, b, x1.ceil() - a, y1.ceil() - b);
-  final clipped = box.intersect(MapRect(0, 0, w, h));
+  final clipped = box.intersect(rect);
   return clipped.isEmpty ? null : clipped;
 }
 
-/// Stroke strength (0..1, flow included) over [rect] of a `w × h` grid, or
-/// null when the stroke misses [rect]. Matches `MaskRasterizer`'s brush.
-Float32List? penStrokeStrength(BrushStroke s, MapRect rect, int w, int h) {
+/// Stroke strength (0..1, flow included) over [rect] of a `w × h` grid
+/// (uv `(u, v)` at map px `(u·w + ox, v·h + oy)`), or null when the
+/// stroke misses [rect]. Matches `MaskRasterizer`'s brush.
+Float32List? penStrokeStrength(
+  BrushStroke s,
+  MapRect rect,
+  num w,
+  num h, {
+  double ox = 0,
+  double oy = 0,
+}) {
   if (s.points.isEmpty || s.flow <= 0) return null;
   final r = s.radius * math.max(w, h);
-  final pts = [for (final p in s.points) (p.$1 * w, p.$2 * h)];
+  final pts = [for (final p in s.points) (p.$1 * w + ox, p.$2 * h + oy)];
   final segs = pts.length == 1
       ? [(pts[0], pts[0])]
       : [for (var i = 0; i + 1 < pts.length; i++) (pts[i], pts[i + 1])];
@@ -189,9 +203,9 @@ int _byte(double v) => v <= 0 ? 0 : (v >= 1 ? 255 : (v * 255 + 0.5).toInt());
 void _write(
   RetouchMaps base,
   RetouchFaceInfo f,
+  _Transform t,
   MapRect rect,
   int w,
-  int h,
   Int8List owner,
   Float32List skin,
   Float32List keep,
@@ -203,7 +217,7 @@ void _write(
   final others = <BlemishCandidate>[];
   for (final b in base.blemishes) {
     if (b.slot != f.slot) continue;
-    final cx = (b.u * w).floor(), cy = (b.v * h).floor();
+    final cx = (b.u * t.sx + t.tx).floor(), cy = (b.v * t.sy + t.ty).floor();
     final inRect =
         cx >= rect.x0 && cx < rect.x1 && cy >= rect.y0 && cy < rect.y1;
     (inRect && keep[rect.index(cx, cy)] > 0.5 ? erased : others).add(b);
@@ -230,7 +244,7 @@ void _write(
       var best = double.infinity, fromErased = false;
       for (final group in [erased, others]) {
         for (final b in group) {
-          final dx = px - b.u * w, dy = py - b.v * h;
+          final dx = px - (b.u * t.sx + t.tx), dy = py - (b.v * t.sy + t.ty);
           final d = dx * dx + dy * dy;
           if (d < best) {
             best = d;

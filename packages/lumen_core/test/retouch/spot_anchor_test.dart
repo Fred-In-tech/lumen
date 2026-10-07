@@ -116,7 +116,11 @@ void main() {
     final m = computeRetouchMaps(p.image, p.analysis, overrides: o);
     final manual = m.blemishes.where((b) => b.id.startsWith('manual:'));
     expect(manual, hasLength(1));
-    final code = m.nearest(RetouchChannel.spotCode, spot.x / 512, spot.y / 512);
+    final code = m.sourceNearest(
+      RetouchChannel.spotCode,
+      spot.x / 512,
+      spot.y / 512,
+    );
     expect(spotSelection(code, 0, 0, 0), 1, reason: 'forced');
   });
 

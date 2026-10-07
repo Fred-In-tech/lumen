@@ -8,14 +8,14 @@
 // retouch/wrinkle_zones.dart. Every skin effect is weight * delta added
 // to the source in OkLab: the deltas are band-limited on the CPU, so no
 // uniform value can attenuate pores. Uniforms: render/retouch_pass.dart
-// (318 floats). Untouched pixels output the source texel unchanged.
+// (382 floats). Untouched pixels output the source texel unchanged.
 #include <flutter/runtime_effect.glsl>
 #include "lib/common.glsl"
 
 precision highp float;
 
 uniform vec2 uSize;            // 0-1   pass size (px)
-uniform vec4 uVec0[79];
+uniform vec4 uVec0[95];
 #define uTile uVec0[0]  // 2-5   pass offset xy in the source, full wh
 #define uMapInfo uVec0[1]  // 6-9   map grid W, H, face count, source is the pass window
 #define uFaceInfo0 uVec0[2]  // 10-13 face 0: teeth cap L, active, IOD, lip gloss L
@@ -95,6 +95,22 @@ uniform vec4 uVec0[79];
 #define uFace47 uVec0[76]  // 306-309 face 7: wrinkle forehead, frown, smile, marionette
 #define uBackdropParams uVec0[77]  // 310-313 clean, unify, luminance, strays
 #define uClothesParams uVec0[78]  // 314-317 clothes wrinkles, lint, active, 0
+#define uFaceMap0 uVec0[79]  // 318-321 face 0: source uv -> map px scale x, y, offset x, y
+#define uFaceMap1 uVec0[80]  // 322-325 face 0: tile bounds x0, y0, x1, y1 (map px)
+#define uFaceMap2 uVec0[81]  // 326-329 face 1: source uv -> map px scale x, y, offset x, y
+#define uFaceMap3 uVec0[82]  // 330-333 face 1: tile bounds x0, y0, x1, y1 (map px)
+#define uFaceMap4 uVec0[83]  // 334-337 face 2: source uv -> map px scale x, y, offset x, y
+#define uFaceMap5 uVec0[84]  // 338-341 face 2: tile bounds x0, y0, x1, y1 (map px)
+#define uFaceMap6 uVec0[85]  // 342-345 face 3: source uv -> map px scale x, y, offset x, y
+#define uFaceMap7 uVec0[86]  // 346-349 face 3: tile bounds x0, y0, x1, y1 (map px)
+#define uFaceMap8 uVec0[87]  // 350-353 face 4: source uv -> map px scale x, y, offset x, y
+#define uFaceMap9 uVec0[88]  // 354-357 face 4: tile bounds x0, y0, x1, y1 (map px)
+#define uFaceMap10 uVec0[89]  // 358-361 face 5: source uv -> map px scale x, y, offset x, y
+#define uFaceMap11 uVec0[90]  // 362-365 face 5: tile bounds x0, y0, x1, y1 (map px)
+#define uFaceMap12 uVec0[91]  // 366-369 face 6: source uv -> map px scale x, y, offset x, y
+#define uFaceMap13 uVec0[92]  // 370-373 face 6: tile bounds x0, y0, x1, y1 (map px)
+#define uFaceMap14 uVec0[93]  // 374-377 face 7: source uv -> map px scale x, y, offset x, y
+#define uFaceMap15 uVec0[94]  // 378-381 face 7: tile bounds x0, y0, x1, y1 (map px)
 
 uniform sampler2D uSource;     // 0: sRGB source (FilterQuality.none)
 uniform sampler2D uLow;        // 1: W x H low-pass (sRGB, dithered), FilterQuality.none
@@ -151,14 +167,41 @@ vec3 bandLab(vec3 srgb) {
 
 // Face steps 1-14 (retouch_kernel.dart _face): writes o, false when no
 // face effect touches the pixel.
+// Face k's tile (retouch_maps.dart locate): map px of uv through its
+// transform M; it claims uv when inside its bounds B and the nearest
+// face-id texel there is its id (slot + 1). The texel is taken 0.01 on
+// (kLocateBias): pixel centres can sit exactly on texel edges.
+#define LOCATE(ID, M, B) if (fid < 0.5) { \
+    vec2 p = uv * M.xy + M.zw; \
+    if (p.x >= B.x && p.y >= B.y && p.x < B.z && p.y < B.w) { \
+      vec2 q = clamp(floor(p + 0.01), vec2(0.0), W - 1.0); \
+      vec3 c = texture(uRegionB, (vec2(q.x + W.x, q.y) + 0.5) / A).rgb; \
+      if (abs(floor(c.r * 255.0 + 0.5) - ID) < 0.5) { \
+        fid = ID; \
+        pm = p; \
+        ids = c; \
+      } \
+    } \
+  }
+
 bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
   vec2 W = uMapInfo.xy;
   vec2 A = vec2(2.0 * W.x, W.y);
-  // 1. Face row: nearest face id (0 = no face), spot code, wrinkle zone.
-  vec2 nt = clamp(floor(uv * W), vec2(0.0), W - 1.0);
-  vec3 ids = texture(uRegionB, (vec2(nt.x + W.x, nt.y) + 0.5) / A).rgb;
-  float fid = floor(ids.r * 255.0 + 0.5);
+  // 1. Face row: the face whose tile owns uv (0 = none), its map px pm,
+  // spot code and wrinkle zone (nearest texel).
+  float fid = 0.0;
+  vec2 pm = vec2(0.0);
+  vec3 ids = vec3(0.0);
+  LOCATE(1.0, uFaceMap0, uFaceMap1)
+  LOCATE(2.0, uFaceMap2, uFaceMap3)
+  LOCATE(3.0, uFaceMap4, uFaceMap5)
+  LOCATE(4.0, uFaceMap6, uFaceMap7)
+  LOCATE(5.0, uFaceMap8, uFaceMap9)
+  LOCATE(6.0, uFaceMap10, uFaceMap11)
+  LOCATE(7.0, uFaceMap12, uFaceMap13)
+  LOCATE(8.0, uFaceMap14, uFaceMap15)
   if (fid < 0.5) return false;
+  vec2 muv = pm / W;
   vec4 r0;
   vec4 r1;
   vec4 r2;
@@ -208,7 +251,7 @@ bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
   vec2 lo;
   vec2 hi;
   vec2 f;
-  maskTaps(uv, W, lo, hi, f);
+  maskTaps(muv, W, lo, hi, f);
   vec3 ra0 = BILERP(uRegionA, 0.0, A);
   vec3 ra1 = BILERP(uRegionA, W.x, A);
   vec3 rb0 = BILERP(uRegionB, 0.0, A);
@@ -242,7 +285,6 @@ bool faceRetouch(vec2 uv, vec3 li, inout vec3 o) {
   // Red-eye: analytic discs around the iris centres (map px).
   float re = 0.0;
   if (r0.w > 0.0) {
-    vec2 pm = uv * W;
     float rad = 0.11 * info0.z;  // kRedEyeRadiusIod
     float d = min(length(pm - info2.xy), length(pm - info2.zw));
     re = r0.w * (1.0 - smoothstep(0.8 * rad, rad, d));

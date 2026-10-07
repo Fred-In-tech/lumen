@@ -165,6 +165,26 @@ bool isVein(double dx, double y) =>
 
 enum SynthGlasses { none, clear, tinted }
 
+/// Head hair colour: dark (every older fixture), or blond / grey close to
+/// the skin's own lightness and hue (what colour rules cannot separate).
+enum SynthHair { dark, blond, grey }
+
+/// Fringe (local y range) when [SynthFace.fringe]: hair over the top of
+/// the forehead, inside the skin oval.
+const kFringeY0 = -1.10, kFringeY1 = -0.80;
+
+/// Neck (local) when [SynthFace.neck]: skin below the jaw, outside the
+/// face oval.
+const kNeckHalfW = 0.55, kNeckY0 = 1.30, kNeckY1 = 2.30;
+
+/// Hair lightness, a, b for [hair] on a face of tone [t].
+(double, double, double) synthHairLab(SynthHair hair, SynthTone t) =>
+    switch (hair) {
+      SynthHair.dark => (0.27, 0.02, 0.035),
+      SynthHair.blond => (t.l + 0.04, 0.5 * t.a, t.b + 0.02),
+      SynthHair.grey => (t.l + 0.06, 0.0, 0.008),
+    };
+
 /// Skin tones of the fixtures (OkLab of the unlit base colour).
 enum SynthTone {
   /// The tone every older fixture was written for.
@@ -234,6 +254,10 @@ double glareBand(double x, double y) {
 }
 
 /// Inside a lens: on the rim, or the glare to add (linear).
+/// True on a glasses rim of [f] at local (x, y).
+bool synthOnRim(SynthFace f, double x, double y) =>
+    f.glasses != SynthGlasses.none && (_lens(f, x, y)?.rim ?? false);
+
 ({bool rim, double glare})? _lens(SynthFace f, double x, double y) {
   for (final cx in const [-kLensX, kLensX]) {
     final u = (x - cx) / kLensRx, v = (y - kLensY) / kLensRy;
@@ -284,7 +308,19 @@ class SynthFace {
     this.specular = 0,
     this.sparkle = 0,
     this.lumps = true,
+    this.hair = SynthHair.dark,
+    this.fringe = false,
+    this.neck = false,
   });
+
+  /// Head hair colour (and the fringe's).
+  final SynthHair hair;
+
+  /// Hair over the top of the forehead ([kFringeY0]..[kFringeY1]).
+  final bool fringe;
+
+  /// Skin below the jaw ([kNeckHalfW], [kNeckY0]..[kNeckY1]).
+  final bool neck;
 
   /// Skin tone (the fixtures above are offsets on top of it).
   final SynthTone tone;
@@ -489,10 +525,17 @@ void _shadeFace(
   final headR = math.pow(x / 1.4, 2) + math.pow((y - 0.2) / 1.85, 2);
   if (skinR > 1) {
     if (headR <= 1 && y < 0.9) {
-      lab[0] = 0.27 + 0.03 * math.sin(x * 70);
-      lab[1] = 0.02;
-      lab[2] = 0.035;
+      _hair(f, x, y, lab);
+    } else if (f.neck && x.abs() < kNeckHalfW && y > kNeckY0 && y < kNeckY1) {
+      final t = f.tone;
+      lab[0] = t.l - 0.02 + f.poreAmp * noise;
+      lab[1] = t.a;
+      lab[2] = t.b;
     }
+    return;
+  }
+  if (f.fringe && y > kFringeY0 && y < kFringeY1) {
+    _hair(f, x, y, lab);
     return;
   }
   // Skin: base, side shading, blotches (mid band), pores (fine band).
@@ -585,6 +628,15 @@ void _shadeFace(
   lab[1] = a;
   lab[2] = b;
   _features(f, p, x, y, lab);
+}
+
+/// Head hair at local (x, y): fine strands on the hair colour.
+void _hair(SynthFace f, double x, double y, Float64List lab) {
+  final (l, a, b) = synthHairLab(f.hair, f.tone);
+  final amp = f.hair == SynthHair.dark ? 0.03 : 0.015;
+  lab[0] = l + amp * math.sin(x * 70);
+  lab[1] = a;
+  lab[2] = b;
 }
 
 void _features(SynthFace f, _Polys p, double x, double y, Float64List lab) {

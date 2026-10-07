@@ -13,7 +13,6 @@ import '../color/oklab.dart';
 import '../color/srgb.dart';
 import '../model/face_analysis.dart';
 import '../model/portrait.dart';
-import '../render/aux_maps.dart';
 import '../render/rgba_buffer.dart';
 import '../retouch/blemish_types.dart';
 import '../retouch/retouch_maps.dart';
@@ -143,41 +142,23 @@ double _ramp(double v, double lo, double hi) =>
 
 /// Measures what each face of [analysis] needs. [maps] must come from
 /// `computeRetouchMaps(source, analysis, …)`; [source] is that decode (or
-/// any decode of the same photo: it is resampled to the map grid).
+/// any decode of the same photo): each map texel reads the source pixel
+/// at its uv (through the face's map transform).
 RetouchNeeds measureRetouchNeeds(
   RetouchMaps maps,
   RgbaBuffer source,
   FaceAnalysis analysis,
 ) {
   if (!maps.hasFaces) return RetouchNeeds.none;
-  final grid = AuxMaps.proxy(
-    source,
-    longEdge: math.max(maps.width, maps.height),
-  );
-  final exact = grid.width == maps.width && grid.height == maps.height;
-  final px = exact ? grid : _resample(source, maps.width, maps.height);
   return RetouchNeeds([
     for (final info in maps.faces)
       _measureFace(
         maps,
-        px,
+        source,
         info,
         analysis.faceById(info.faceId)?.group ?? FaceGroup.all,
       ),
   ]);
-}
-
-RgbaBuffer _resample(RgbaBuffer src, int w, int h) {
-  final out = RgbaBuffer(w, h);
-  for (var y = 0; y < h; y++) {
-    final sy = ((y + 0.5) * src.height / h).floor().clamp(0, src.height - 1);
-    for (var x = 0; x < w; x++) {
-      final sx = ((x + 0.5) * src.width / w).floor().clamp(0, src.width - 1);
-      final i = src.offset(sx, sy), o = out.offset(x, y);
-      out.data.setRange(o, o + 4, src.data, i);
-    }
-  }
-  return out;
 }
 
 Oklab _lab(List<int> rgb, int o) => linearSrgbToOklab(
@@ -211,12 +192,14 @@ FaceNeeds _measureFace(
   final lipC = _Mean();
   final mouth = <Oklab>[];
   final zone = {for (final z in WrinkleZone.values) z: _Mean()};
-  final r = info.rect;
+  final r = info.rect, t = maps.transformOf(info);
+  final sw = px.width, sh = px.height;
   for (var y = r.y0; y < r.y0 + r.h; y++) {
+    final sy = ((y + 0.5 - t.ty) / t.sy * sh).floor().clamp(0, sh - 1);
     for (var x = r.x0; x < r.x0 + r.w; x++) {
       if (at(rb, x, y, 1, 0) != owner) continue;
-      final o = (y * w + x) * 4;
-      final g = _lab(px.data, o);
+      final sx = ((x + 0.5 - t.tx) / t.sx * sw).floor().clamp(0, sw - 1);
+      final g = _lab(px.data, px.offset(sx, sy));
       final skin = at(ra, x, y, 0, 0) / 255;
       final under = at(ra, x, y, 0, 1) / 255;
       final sclera = at(ra, x, y, 1, 1) / 255;

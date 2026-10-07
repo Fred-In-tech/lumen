@@ -38,6 +38,7 @@ class RetouchKernel {
   final Float64List _li = Float64List(3);
   final Float64List _d = Float64List(3);
   final Float64List _o = Float64List(3);
+  final Float64List _uv = Float64List(4);
 
   /// True when face [slot] has maps and a non-identity row.
   bool isActive(int slot) =>
@@ -58,9 +59,10 @@ class RetouchKernel {
     Uint8List out,
     int o,
   ) {
-    // 1. Face row (nearest face id; 0 = no face).
-    final slot = maps.nearest(RetouchChannel.faceId, u, v) - 1;
-    final face = isActive(slot) && _face(slot, r, g, b, u, v);
+    // 1. Face row: the face whose tile owns the pixel (-1 = none); the
+    // face steps sample its maps at the map uv `locate` returns.
+    final slot = maps.locate(u, v, _uv);
+    final face = isActive(slot) && _face(slot, r, g, b, _uv);
     // 15. Backdrop (image scope), added to the face result.
     final backdrop = _bd.weights(u, v);
     if (!face && !backdrop) return false;
@@ -77,9 +79,12 @@ class RetouchKernel {
     return true;
   }
 
-  /// Face steps 2–14 into [_o] (and the source OkLab into [_li]); false
-  /// when no face effect touches the pixel.
-  bool _face(int slot, int r, int g, int b, double u, double v) {
+  /// Face steps 2–14 into [_o] (and the source OkLab into [_li]) at the
+  /// map uv and nearest texel [at] (`RetouchMaps.locate`); false when no
+  /// face effect touches the pixel.
+  bool _face(int slot, int r, int g, int b, Float64List at) {
+    final u = at[0], v = at[1];
+    final qx = at[2].toInt(), qy = at[3].toInt();
     final p = uniforms.row(slot);
     // 2. Regions (bilinear, 0..1).
     final t = _t;
@@ -91,7 +96,7 @@ class RetouchKernel {
     final lipsM = t[6] / 255, blushM = t[7] / 255;
     final dW = decodeWrinkle(t[8]);
     final sel = spotSelection(
-      maps.nearest(RetouchChannel.spotCode, u, v),
+      maps.nearestTexel(RetouchChannel.spotCode, qx, qy),
       p.acne,
       p.freckle,
       p.mole,
@@ -125,7 +130,7 @@ class RetouchKernel {
         ? kWrinkleMax *
               clamp01(
                 p.wrinkleWeight(
-                      maps.nearest(RetouchChannel.wrinkleZone, u, v),
+                      maps.nearestTexel(RetouchChannel.wrinkleZone, qx, qy),
                     ) +
                     kWrinkleSmooth * s,
               )
@@ -307,10 +312,12 @@ RgbaBuffer applyRetouch(RgbaBuffer src, RetouchMaps maps, RetouchUniforms u) {
   }
   for (final f in maps.faces) {
     if (!kernel.isActive(f.slot)) continue;
-    final x0 = (f.rect.x0 * w / maps.width).floor().clamp(0, w);
-    final x1 = (f.rect.x1 * w / maps.width).ceil().clamp(0, w);
-    final y0 = (f.rect.y0 * h / maps.height).floor().clamp(0, h);
-    final y1 = (f.rect.y1 * h / maps.height).ceil().clamp(0, h);
+    // The tile bounds back in source uv, then in [src] pixels.
+    final t = maps.transformOf(f);
+    final x0 = ((f.rect.x0 - t.tx) / t.sx * w).floor().clamp(0, w);
+    final x1 = ((f.rect.x1 - t.tx) / t.sx * w).ceil().clamp(0, w);
+    final y0 = ((f.rect.y0 - t.ty) / t.sy * h).floor().clamp(0, h);
+    final y1 = ((f.rect.y1 - t.ty) / t.sy * h).ceil().clamp(0, h);
     for (var y = y0; y < y1; y++) {
       final v = (y + 0.5) / h;
       for (var x = x0; x < x1; x++) {

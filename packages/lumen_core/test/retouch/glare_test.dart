@@ -87,7 +87,7 @@ void main() {
     test('the band is coded as glare and only its slider selects it', () {
       final c = f.toPx(-0.65, 0.2);
       expect(
-        clearMaps.nearest(RetouchChannel.spotCode, c.x / _w, c.y / _h),
+        clearMaps.sourceNearest(RetouchChannel.spotCode, c.x / _w, c.y / _h),
         kGlareCode,
       );
       expect(spotSelection(kGlareCode, 1, 1, 1, 1), 0);
@@ -96,7 +96,7 @@ void main() {
       // The lens without glare carries no glare code.
       final o = f.toPx(0.65, 0.2);
       expect(
-        clearMaps.nearest(RetouchChannel.spotCode, o.x / _w, o.y / _h),
+        clearMaps.sourceNearest(RetouchChannel.spotCode, o.x / _w, o.y / _h),
         isNot(kGlareCode),
       );
     });

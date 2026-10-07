@@ -1,7 +1,7 @@
 /// Uniforms of the GPU retouch pass `R` (`app/shaders/retouch.frag`), the
 /// shader twin of `applyRetouch` (`retouch/retouch_kernel.dart`).
 ///
-/// Layout (318 floats = `vec2` + 79 `vec4`, set in declaration order):
+/// Layout (382 floats = `vec2` + 95 `vec4`, set in declaration order):
 ///
 /// | floats | uniform | contents |
 /// |---|---|---|
@@ -17,6 +17,8 @@
 /// | 118 + 24k | `uFace{6k..6k+5}` | the face row (`RetouchUniforms.pack`) |
 /// | 310–313 | `uBackdropParams` | clean, unify, luminance, strays |
 /// | 314–317 | `uClothesParams` | wrinkles, lint, **active**, 0 |
+/// | 318 + 8k | `uFaceMap{2k}` | face k: source uv → map px scale x, y, offset x, y (`RetouchMaps.packFaceMaps`) |
+/// | 322 + 8k | `uFaceMap{2k+1}` | face k: tile bounds x0, y0, x1, y1 (map px) |
 ///
 /// "active" (slot has maps and a non-identity row; backdrop / clothes
 /// ready and one of their values set) replaces the "has maps" / "ready" floats of
@@ -32,7 +34,7 @@ import '../retouch/retouch_maps.dart';
 import '../retouch/retouch_uniforms.dart';
 
 const int kRetouchPassFloatCount =
-    6 + kRetouchInfoFloats + kRetouchUniformFloats;
+    6 + kRetouchInfoFloats + kRetouchUniformFloats + kRetouchFaceMapFloats;
 
 abstract final class RetouchPassIndex {
   static const size = 0;
@@ -47,8 +49,9 @@ abstract final class RetouchPassIndex {
   static const backdropInfo = 6 + kRetouchInfoFloats - kBackdropInfoFloats;
   static const header = 6 + kRetouchInfoFloats;
   static const rows = header + kRetouchHeaderFloats;
-  static const backdropParams = kRetouchPassFloatCount - 8;
-  static const clothesParams = kRetouchPassFloatCount - 4;
+  static const faceMaps = 6 + kRetouchInfoFloats + kRetouchUniformFloats;
+  static const backdropParams = faceMaps - 8;
+  static const clothesParams = faceMaps - 4;
 }
 
 abstract final class RetouchPassUniforms {
@@ -106,8 +109,13 @@ abstract final class RetouchPassUniforms {
       ..[RetouchPassIndex.header + 2] = kSpotRamp
       ..setRange(
         RetouchPassIndex.rows,
-        kRetouchPassFloatCount,
+        RetouchPassIndex.faceMaps,
         rows.sublist(kRetouchHeaderFloats),
+      )
+      ..setRange(
+        RetouchPassIndex.faceMaps,
+        kRetouchPassFloatCount,
+        maps.packFaceMaps(),
       )
       ..[RetouchPassIndex.clothesParams + 2] = clothes ? 1 : 0;
     return f;

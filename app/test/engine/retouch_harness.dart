@@ -57,7 +57,7 @@ Future<RgbaBuffer> gpuRetouch(
 /// a clipped specular core for Shine > 50) plus its maps.
 ({SynthPortrait p, RetouchMaps maps}) onePortrait({
   int size = 384,
-  int? mapLongEdge,
+  double mapTargetIod = kTileTargetIod,
   bool clippedShine = false,
 }) {
   final p = renderSynthPortrait(size, size, [
@@ -72,7 +72,7 @@ Future<RgbaBuffer> gpuRetouch(
   ]);
   return (
     p: p,
-    maps: computeRetouchMaps(p.image, p.analysis, longEdge: mapLongEdge),
+    maps: computeRetouchMaps(p.image, p.analysis, targetIod: mapTargetIod),
   );
 }
 

@@ -139,7 +139,7 @@ void main() {
     double? prev;
     var maxStep = 0.0, minW = 1.0, maxW = 0.0;
     for (var x = _face.toPx(-0.3, 0).x; x <= _face.toPx(0.3, 0).x; x += 1) {
-      final code = maps.nearest(
+      final code = maps.sourceNearest(
         RetouchChannel.wrinkleZone,
         (x + 0.5) / _w,
         (row + 0.5) / _h,

@@ -131,13 +131,14 @@ void main() {
     expect(blotches(labOf(smooth(base)).l) / before, greaterThan(0.95));
     final pen = applySkinPen(base, [_paintTint]);
     expect(skinAt(pen, kTintX, kTintY), greaterThan(0.9));
-    expect(pen.nearest(RetouchChannel.faceId, c.x / _n, c.y / _n), 1);
+    expect(pen.sourceNearest(RetouchChannel.faceId, c.x / _n, c.y / _n), 1);
     expect(blotches(labOf(smooth(pen)).l) / before, lessThan(0.6));
   });
 
   test('strokes outside every face change nothing', () {
-    final rect = base.faces.single.rect;
-    expect(rect.x0, greaterThan(16), reason: 'room left of the work rect');
+    final face = base.faces.single, t = base.transformOf(face);
+    final left = (face.rect.x0 - t.tx) / t.sx * _n;
+    expect(left, greaterThan(16), reason: 'room left of the work rect');
     const corner = BrushStroke(
       points: [(4 / _n, 0.1), (6 / _n, 0.6)],
       radius: 4 / _n,

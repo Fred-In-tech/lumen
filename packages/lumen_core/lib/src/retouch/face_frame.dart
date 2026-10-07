@@ -39,12 +39,17 @@ class FaceFrame {
 
   /// Builds the frame for [face] on a `gridW × gridH` grid, or null when
   /// the face has too few landmarks or an IOD below [minIod] map pixels.
+  /// With [window] (a per-face tile, `face_tiles.dart`) the work rect and
+  /// [bounds] are clipped to it; with [fillWindow] the work rect is the
+  /// whole window (the parsing model may find skin anywhere in it).
   static FaceFrame? tryCreate(
     DetectedFace face,
     int slot,
     int gridW,
     int gridH, {
     double minIod = 0,
+    MapRect? window,
+    bool fillWindow = false,
   }) {
     if (face.landmarkCount < FaceMesh.landmarkCount) return null;
     final n = FaceMesh.landmarkCount;
@@ -85,6 +90,7 @@ class FaceFrame {
     }
     final cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     final hw = (x1 - x0) / 2, hh = (y1 - y0) / 2;
+    final bounds = MapRect.around(cx, cy, hw, hh, gridW, gridH);
     return FaceFrame._(
       slot: slot,
       faceId: face.id,
@@ -95,17 +101,25 @@ class FaceFrame {
       axis: (x: ax, y: ay),
       irisRadiusRight: irisR(FaceMesh.rightIrisCenter, FaceMesh.rightIrisRing),
       irisRadiusLeft: irisR(FaceMesh.leftIrisCenter, FaceMesh.leftIrisRing),
-      bounds: MapRect.around(cx, cy, hw, hh, gridW, gridH),
-      rect: MapRect.around(
-        cx,
-        cy,
-        math.min(hw * kFaceRectScale, hw + kFaceMarginIod * iod),
-        math.min(hh * kFaceRectScale, hh + kFaceMarginIod * iod),
-        gridW,
-        gridH,
-      ),
+      bounds: window == null ? bounds : bounds.intersect(window),
+      rect: fillWindow && window != null
+          ? window
+          : _clip(
+              MapRect.around(
+                cx,
+                cy,
+                math.min(hw * kFaceRectScale, hw + kFaceMarginIod * iod),
+                math.min(hh * kFaceRectScale, hh + kFaceMarginIod * iod),
+                gridW,
+                gridH,
+              ),
+              window,
+            ),
     );
   }
+
+  static MapRect _clip(MapRect r, MapRect? window) =>
+      window == null ? r : r.intersect(window);
 
   /// Uniform slot (index in `FaceAnalysis.faces`).
   final int slot;
