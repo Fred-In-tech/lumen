@@ -145,9 +145,7 @@ Future<int> syncSettingsToAssets(
     );
     final e = await repo.get(id);
     if (e != null) {
-      await repo.update(
-        e.copyWith(hasEdits: !next.isDefault, editedAt: DateTime.now().toUtc()),
-      );
+      await repo.update(e.withEditState(next, DateTime.now().toUtc()));
     }
     n++;
   }

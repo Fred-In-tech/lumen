@@ -30,5 +30,6 @@ export 'src/retouch/retouch.dart';
 export 'src/inpaint/inpaint.dart';
 export 'src/vision/vision.dart';
 export 'src/cull/cull.dart';
+export 'src/projects/projects.dart';
 export 'src/testing/testing.dart';
 export 'src/export/export.dart';

@@ -54,6 +54,46 @@ abstract interface class CatalogRepository {
   Future<Uint8List?> readThumb(String assetId);
 
   Future<void> writeThumb(String assetId, Uint8List bytes);
+
+  // Projects (shoots). A photo belongs to at most one project; photos with
+  // no project are "Unsorted".
+
+  /// Emits every project, most recently changed first, after every change.
+  Stream<List<Project>> watchProjects();
+
+  Future<List<Project>> listProjects();
+
+  /// Creates an empty project. [name] is trimmed; a blank name throws
+  /// [CatalogException].
+  Future<Project> createProject({
+    required String name,
+    DateTime? shootDate,
+    String? notes,
+  });
+
+  /// Replaces a project (rename, cover, notes). Throws [CatalogException]
+  /// for an unknown id or a blank name.
+  Future<void> updateProject(Project project);
+
+  /// Deletes a project. Its photos become Unsorted, or with [deletePhotos]
+  /// are removed from the library with their files and edits.
+  Future<void> deleteProject(String projectId, {bool deletePhotos = false});
+
+  /// Moves photos into [projectId] (null: Unsorted). Throws
+  /// [CatalogException] for an unknown project.
+  Future<void> movePhotos(Iterable<String> assetIds, String? projectId);
+
+  /// Records that [assetIds] were exported at [at].
+  Future<void> markExported(Iterable<String> assetIds, DateTime at);
+}
+
+/// A trimmed, non-blank project name, or a [CatalogException].
+String checkProjectName(String name) {
+  final trimmed = name.trim();
+  if (trimmed.isEmpty) {
+    throw const CatalogException('A project needs a name.');
+  }
+  return trimmed.length > 120 ? trimmed.substring(0, 120) : trimmed;
 }
 
 /// Optional catalog capability: originals that are files on disk. The

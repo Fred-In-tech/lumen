@@ -80,6 +80,7 @@ class ExportBatch {
     final failures = <ExportFailure>[];
     final notes = <String>[];
     final taken = <String>{};
+    final exported = <String>[];
     final total = assetIds.length;
     var cancelled = false;
     for (var i = 0; i < total; i++) {
@@ -96,12 +97,14 @@ class ExportBatch {
         );
         final unique = file.renamed(uniqueName(file.fileName, taken));
         written.add(await write(unique) ?? unique.fileName);
+        exported.add(id);
         if (file.note != null) notes.add(file.note!);
       } on Exception catch (e) {
         _log.warning('export of $id failed: $e');
         failures.add(ExportFailure(id, name, describeExportError(e)));
       }
     }
+    await _stamp(exported);
     onProgress?.call(written.length + failures.length, total, null);
     return ExportBatchResult(
       written: written,
@@ -110,6 +113,18 @@ class ExportBatch {
       cancelled: cancelled,
       total: total,
     );
+  }
+
+  /// Records the export on the photos (project progress reads it). A
+  /// failure here never fails the export itself.
+  Future<void> _stamp(List<String> ids) async {
+    final repo = catalog;
+    if (repo == null || ids.isEmpty) return;
+    try {
+      await repo.markExported(ids, DateTime.now().toUtc());
+    } on Exception catch (e) {
+      _log.warning('could not record the export: $e');
+    }
   }
 
   Future<String> _nameOf(String id) async {

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -104,6 +105,105 @@ void _contract(String name, Future<CatalogRepository> Function() make) {
       await sub.cancel();
       expect(emitted, containsAllInOrder([0, 1]));
     });
+
+    test('create, rename, list and watch projects', () async {
+      final repo = await make();
+      final names = <List<String>>[];
+      final sub = repo.watchProjects().listen(
+        (l) => names.add([for (final p in l) p.name]),
+      );
+      await Future<void>.delayed(Duration.zero);
+      final p = await repo.createProject(
+        name: '  Smith wedding ',
+        shootDate: DateTime.utc(2026, 9, 1),
+      );
+      expect(p.name, 'Smith wedding');
+      await repo.updateProject(p.copyWith(name: 'Smith & Lee wedding'));
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
+      final listed = await repo.listProjects();
+      expect(listed.single.name, 'Smith & Lee wedding');
+      expect(listed.single.shootDate, DateTime.utc(2026, 9, 1));
+      expect(names.first, isEmpty);
+      expect(names.last, ['Smith & Lee wedding']);
+      expect(
+        () => repo.createProject(name: '   '),
+        throwsA(isA<CatalogException>()),
+      );
+      expect(
+        () => repo.updateProject(p.copyWith(name: '')),
+        throwsA(isA<CatalogException>()),
+      );
+    });
+
+    test('photos join projects on import and move between them', () async {
+      final repo = await make();
+      final a = await repo.createProject(name: 'A');
+      final b = await repo.createProject(name: 'B');
+      await repo.add(_entry('x').withProject(a.id), Uint8List(1));
+      await repo.add(_entry('y'), Uint8List(1));
+      expect((await repo.get('x'))!.projectId, a.id);
+      expect((await repo.get('y'))!.projectId, isNull);
+      await repo.movePhotos(['x', 'y'], b.id);
+      expect((await repo.get('x'))!.projectId, b.id);
+      expect((await repo.get('y'))!.projectId, b.id);
+      await repo.movePhotos(['y'], null);
+      expect((await repo.get('y'))!.projectId, isNull);
+      expect(
+        () => repo.movePhotos(['x'], 'nope'),
+        throwsA(isA<CatalogException>()),
+      );
+      // A stale copy of the entry cannot undo the move.
+      await repo.update(_entry('x').copyWith(flag: 'pick'));
+      expect((await repo.get('x'))!.projectId, b.id);
+      expect((await repo.get('x'))!.flag, 'pick');
+    });
+
+    test('set cover: only a photo of the project', () async {
+      final repo = await make();
+      final p = await repo.createProject(name: 'P');
+      await repo.add(_entry('x').withProject(p.id), Uint8List(1));
+      await repo.add(_entry('y'), Uint8List(1));
+      await repo.updateProject(p.copyWith(coverAssetId: 'x'));
+      expect((await repo.listProjects()).single.coverAssetId, 'x');
+      expect(
+        () => repo.updateProject(p.copyWith(coverAssetId: 'y')),
+        throwsA(isA<CatalogException>()),
+      );
+      await repo.updateProject(p.copyWith(clearCover: true));
+      expect((await repo.listProjects()).single.coverAssetId, isNull);
+    });
+
+    test('delete a project keeping its photos as Unsorted', () async {
+      final repo = await make();
+      final p = await repo.createProject(name: 'P');
+      await repo.add(_entry('x').withProject(p.id), Uint8List.fromList([1]));
+      await repo.deleteProject(p.id);
+      expect(await repo.listProjects(), isEmpty);
+      expect((await repo.get('x'))!.projectId, isNull);
+      expect(await repo.readOriginal('x'), [1]);
+    });
+
+    test('delete a project with its photos', () async {
+      final repo = await make();
+      final p = await repo.createProject(name: 'P');
+      await repo.add(_entry('x').withProject(p.id), Uint8List.fromList([1]));
+      await repo.add(_entry('y'), Uint8List.fromList([2]));
+      await repo.writeThumb('x', Uint8List.fromList([7]));
+      await repo.deleteProject(p.id, deletePhotos: true);
+      expect(await repo.get('x'), isNull);
+      expect(await repo.readThumb('x'), isNull);
+      expect(() => repo.readOriginal('x'), throwsA(isA<CatalogException>()));
+      expect(await repo.readOriginal('y'), [2]);
+    });
+
+    test('markExported stamps the photos', () async {
+      final repo = await make();
+      await repo.add(_entry('x'), Uint8List(1));
+      final at = DateTime.utc(2026, 10, 6);
+      await repo.markExported(['x'], at);
+      expect((await repo.get('x'))!.exportedAt, at);
+    });
   });
 }
 
@@ -136,6 +236,31 @@ void main() {
       );
     },
   );
+
+  test('a v1 catalog.json opens unchanged and is rewritten as v2', () async {
+    final v1 = {
+      'schemaVersion': 1,
+      'entries': [
+        {..._entry('a').toJson(), 'flag': 'pick', 'hasEdits': true},
+      ],
+    };
+    await File('${tmp.path}/catalog.json').writeAsString(jsonEncode(v1));
+    final repo = FileCatalogRepository(tmp.path);
+    final a = (await repo.list()).single;
+    expect((a.assetId, a.flag, a.hasEdits), ('a', 'pick', true));
+    expect(a.projectId, isNull);
+    expect(await repo.listProjects(), isEmpty);
+    final p = await repo.createProject(name: 'Shoot');
+    await repo.movePhotos(['a'], p.id);
+    final json = jsonDecode(
+      File('${tmp.path}/catalog.json').readAsStringSync(),
+    ) as Map<String, Object?>;
+    expect(json['schemaVersion'], kCatalogSchemaVersion);
+    expect((json['projects']! as List).single['name'], 'Shoot');
+    final reopened = FileCatalogRepository(tmp.path);
+    expect((await reopened.get('a'))!.projectId, p.id);
+    expect((await reopened.listProjects()).single.id, p.id);
+  });
 
   test('renditions live in renditions/ and go away with the photo', () async {
     final repo = FileCatalogRepository(tmp.path);

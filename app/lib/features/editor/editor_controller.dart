@@ -112,10 +112,14 @@ class EditorController extends AsyncNotifier<EditorState> {
     if (entry == null) return;
     final ai = doc.ai;
     final hasEdits = doc.hasEdits;
-    if (entry.hasEdits != hasEdits || entry.aiEngine != ai?.engine) {
+    final retouched = doc.settings.portrait.hasFaceEdits;
+    if (entry.hasEdits != hasEdits ||
+        entry.retouched != retouched ||
+        entry.aiEngine != ai?.engine) {
       await repo.update(
         entry.copyWith(
           hasEdits: hasEdits,
+          retouched: retouched,
           editedAt: DateTime.now().toUtc(),
           aiEngine: ai?.engine,
           aiStyle: ai?.style,

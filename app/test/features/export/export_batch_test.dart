@@ -108,6 +108,20 @@ void main() {
     expect(result.failures.single.name, 'missing-id');
     expect(result.failures.single.reason, 'Photo not found');
     expect(exportSummary(result, null), contains('2 photos exported'));
+    // Exported photos are stamped (project progress); the failed one is not.
+    for (final id in ids) {
+      expect((await repo.get(id))!.exportedAt, isNotNull);
+    }
+  });
+
+  test('without a catalog nothing is stamped', () async {
+    final (repo, ids) = await _photos(1);
+    final service = ExportService(repo, renderer: _Tracking().render);
+    await ExportBatch(
+      service,
+      (f) async => null,
+    ).run(ids, const ExportOptions());
+    expect((await repo.get(ids.single))!.exportedAt, isNull);
   });
 
   test('cancel stops before the next photo', () async {

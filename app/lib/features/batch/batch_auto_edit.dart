@@ -153,13 +153,13 @@ Future<bool> autoEditStoredAsset({
     final fresh = await repo.get(assetId);
     if (fresh != null) {
       await repo.update(
-        fresh.copyWith(
-          hasEdits: !next.isDefault,
-          editedAt: DateTime.now().toUtc(),
-          aiEngine: result.record.engine,
-          aiStyle: result.record.style,
-          thumbVersion: fresh.thumbVersion + 1,
-        ),
+        fresh
+            .withEditState(next, DateTime.now().toUtc())
+            .copyWith(
+              aiEngine: result.record.engine,
+              aiStyle: result.record.style,
+              thumbVersion: fresh.thumbVersion + 1,
+            ),
       );
     }
     return true;
@@ -296,11 +296,9 @@ Future<void> refreshThumbnail(
     final e = await repo.get(assetId);
     if (e != null) {
       await repo.update(
-        e.copyWith(
-          hasEdits: !settings.isDefault,
-          editedAt: DateTime.now().toUtc(),
-          thumbVersion: e.thumbVersion + 1,
-        ),
+        e
+            .withEditState(settings, DateTime.now().toUtc())
+            .copyWith(thumbVersion: e.thumbVersion + 1),
       );
     }
   } on Exception catch (e) {

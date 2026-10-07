@@ -87,10 +87,7 @@ class ColorMatchService {
       final e = await catalog.get(targetId);
       if (e != null) {
         await catalog.update(
-          e.copyWith(
-            hasEdits: !r.settings.isDefault,
-            editedAt: DateTime.now().toUtc(),
-          ),
+          e.withEditState(r.settings, DateTime.now().toUtc()),
         );
       }
       return true;

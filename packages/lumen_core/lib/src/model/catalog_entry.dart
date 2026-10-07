@@ -1,3 +1,4 @@
+import 'develop_settings.dart';
 import 'exif_summary.dart';
 
 /// One photo in the library index (`catalog.json`).
@@ -20,6 +21,9 @@ class CatalogEntry {
     this.rating = 0,
     this.flag = 'none',
     this.bitDepth,
+    this.projectId,
+    this.exportedAt,
+    this.retouched = false,
   });
 
   factory CatalogEntry.fromJson(Map<String, Object?> json) {
@@ -44,6 +48,12 @@ class CatalogEntry {
       rating: (json['rating'] as num?)?.toInt() ?? 0,
       flag: json['flag'] as String? ?? 'none',
       bitDepth: (json['bitDepth'] as num?)?.toInt(),
+      projectId: switch (json['project']) {
+        final String id when id.isNotEmpty => id,
+        _ => null,
+      },
+      exportedAt: DateTime.tryParse(json['exportedAt'] as String? ?? ''),
+      retouched: json['retouched'] == true,
     );
   }
 
@@ -72,7 +82,35 @@ class CatalogEntry {
   /// device supports it (docs/HIGH_BIT_DEPTH.md).
   final int? bitDepth;
 
+  /// The project (shoot) this photo belongs to; null: "Unsorted".
+  final String? projectId;
+
+  /// When the photo was last exported (single or batch); null: never.
+  final DateTime? exportedAt;
+
+  /// True when the edit holds face retouch (portrait face-scope values).
+  final bool retouched;
+
   DateTime get sortDate => exif.capturedAt ?? importedAt;
+
+  /// Exported, and not edited again since.
+  bool get exportIsCurrent {
+    final out = exportedAt;
+    if (out == null) return false;
+    final edited = editedAt;
+    return edited == null || !edited.isAfter(out);
+  }
+
+  /// The entry after saving [settings] at [at]: edit flags follow the
+  /// settings (any change, face retouch).
+  CatalogEntry withEditState(DevelopSettings settings, DateTime at) => copyWith(
+    hasEdits: !settings.isDefault,
+    retouched: settings.portrait.hasFaceEdits,
+    editedAt: at,
+  );
+
+  /// The same photo in project [id] (null: Unsorted).
+  CatalogEntry withProject(String? id) => _copy(projectId: id);
 
   CatalogEntry copyWith({
     bool? hasEdits,
@@ -84,6 +122,36 @@ class CatalogEntry {
     String? flag,
     int? width,
     int? height,
+    DateTime? exportedAt,
+    bool? retouched,
+  }) => _copy(
+    hasEdits: hasEdits ?? this.hasEdits,
+    editedAt: editedAt ?? this.editedAt,
+    aiEngine: aiEngine ?? this.aiEngine,
+    aiStyle: aiStyle ?? this.aiStyle,
+    thumbVersion: thumbVersion ?? this.thumbVersion,
+    rating: rating ?? this.rating,
+    flag: flag ?? this.flag,
+    width: width ?? this.width,
+    height: height ?? this.height,
+    exportedAt: exportedAt ?? this.exportedAt,
+    retouched: retouched ?? this.retouched,
+    projectId: projectId,
+  );
+
+  CatalogEntry _copy({
+    required String? projectId,
+    bool? hasEdits,
+    DateTime? editedAt,
+    String? aiEngine,
+    String? aiStyle,
+    int? thumbVersion,
+    int? rating,
+    String? flag,
+    int? width,
+    int? height,
+    DateTime? exportedAt,
+    bool? retouched,
   }) => CatalogEntry(
     assetId: assetId,
     fileName: fileName,
@@ -102,6 +170,9 @@ class CatalogEntry {
     rating: rating ?? this.rating,
     flag: flag ?? this.flag,
     bitDepth: bitDepth,
+    projectId: projectId,
+    exportedAt: exportedAt ?? this.exportedAt,
+    retouched: retouched ?? this.retouched,
   );
 
   Map<String, Object?> toJson() => {
@@ -121,5 +192,8 @@ class CatalogEntry {
     'rating': rating,
     'flag': flag,
     if (bitDepth != null) 'bitDepth': bitDepth,
+    if (projectId != null) 'project': projectId,
+    if (exportedAt != null) 'exportedAt': exportedAt!.toIso8601String(),
+    if (retouched) 'retouched': true,
   };
 }

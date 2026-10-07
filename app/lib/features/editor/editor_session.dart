@@ -100,10 +100,9 @@ class EditorSession {
       final e = await repo.get(assetId);
       if (e != null) {
         await repo.update(
-          e.copyWith(
-            thumbVersion: e.thumbVersion + 1,
-            hasEdits: !settings.isDefault,
-          ),
+          e
+              .withEditState(settings, DateTime.now().toUtc())
+              .copyWith(thumbVersion: e.thumbVersion + 1),
         );
       }
     } on Exception catch (e) {
