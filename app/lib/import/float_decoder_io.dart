@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 import 'package:lumen_core/lumen_core.dart';
@@ -60,6 +59,7 @@ class PlatformFloatDecoder implements FloatDecoder {
     required int y,
     required int width,
     required int height,
+    String? cachePath,
   }) async {
     try {
       final m = await _channel.invokeMapMethod<String, Object?>('floatRender', {
@@ -70,6 +70,7 @@ class PlatformFloatDecoder implements FloatDecoder {
         'y': y,
         'width': width,
         'height': height,
+        'cachePath': ?cachePath,
       });
       final pixels = m?['pixels'];
       if (pixels is! Float32List || pixels.length != width * height * 4) {
@@ -99,4 +100,82 @@ class PlatformFloatDecoder implements FloatDecoder {
       // Nothing to release.
     }
   }
+
+  @override
+  Future<CachedFloatPreview?> readPreview(
+    String cachePath, {
+    required int width,
+    required int height,
+  }) async {
+    if (!_supported) return null;
+    try {
+      final m = await _channel.invokeMapMethod<String, Object?>(
+        'floatPreviewRead',
+        {'cachePath': cachePath, 'width': width, 'height': height},
+      );
+      return parseCachedPreview(m, width, height);
+    } on PlatformException catch (e) {
+      _log.info('float preview cache read failed: ${e.code} ${e.message}');
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  @override
+  Future<int?> buildPreview(
+    String path, {
+    required String cachePath,
+    required int fullWidth,
+    required int fullHeight,
+  }) async {
+    if (!_supported) return null;
+    try {
+      final m = await _channel.invokeMapMethod<String, Object?>(
+        'floatPreviewBuild',
+        {
+          'input': path,
+          'cachePath': cachePath,
+          'fullWidth': fullWidth,
+          'fullHeight': fullHeight,
+        },
+      );
+      final ms = (m?['ms'] as num?)?.toInt();
+      if (ms != null && ms > 0) _log.fine('float preview built in $ms ms');
+      return (m?['bytes'] as num?)?.toInt();
+    } on PlatformException catch (e) {
+      _log.info('float preview build failed: ${e.code} ${e.message}');
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+}
+
+/// The reply of `floatPreviewRead`, or null when it is not a complete
+/// entry of [width]×[height].
+@visibleForTesting
+CachedFloatPreview? parseCachedPreview(
+  Map<String, Object?>? m,
+  int width,
+  int height,
+) {
+  final pixels = m?['pixels'];
+  if (pixels is! Float32List || pixels.length != width * height * 4) {
+    return null;
+  }
+  final fw = (m?['fullWidth'] as num?)?.toInt() ?? 0;
+  final fh = (m?['fullHeight'] as num?)?.toInt() ?? 0;
+  if (fw <= 0 || fh <= 0) return null;
+  return CachedFloatPreview(
+    FloatPixels(width, height, pixels, decodeMs: (m?['ms'] as num?)?.toInt()),
+    FloatSourceInfo(
+      width: fw,
+      height: fh,
+      profile: HbdProfile(
+        shoulderKnee: (m?['shoulderKnee'] as num?)?.toDouble() ?? 0,
+        highlightGain: (m?['highlightGain'] as num?)?.toDouble() ?? 0,
+      ),
+    ),
+  );
 }

@@ -24,6 +24,8 @@ abstract interface class FloatDecoder {
   Future<FloatSourceInfo?> info(String path);
 
   /// The window of the photo at [path] scaled to [fullWidth]×[fullHeight].
+  /// With [cachePath], a whole-photo render is also written to the float
+  /// preview cache there (after the reply, off the caller's way).
   /// Throws [FloatSourceException].
   Future<FloatPixels> render(
     String path, {
@@ -33,10 +35,41 @@ abstract interface class FloatDecoder {
     required int y,
     required int width,
     required int height,
+    String? cachePath,
   });
 
   /// Drops the native decoder cache of [path].
   Future<void> release(String path);
+
+  /// The cached preview at [cachePath] when it is a valid entry of exactly
+  /// [width]×[height] (written by this decoder on this OS build), else
+  /// null. Never decodes the original; never throws.
+  Future<CachedFloatPreview?> readPreview(
+    String cachePath, {
+    required int width,
+    required int height,
+  });
+
+  /// Decodes [path] at [fullWidth]×[fullHeight] and writes the cache entry
+  /// at [cachePath] without sending pixels back, at background priority
+  /// (one at a time). Returns the entry's size in bytes, null when it
+  /// failed. An existing valid entry is kept.
+  Future<int?> buildPreview(
+    String path, {
+    required String cachePath,
+    required int fullWidth,
+    required int fullHeight,
+  });
+}
+
+/// A float preview read back from the preview cache.
+class CachedFloatPreview {
+  const CachedFloatPreview(this.pixels, this.info);
+
+  final FloatPixels pixels;
+
+  /// What the decoder reported when the entry was written.
+  final FloatSourceInfo info;
 }
 
 /// A [FloatSource] over one file and a [FloatDecoder].
@@ -72,6 +105,23 @@ class DecodedFloatSource implements FloatSource {
     y: y,
     width: width ?? fullWidth - x,
     height: height ?? fullHeight - y,
+  );
+
+  /// Like [render] for the whole photo, also writing the preview cache
+  /// entry at [cachePath].
+  Future<FloatPixels> renderCaching({
+    required int fullWidth,
+    required int fullHeight,
+    required String cachePath,
+  }) => _decoder.render(
+    path,
+    fullWidth: fullWidth,
+    fullHeight: fullHeight,
+    x: 0,
+    y: 0,
+    width: fullWidth,
+    height: fullHeight,
+    cachePath: cachePath,
   );
 
   @override

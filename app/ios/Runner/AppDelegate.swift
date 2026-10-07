@@ -1,3 +1,5 @@
+import Accelerate
+import Compression
 import CoreImage
 import Flutter
 import UIKit
@@ -59,7 +61,10 @@ enum RawDeveloper {
     var errorDescription: String? { "The system could not decode this RAW file." }
   }
 
-  private static let queue = DispatchQueue(label: "lumen.raw", qos: .userInitiated)
+  // One autorelease pool per call: CoreImage / RawCamera objects of a
+  // decode are freed when it ends, not when the worker thread idles.
+  private static let queue = DispatchQueue(
+    label: "lumen.raw", qos: .userInitiated, autoreleaseFrequency: .workItem)
 
   static func register(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "lumen/raw", binaryMessenger: messenger)
@@ -67,12 +72,15 @@ enum RawDeveloper {
       if FloatDeveloper.handles(call.method) {
         let args = call.arguments as? [String: Any] ?? [:]
         // Decodes take up to half a second: off the UI thread, one at a time.
-        queue.async {
+        // Preview cache reads and background builds have their own queues
+        // so they never wait behind (or delay) the decode a user waits for.
+        (FloatDeveloper.queue(for: call.method) ?? queue).async {
           // A user is waiting for this decode: no App Nap throttling while
           // the window is hidden or in the background.
           let activity = ProcessInfo.processInfo.beginActivity(
-            options: .userInitiated, reason: "High-bit-depth decode")
-          let reply = FloatDeveloper.reply(method: call.method, args: args)
+            options: FloatDeveloper.isBackground(call.method) ? .background : .userInitiated,
+            reason: "High-bit-depth decode")
+          let reply = autoreleasepool { FloatDeveloper.reply(method: call.method, args: args) }
           ProcessInfo.processInfo.endActivity(activity)
           DispatchQueue.main.async { result(reply) }
         }
@@ -159,8 +167,10 @@ enum RawDeveloper {
 /// Camera RAW gets Apple's default rendering (camera white balance,
 /// default boost and tone curve: the look of the JPEG rendition) with the
 /// extended dynamic range kept. 16-bit PNG, 10-bit HEIC and other files
-/// CoreImage reads are converted to extended sRGB as they are. Nothing is
-/// written to disk; the decoder of the open photo stays cached.
+/// CoreImage reads are converted to extended sRGB as they are. The decoder
+/// of the open photo stays cached. The only files written are preview
+/// cache entries (`floatRender` with `cachePath`, `floatPreviewBuild`; read
+/// back with `floatPreviewRead`, see `FloatPreviewFile`).
 enum FloatDeveloper {
   enum Failure: LocalizedError {
     case unreadable
@@ -276,13 +286,38 @@ enum FloatDeveloper {
 
   static func handles(_ method: String) -> Bool {
     method == "floatInfo" || method == "floatRender" || method == "floatRelease"
+      || method == "floatPreviewRead" || method == "floatPreviewBuild"
   }
+
+  /// Cache reads run concurrently on their own queue (a few ms each);
+  /// background builds one at a time at utility priority. Everything else
+  /// (the decoder cache below) stays on the caller's serial RAW queue.
+  private static let readQueue = DispatchQueue(
+    label: "lumen.raw.preview", qos: .userInitiated, attributes: .concurrent,
+    autoreleaseFrequency: .workItem)
+  private static let buildQueue = DispatchQueue(
+    label: "lumen.raw.build", qos: .utility, autoreleaseFrequency: .workItem)
+  private static let writeQueue = DispatchQueue(
+    label: "lumen.raw.write", qos: .utility, autoreleaseFrequency: .workItem)
+
+  static func queue(for method: String) -> DispatchQueue? {
+    switch method {
+    case "floatPreviewRead": return readQueue
+    case "floatPreviewBuild": return buildQueue
+    default: return nil
+    }
+  }
+
+  static func isBackground(_ method: String) -> Bool { method == "floatPreviewBuild" }
 
   /// Runs one channel call (on the RAW queue) and returns its reply.
   static func reply(method: String, args: [String: Any]) -> Any? {
+    if method == "floatPreviewRead" { return readPreview(args) }
     guard let path = args["input"] as? String else { return FlutterMethodNotImplemented }
     do {
       switch method {
+      case "floatPreviewBuild":
+        return try buildPreview(path, args)
       case "floatInfo":
         let s = try source(path)
         return [
@@ -299,6 +334,19 @@ enum FloatDeveloper {
         let data = try render(
           path, fullWidth: fullWidth, fullHeight: fullHeight, x: x, y: y, width: width,
           height: height)
+        if let cachePath = args["cachePath"] as? String, x == 0, y == 0, width == fullWidth,
+          height == fullHeight, let s = sources[path]
+        {
+          let meta = FloatPreviewFile.Meta(
+            fullWidth: Int(s.fullSize.width), fullHeight: Int(s.fullSize.height),
+            knee: s.extended ? shoulderKnee : 0, gain: s.extended ? highlightGain : 0)
+          // The reply does not wait for the cache file.
+          writeQueue.async {
+            guard let bytes = FloatPreviewFile.encode(data, width: width, height: height, meta: meta)
+            else { return }
+            try? FloatPreviewFile.write(bytes, to: cachePath)
+          }
+        }
         return [
           "pixels": FlutterStandardTypedData(float32: data),
           "ms": Int((CFAbsoluteTimeGetCurrent() - start) * 1000),
@@ -337,7 +385,16 @@ enum FloatDeveloper {
       x + width <= fullWidth, y + height <= fullHeight,
       let space = CGColorSpace(name: CGColorSpace.extendedSRGB)
     else { throw Failure.badWindow }
-    let image = try source(path).image(width: fullWidth, height: fullHeight)
+    return try render(
+      source(path), fullWidth: fullWidth, fullHeight: fullHeight, x: x, y: y, width: width,
+      height: height, space: space)
+  }
+
+  private static func render(
+    _ source: Source, fullWidth: Int, fullHeight: Int, x: Int, y: Int, width: Int, height: Int,
+    space: CGColorSpace
+  ) throws -> Data {
+    let image = try source.image(width: fullWidth, height: fullHeight)
     // CoreImage's origin is bottom-left; the bitmap comes out top to bottom.
     let rect = CGRect(x: x, y: fullHeight - y - height, width: width, height: height)
     var data = Data(count: width * height * 16)
@@ -348,12 +405,258 @@ enum FloatDeveloper {
         colorSpace: space)
       // Alpha is 1 by contract: premultiplication on upload is then a no-op.
       let f = p.bindMemory(to: Float.self)
-      var i = 3
-      while i < f.count {
-        f[i] = 1
-        i += 4
-      }
+      var one: Float = 1
+      vDSP_vfill(&one, f.baseAddress! + 3, 4, vDSP_Length(width * height))
     }
     return data
+  }
+
+  /// `floatPreviewRead {cachePath, width, height}` → `{pixels, ms,
+  /// fullWidth, fullHeight, shoulderKnee, highlightGain}`, or nil when there
+  /// is no valid entry of that size. No RAW decode.
+  private static func readPreview(_ args: [String: Any]) -> Any? {
+    guard let cachePath = args["cachePath"] as? String, let width = args["width"] as? Int,
+      let height = args["height"] as? Int
+    else { return FlutterMethodNotImplemented }
+    let start = CFAbsoluteTimeGetCurrent()
+    guard let (data, meta) = FloatPreviewFile.decode(path: cachePath, width: width, height: height)
+    else { return nil }
+    return [
+      "pixels": FlutterStandardTypedData(float32: data),
+      "ms": Int((CFAbsoluteTimeGetCurrent() - start) * 1000),
+      "fullWidth": meta.fullWidth, "fullHeight": meta.fullHeight,
+      "shoulderKnee": meta.knee, "highlightGain": meta.gain,
+    ]
+  }
+
+  /// `floatPreviewBuild {input, cachePath, fullWidth, fullHeight}` →
+  /// `{bytes, ms}`: decodes the preview and writes its cache entry without
+  /// sending pixels back (import, idle time, filmstrip neighbours). Its own
+  /// decoder, dropped at the end; an existing valid entry is kept.
+  private static func buildPreview(_ path: String, _ args: [String: Any]) throws -> Any? {
+    guard let cachePath = args["cachePath"] as? String, let fullWidth = args["fullWidth"] as? Int,
+      let fullHeight = args["fullHeight"] as? Int, fullWidth > 0, fullHeight > 0,
+      let space = CGColorSpace(name: CGColorSpace.extendedSRGB)
+    else { return FlutterMethodNotImplemented }
+    let start = CFAbsoluteTimeGetCurrent()
+    if let size = (try? FileManager.default.attributesOfItem(atPath: cachePath))?[.size] as? Int,
+      FloatPreviewFile.isValid(path: cachePath, width: fullWidth, height: fullHeight)
+    {
+      return ["bytes": size, "ms": 0]
+    }
+    let s = try Source(url: URL(fileURLWithPath: path))
+    let data = try render(
+      s, fullWidth: fullWidth, fullHeight: fullHeight, x: 0, y: 0, width: fullWidth,
+      height: fullHeight, space: space)
+    let meta = FloatPreviewFile.Meta(
+      fullWidth: Int(s.fullSize.width), fullHeight: Int(s.fullSize.height),
+      knee: s.extended ? shoulderKnee : 0, gain: s.extended ? highlightGain : 0)
+    guard let bytes = FloatPreviewFile.encode(data, width: fullWidth, height: fullHeight, meta: meta)
+    else { throw Failure.unreadable }
+    try FloatPreviewFile.write(bytes, to: cachePath)
+    return ["bytes": bytes.count, "ms": Int((CFAbsoluteTimeGetCurrent() - start) * 1000)]
+  }
+}
+
+// MARK: - Float preview cache (docs/HIGH_BIT_DEPTH.md, "Preview cache")
+
+/// One cached float preview on disk, so reopening a RAW does not decode it
+/// again. Layout (little endian), 64-byte header then the payload:
+///
+///     0 magic "LFP1"   4 format version   8 width   12 height
+///    16 full width    20 full height     24 shoulder knee (f64)
+///    32 highlight gain (f64)             40 OS build stamp (u64)
+///    48 payload bytes (u64)              56 codec (u32: 1 = LZ4, 0 = raw)
+///
+/// Payload: the preview's RGB as half floats (alpha is always 1 and is not
+/// stored), bytes split into a plane of low bytes then a plane of high
+/// bytes (compresses about 30 % better), LZ4-compressed. Measured on a
+/// 1708 x 2560 preview of a 45 MP CR3: 17 MB (35 MB raw half RGBA), encode
+/// 30 ms, decode 6 ms. Half floats keep 11 significant bits (relative
+/// error below 0.05 %) and the full extended range.
+///
+/// The Dart side (`float_preview_cache_io.dart`) owns names, the size cap
+/// and eviction; it reads only the header. Files are written to a
+/// temporary name and renamed, so a reader never sees half a file.
+enum FloatPreviewFile {
+  static let magic: UInt32 = 0x3150_464C  // "LFP1"
+  static let headerSize = 64
+  /// Bumped when the decoder settings or the layout change.
+  static let formatVersion: UInt32 = 1
+  /// A system update can change Apple's RAW rendering: entries written by
+  /// another OS build are misses.
+  static let osStamp: UInt64 = {
+    var h: UInt64 = 0xcbf2_9ce4_8422_2325
+    for b in ProcessInfo.processInfo.operatingSystemVersionString.utf8 {
+      h = (h ^ UInt64(b)) &* 0x0000_0100_0000_01b3
+    }
+    return h
+  }()
+
+  struct Meta {
+    var fullWidth: Int
+    var fullHeight: Int
+    var knee: Double
+    var gain: Double
+  }
+
+  /// Float32 RGBA (alpha 1) of `width` x `height` → file bytes. Every
+  /// step is an Accelerate call (fast in debug builds too).
+  static func encode(_ rgba: Data, width: Int, height: Int, meta: Meta) -> Data? {
+    let px = width * height
+    guard px > 0, rgba.count == px * 16 else { return nil }
+    let n = px * 3
+    let h = vImagePixelCount(height), w = vImagePixelCount(width)
+    var rgb = [Float](repeating: 0, count: n)
+    var half = [UInt16](repeating: 0, count: n)
+    var split = [UInt8](repeating: 0, count: n * 2)
+    rgba.withUnsafeBytes { s in
+      rgb.withUnsafeMutableBytes { r in
+        half.withUnsafeMutableBytes { hb in
+          split.withUnsafeMutableBytes { sp in
+            var src = vImage_Buffer(
+              data: UnsafeMutableRawPointer(mutating: s.baseAddress!), height: h, width: w,
+              rowBytes: width * 16)
+            var rgbBuf = vImage_Buffer(data: r.baseAddress!, height: h, width: w, rowBytes: width * 12)
+            _ = vImageConvert_RGBAFFFFtoRGBFFF(&src, &rgbBuf, 0)
+            var planarF = vImage_Buffer(
+              data: r.baseAddress!, height: h, width: w * 3, rowBytes: width * 12)
+            var planar16 = vImage_Buffer(
+              data: hb.baseAddress!, height: h, width: w * 3, rowBytes: width * 6)
+            _ = vImageConvert_PlanarFtoPlanar16F(&planarF, &planar16, 0)
+            var lo = vImage_Buffer(data: sp.baseAddress!, height: h, width: w * 3, rowBytes: width * 3)
+            var hi = vImage_Buffer(
+              data: sp.baseAddress! + n, height: h, width: w * 3, rowBytes: width * 3)
+            withUnsafePointer(to: &lo) { loP in
+              withUnsafePointer(to: &hi) { hiP in
+                var chans: [UnsafeRawPointer?] = [
+                  UnsafeRawPointer(hb.baseAddress!), UnsafeRawPointer(hb.baseAddress! + 1),
+                ]
+                var dests: [UnsafePointer<vImage_Buffer>?] = [loP, hiP]
+                _ = vImageConvert_ChunkyToPlanar8(
+                  &chans, &dests, 2, 2, w * 3, h, width * 6, 0)
+              }
+            }
+          }
+        }
+      }
+    }
+    let capacity = n * 2 + n / 64 + 1024
+    var packed = [UInt8](repeating: 0, count: capacity)
+    let size = compression_encode_buffer(
+      &packed, capacity, split, split.count, nil, COMPRESSION_LZ4)
+    let codec: UInt32 = size > 0 && size < split.count ? 1 : 0
+    var out = Data(capacity: headerSize + (codec == 1 ? size : split.count))
+    func put<T>(_ v: T) { withUnsafeBytes(of: v) { out.append(contentsOf: $0) } }
+    put(magic.littleEndian)
+    put(formatVersion.littleEndian)
+    put(UInt32(width).littleEndian)
+    put(UInt32(height).littleEndian)
+    put(UInt32(meta.fullWidth).littleEndian)
+    put(UInt32(meta.fullHeight).littleEndian)
+    put(meta.knee.bitPattern.littleEndian)
+    put(meta.gain.bitPattern.littleEndian)
+    put(osStamp.littleEndian)
+    put(UInt64(codec == 1 ? size : split.count).littleEndian)
+    put(codec.littleEndian)
+    put(UInt32(0))
+    if codec == 1 { out.append(contentsOf: packed[0..<size]) } else { out.append(contentsOf: split) }
+    return out
+  }
+
+  /// The preview stored at `path` when it is a valid entry of exactly
+  /// `width` x `height`, as float32 RGBA (alpha 1); nil on any mismatch.
+  static func decode(path: String, width: Int, height: Int) -> (Data, Meta)? {
+    guard let file = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe),
+      file.count >= headerSize
+    else { return nil }
+    func u32(_ o: Int) -> UInt32 {
+      file.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt32.self)) }
+    }
+    func u64(_ o: Int) -> UInt64 {
+      file.withUnsafeBytes { UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt64.self)) }
+    }
+    guard u32(0) == magic, u32(4) == formatVersion, Int(u32(8)) == width,
+      Int(u32(12)) == height, u64(40) == osStamp
+    else { return nil }
+    let meta = Meta(
+      fullWidth: Int(u32(16)), fullHeight: Int(u32(20)),
+      knee: Double(bitPattern: u64(24)), gain: Double(bitPattern: u64(32)))
+    let payload = Int(u64(48)), codec = u32(56)
+    let px = width * height, n = px * 3
+    guard px > 0, file.count == headerSize + payload else { return nil }
+    var split = [UInt8](repeating: 0, count: n * 2)
+    if codec == 1 {
+      let got = file.withUnsafeBytes { s -> Int in
+        let src = s.bindMemory(to: UInt8.self).baseAddress!.advanced(by: headerSize)
+        return compression_decode_buffer(&split, split.count, src, payload, nil, COMPRESSION_LZ4)
+      }
+      guard got == split.count else { return nil }
+    } else {
+      guard payload == split.count else { return nil }
+      split = [UInt8](file[headerSize..<(headerSize + payload)])
+    }
+    let h = vImagePixelCount(height), w = vImagePixelCount(width)
+    var half = [UInt16](repeating: 0, count: n)
+    var rgb = [Float](repeating: 0, count: n)
+    var out = Data(count: px * 16)
+    split.withUnsafeMutableBytes { sp in
+      half.withUnsafeMutableBytes { hb in
+        rgb.withUnsafeMutableBytes { r in
+          out.withUnsafeMutableBytes { d in
+            var lo = vImage_Buffer(data: sp.baseAddress!, height: h, width: w * 3, rowBytes: width * 3)
+            var hi = vImage_Buffer(
+              data: sp.baseAddress! + n, height: h, width: w * 3, rowBytes: width * 3)
+            withUnsafePointer(to: &lo) { loP in
+              withUnsafePointer(to: &hi) { hiP in
+                var srcs: [UnsafePointer<vImage_Buffer>?] = [loP, hiP]
+                var chans: [UnsafeMutableRawPointer?] = [hb.baseAddress!, hb.baseAddress! + 1]
+                _ = vImageConvert_PlanarToChunky8(&srcs, &chans, 2, 2, w * 3, h, width * 6, 0)
+              }
+            }
+            var planar16 = vImage_Buffer(
+              data: hb.baseAddress!, height: h, width: w * 3, rowBytes: width * 6)
+            var planarF = vImage_Buffer(
+              data: r.baseAddress!, height: h, width: w * 3, rowBytes: width * 12)
+            _ = vImageConvert_Planar16FtoPlanarF(&planar16, &planarF, 0)
+            var rgbBuf = vImage_Buffer(data: r.baseAddress!, height: h, width: w, rowBytes: width * 12)
+            var dst = vImage_Buffer(data: d.baseAddress!, height: h, width: w, rowBytes: width * 16)
+            _ = vImageConvert_RGBFFFtoRGBAFFFF(&rgbBuf, nil, 1, &dst, false, 0)
+          }
+        }
+      }
+    }
+    return (out, meta)
+  }
+
+  /// True when `path` holds an entry of this format, OS build and size
+  /// (header only; the payload is checked when it is read).
+  static func isValid(path: String, width: Int, height: Int) -> Bool {
+    guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+    defer { try? handle.close() }
+    guard let head = try? handle.read(upToCount: headerSize), head.count == headerSize else {
+      return false
+    }
+    func u32(_ o: Int) -> UInt32 {
+      head.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt32.self)) }
+    }
+    let stamp = head.withUnsafeBytes {
+      UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: 40, as: UInt64.self))
+    }
+    return u32(0) == magic && u32(4) == formatVersion && Int(u32(8)) == width
+      && Int(u32(12)) == height && stamp == osStamp
+  }
+
+  /// Writes atomically (temporary file, then rename).
+  static func write(_ bytes: Data, to path: String) throws {
+    let url = URL(fileURLWithPath: path)
+    let dir = url.deletingLastPathComponent()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let tmp = dir.appendingPathComponent(".tmp-\(UUID().uuidString)")
+    try bytes.write(to: tmp)
+    if rename(tmp.path, url.path) != 0 {
+      try? FileManager.default.removeItem(at: tmp)
+      throw CocoaError(.fileWriteUnknown)
+    }
   }
 }

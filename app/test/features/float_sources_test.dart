@@ -72,6 +72,7 @@ class _FakeDecoder implements FloatDecoder {
     required int y,
     required int width,
     required int height,
+    String? cachePath,
   }) async => FloatPixels(
     width,
     height,
@@ -80,6 +81,21 @@ class _FakeDecoder implements FloatDecoder {
 
   @override
   Future<void> release(String path) async => released.add(path);
+
+  @override
+  Future<CachedFloatPreview?> readPreview(
+    String cachePath, {
+    required int width,
+    required int height,
+  }) async => null;
+
+  @override
+  Future<int?> buildPreview(
+    String path, {
+    required String cachePath,
+    required int fullWidth,
+    required int fullHeight,
+  }) async => null;
 }
 
 const _mac = PlatformInfo(
@@ -355,6 +371,106 @@ void main() {
       },
     );
 
+    test('floatRender with a cache path asks for the cache entry', () async {
+      reply = (_) => {'pixels': Float32List(4)};
+      await const PlatformFloatDecoder(platform: _mac).render(
+        '/x/a.cr3',
+        fullWidth: 1,
+        fullHeight: 1,
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        cachePath: '/c/a.lfp',
+      );
+      expect((calls.single.arguments as Map)['cachePath'], '/c/a.lfp');
+    });
+
+    test('floatPreviewRead maps pixels and the stored info', () async {
+      reply = (_) => {
+        'pixels': Float32List.fromList([2, 1, 0.5, 1]),
+        'ms': 7,
+        'fullWidth': 5464,
+        'fullHeight': 8192,
+        'shoulderKnee': 0.86,
+        'highlightGain': 0.5,
+      };
+      const decoder = PlatformFloatDecoder(platform: _mac);
+      final hit = await decoder.readPreview('/c/a.lfp', width: 1, height: 1);
+      expect(hit!.pixels.rgba, [2, 1, 0.5, 1]);
+      expect(hit.pixels.decodeMs, 7);
+      expect((hit.info.width, hit.info.height), (5464, 8192));
+      expect(hit.info.profile, HbdProfile.rawExtended);
+      expect(calls.single.method, 'floatPreviewRead');
+      expect(calls.single.arguments, {
+        'cachePath': '/c/a.lfp',
+        'width': 1,
+        'height': 1,
+      });
+      // A miss, a short or incomplete answer, a native failure: no entry.
+      reply = (_) => null;
+      expect(await decoder.readPreview('/c/a.lfp', width: 1, height: 1), null);
+      reply = (_) => {
+        'pixels': Float32List(8),
+        'fullWidth': 2,
+        'fullHeight': 1,
+      };
+      expect(await decoder.readPreview('/c/a.lfp', width: 1, height: 1), null);
+      reply = (_) => {'pixels': Float32List(4), 'fullWidth': 0};
+      expect(await decoder.readPreview('/c/a.lfp', width: 1, height: 1), null);
+      reply = (_) => throw PlatformException(code: 'x');
+      expect(await decoder.readPreview('/c/a.lfp', width: 1, height: 1), null);
+      calls.clear();
+      expect(
+        await const PlatformFloatDecoder(platform: _windows)
+            .readPreview('/c/a.lfp', width: 1, height: 1),
+        isNull,
+      );
+      expect(calls, isEmpty);
+    });
+
+    test('floatPreviewBuild returns the entry size', () async {
+      reply = (_) => {'bytes': 17000000, 'ms': 640};
+      const decoder = PlatformFloatDecoder(platform: _mac);
+      expect(
+        await decoder.buildPreview(
+          '/x/a.cr3',
+          cachePath: '/c/a.lfp',
+          fullWidth: 1708,
+          fullHeight: 2560,
+        ),
+        17000000,
+      );
+      expect(calls.single.method, 'floatPreviewBuild');
+      expect(calls.single.arguments, {
+        'input': '/x/a.cr3',
+        'cachePath': '/c/a.lfp',
+        'fullWidth': 1708,
+        'fullHeight': 2560,
+      });
+      reply = (_) => throw PlatformException(code: 'float_failed');
+      expect(
+        await decoder.buildPreview(
+          '/x/a.cr3',
+          cachePath: '/c/a.lfp',
+          fullWidth: 1,
+          fullHeight: 1,
+        ),
+        isNull,
+      );
+      calls.clear();
+      expect(
+        await const PlatformFloatDecoder(platform: _windows).buildPreview(
+          '/x/a.cr3',
+          cachePath: '/c/a.lfp',
+          fullWidth: 1,
+          fullHeight: 1,
+        ),
+        isNull,
+      );
+      expect(calls, isEmpty);
+    });
+
     test('floatRelease is sent and failures are swallowed', () async {
       reply = (_) => null;
       await const PlatformFloatDecoder(platform: _mac).release('/x/a.cr3');
@@ -369,6 +485,16 @@ void main() {
       const decoder = PlatformFloatDecoder(platform: _mac);
       expect(await decoder.info('/x/a.cr3'), isNull);
       await decoder.release('/x/a.cr3');
+      expect(await decoder.readPreview('/c', width: 1, height: 1), isNull);
+      expect(
+        await decoder.buildPreview(
+          '/x/a.cr3',
+          cachePath: '/c',
+          fullWidth: 1,
+          fullHeight: 1,
+        ),
+        isNull,
+      );
       await expectLater(
         decoder.render(
           '/x/a.cr3',

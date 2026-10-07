@@ -17,8 +17,24 @@ class PlatformFloatDecoder implements FloatDecoder {
     required int y,
     required int width,
     required int height,
+    String? cachePath,
   }) => throw const FloatSourceException('no float decoder on the web');
 
   @override
   Future<void> release(String path) async {}
+
+  @override
+  Future<CachedFloatPreview?> readPreview(
+    String cachePath, {
+    required int width,
+    required int height,
+  }) async => null;
+
+  @override
+  Future<int?> buildPreview(
+    String path, {
+    required String cachePath,
+    required int fullWidth,
+    required int fullHeight,
+  }) async => null;
 }
