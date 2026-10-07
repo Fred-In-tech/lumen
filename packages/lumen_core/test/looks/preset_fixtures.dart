@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:lumen_core/lumen_core.dart';
+import 'package:lumen_core/src/looks/zip_reader.dart' show crc32;
 
 /// Lightroom Classic style: settings as attributes, curves and the name as
 /// child elements, plus things Lumen skips (profile look with its own

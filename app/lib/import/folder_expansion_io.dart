@@ -5,8 +5,13 @@ import 'package:path/path.dart' as p;
 
 import 'package:lumen/import/import_file.dart';
 
-/// Replaces dropped folders with the photos inside them (recursive, max [limit]).
-Future<List<XFile>> expandFolders(List<XFile> items, {int limit = 2000}) async {
+/// Replaces dropped folders with the photos inside them (recursive, max
+/// [limit]); [extensions] picks the files to keep (default: photos).
+Future<List<XFile>> expandFolders(
+  List<XFile> items, {
+  int limit = 2000,
+  List<String> extensions = kImportExtensions,
+}) async {
   final out = <XFile>[];
   for (final item in items) {
     final dir = Directory(item.path);
@@ -15,7 +20,7 @@ Future<List<XFile>> expandFolders(List<XFile> items, {int limit = 2000}) async {
         if (out.length >= limit) break;
         final ext = p.extension(e.path).replaceFirst('.', '').toLowerCase();
         if (e is File &&
-            kImportExtensions.contains(ext) &&
+            extensions.contains(ext) &&
             !_isDerived(p.split(p.relative(e.path, from: dir.path)))) {
           out.add(XFile(e.path));
         }

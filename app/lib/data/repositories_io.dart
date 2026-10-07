@@ -9,12 +9,15 @@ import 'package:lumen/data/file_catalog_repository_io.dart';
 import 'package:lumen/data/file_preference_repositories_io.dart';
 import 'package:lumen/data/preference_repositories.dart';
 import 'package:lumen/platform/backup_exclusion_io.dart';
+import 'package:lumen/data/lut_repository.dart';
+import 'package:lumen/data/file_lut_repository_io.dart';
 
 /// The repositories bundle for the current platform.
 typedef Repositories = ({
   CatalogRepository catalog,
   PresetRepository presets,
   SettingsRepository settings,
+  LutRepository luts,
 });
 
 /// Opens the on-disk library under the app-support directory.
@@ -28,6 +31,7 @@ Future<Repositories> openRepositories() async {
     catalog: FileCatalogRepository(root),
     presets: FilePresetRepository(root),
     settings: FileSettingsRepository(root),
+    luts: FileLutRepository(root),
   );
 }
 

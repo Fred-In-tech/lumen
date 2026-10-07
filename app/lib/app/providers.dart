@@ -3,6 +3,7 @@ import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/data/app_settings.dart';
 import 'package:lumen/data/catalog_repository.dart';
+import 'package:lumen/data/lut_repository.dart';
 import 'package:lumen/data/preference_repositories.dart';
 import 'package:lumen/import/import_service.dart';
 import 'package:lumen/platform/platform_info.dart';
@@ -16,6 +17,11 @@ final presetRepositoryProvider = Provider<PresetRepository>(
 );
 final settingsRepositoryProvider = Provider<SettingsRepository>(
   (ref) => throw UnimplementedError('override'),
+);
+
+/// The LUT library (`main.dart` overrides it with the on-disk one).
+final lutRepositoryProvider = Provider<LutRepository>(
+  (ref) => MemoryLutRepository(),
 );
 final platformInfoProvider = Provider<PlatformInfo>(
   (ref) => PlatformInfo.current(),
@@ -55,6 +61,22 @@ class PresetsNotifier extends AsyncNotifier<List<Preset>> {
   Future<void> save(Preset preset) async {
     await ref.read(presetRepositoryProvider).save(preset);
     ref.invalidateSelf();
+  }
+
+  /// Saves several presets (an import) with one refresh.
+  Future<void> saveAll(Iterable<Preset> presets) async {
+    final repo = ref.read(presetRepositoryProvider);
+    for (final p in presets) {
+      await repo.save(p);
+    }
+    ref.invalidateSelf();
+  }
+
+  Future<void> rename(String id, String name) async {
+    final current = (state.value ?? await future).where((p) => p.id == id);
+    final trimmed = name.trim();
+    if (current.isEmpty || trimmed.isEmpty) return;
+    await save(current.first.copyWith(name: trimmed));
   }
 
   Future<void> remove(String id) async {

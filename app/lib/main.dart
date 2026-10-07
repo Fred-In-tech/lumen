@@ -6,6 +6,7 @@ import 'package:lumen/ai/ondevice/ai_mask_providers.dart';
 import 'package:lumen/app/lumen_app.dart';
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/repositories.dart';
+import 'package:lumen/engine/creative_lut_cache.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
 
 Future<void> main() async {
@@ -15,12 +16,14 @@ Future<void> main() async {
     (r) => debugPrint('${r.level.name} ${r.loggerName}: ${r.message}'),
   );
   final repos = await openRepositories();
+  CreativeLuts.configure(repos.luts.load);
   runApp(
     ProviderScope(
       overrides: [
         catalogRepositoryProvider.overrideWithValue(repos.catalog),
         presetRepositoryProvider.overrideWithValue(repos.presets),
         settingsRepositoryProvider.overrideWithValue(repos.settings),
+        lutRepositoryProvider.overrideWithValue(repos.luts),
         aiMaskSourceProvider.overrideWith(
           (ref) => ref.watch(onDeviceAiMaskSourceProvider),
         ),

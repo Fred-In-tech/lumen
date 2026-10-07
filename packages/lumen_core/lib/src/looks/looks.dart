@@ -7,4 +7,4 @@ export 'look_import.dart';
 export 'lrtemplate_preset.dart';
 export 'safe_xml.dart';
 export 'xmp_preset.dart';
-export 'zip_reader.dart';
+export 'zip_reader.dart' hide crc32;
