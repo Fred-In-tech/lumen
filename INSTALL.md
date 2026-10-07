@@ -34,7 +34,7 @@ If you're asked for a token, the project is private at the moment. Ask Freddy to
    3. **Looks** applies a style.
 3. Switch to **Manual** at the top for every slider, plus masks, remove, crop and presets.
 4. Hold `\` to see the before photo. Press `I` for the photo's camera details.
-5. Click **Export** to save your edited photo.
+5. Click **Export** to save your edited photo. Pick a preset (Web, Full size JPEG, Print TIFF 16-bit, Instagram) or set format, size, sharpening, file name and an optional watermark yourself, then **Save as preset**. To export many photos at once, select them in the library and click **Export** in the bar at the bottom.
 
 The "Describe an edit" box needs an AI server that isn't part of this test build, so it uses a basic offline edit instead.
 

@@ -217,7 +217,12 @@ export therefore never has the whole photo on the GPU
    window** (retouch and backdrop sample their maps at the full-source uv
    and take the window as their source).
 5. Develop renders the tile from the window (`uSrcWin`), finish follows,
-   and only the 8-bit tile is read back.
+   and only the tile is read back: 8-bit for the plain path, float32
+   (`FloatTileOutput.rgb16` / `dithered8`) for exports. A 16-bit TIFF or
+   PNG gets the float tile at 16 bits per channel, an 8-bit JPEG / PNG
+   gets it quantized with ±½-level dither seeded by the absolute pixel
+   position (no seams, no banding). Tiles stream into the one output
+   frame (45 MP: 270 MB at 16-bit RGB, 179 MB at 8-bit RGBA).
 
 Aux maps, masks and the warp field are resolution independent and shared by
 all tiles, so there are no seams: the windowed export equals a single pass
@@ -312,9 +317,12 @@ float engine suites mark themselves skipped there, they do not fail.
 - **Retouch maps are 8-bit** (bands, regions): retouched skin keeps float
   precision and highlights as detail on top of 8-bit bands.
 - **Colours outside sRGB** are clipped at develop, as on the 8-bit path
-  (the output is 8-bit sRGB). No wide-gamut or HDR output yet.
-- **Output is 8-bit** (JPEG / PNG / WebP). `runDevelop(float: true)`
-  exists for a future 16-bit export.
+  (the output is sRGB). No wide-gamut or HDR output yet.
+- **16-bit output** (TIFF / PNG 16-bit, sRGB ICC embedded) carries the
+  float precision; an 8-bit photo exported as 16-bit is widened (v × 257)
+  and the export dialog says so. Measured on the Canon R5 CR3 (full size,
+  5464 × 8192): 65 463 / 59 337 / 54 510 distinct R / G / B levels in the
+  TIFF, read back independently.
 - **The preview of a float photo is a float32 texture** on the GPU:
   1708 × 2560 is 93 MB with mips, and each active float pre-pass (denoise,
   retouch, backdrop) caches one more image of that size. Half-float upload
