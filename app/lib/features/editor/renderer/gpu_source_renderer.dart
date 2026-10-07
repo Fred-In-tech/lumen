@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:lumen_core/lumen_core.dart';
 
+import 'package:lumen/engine/creative_lut_cache.dart';
 import 'package:lumen/engine/aux_cache.dart';
 import 'package:lumen/engine/export_renderer.dart';
 import 'package:lumen/engine/gpu_pass.dart';
@@ -26,7 +27,11 @@ Future<RgbaBuffer> gpuFullResRender(
     final decoded = await decodePhoto(original, maxLongEdge: longEdge);
     final src = await rgbaFromImage(decoded);
     decoded.dispose();
-    return renderReference(src, settings);
+    return renderReference(
+      src,
+      settings,
+      creativeLut: await CreativeLuts.forSettings(settings),
+    );
   }
   final source = await ExportRenderer.decodeOriginal(original);
   final aux = await AuxTextures.build(source);

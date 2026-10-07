@@ -1,3 +1,4 @@
+import 'package:lumen/engine/creative_lut_cache.dart';
 import 'package:lumen/platform/background.dart';
 
 import 'dart:math' as math;
@@ -193,7 +194,10 @@ Future<RgbaBuffer> cpuFullResRender(
   final decoded = await decodePhoto(original, maxLongEdge: longEdge);
   final src = await rgbaFromImage(decoded);
   decoded.dispose();
-  return runInBackground(() => renderReference(src, settings));
+  final lut = await CreativeLuts.forSettings(settings);
+  return runInBackground(
+    () => renderReference(src, settings, creativeLut: lut),
+  );
 }
 
 /// Decoded rasters of [masks]' AI masks for stored photo [assetId], by

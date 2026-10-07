@@ -3,6 +3,7 @@
 // CPU twin: packages/lumen_core/lib/src/render/develop_kernel.dart and
 // color_ops.dart; local masks: local_adjust.dart; uniform layout:
 // uniform_layout.dart (202 floats). Warp: warp/warp_field.dart.
+// Creative LUT: looks/cube_lut.dart (CubeLut.sample) and develop_kernel.dart.
 // Float sources (docs/HIGH_BIT_DEPTH.md): uSource may be a float32 texture
 // with values above 1.0 and may hold only a window of the source (uSrcWin).
 #include <flutter/runtime_effect.glsl>
@@ -34,8 +35,8 @@ uniform vec4 uVec0[50];
 #define uBwMix0 uVec0[19]  // 78-81
 #define uBwMix1 uVec0[20]  // 82-85
 #define uVignette uVec0[21]  // 86-89 amount, midpoint, roundness, feather
-#define uVignette2 uVec0[22]  // 90-93 highlights, aspect, showClipping, 0
-#define uMaskGrid uVec0[23]  // 94-97 mask grid wh, active count, 0
+#define uVignette2 uVec0[22]  // 90-93 highlights, aspect, showClipping, creative LUT amount 0..1
+#define uMaskGrid uVec0[23]  // 94-97 mask grid wh, active count, creative LUT size N (0 = none)
 #define uMask0A uVec0[24]  // 98-109: exposure EV, temp, tint, sat
 #define uMask0B uVec0[25]  //   highlights, shadows, clarity, texture
 #define uMask0C uVec0[26]  //   dehaze, contrast, whites, blacks
@@ -70,6 +71,7 @@ uniform sampler2D uCurveLut;    // 3: 1024x4 packed LUT (FilterQuality.none)
 uniform sampler2D uMasks0;      // 4: masks 0-3 atlas (2w x h, FilterQuality.none)
 uniform sampler2D uMasks1;      // 5: masks 4-7 atlas
 uniform sampler2D uWarp;        // 6: warp (2w x h) dx | dy codes, FilterQuality.none
+uniform sampler2D uLut;         // 7: creative LUT atlas 2N x N^2 (hi | lo bytes), FilterQuality.none
 
 out vec4 fragColor;
 
@@ -261,6 +263,30 @@ vec3 colorOps(vec3 lab, float sat) {
   return vec3(l, ab);
 }
 
+// 13a. Creative 3D LUT (CubeLut.sample): atlas texel (r, g + b*N) holds the
+// high bytes of an entry, (r + N, g + b*N) the low bytes; manual trilinear.
+vec3 lutEntry(float r, float g, float b) {
+  float n = uMaskGrid.w;
+  vec2 size = vec2(2.0 * n, n * n);
+  vec2 t = vec2(r, g + b * n) + 0.5;
+  vec3 hi = texture(uLut, t / size).rgb;
+  vec3 lo = texture(uLut, (t + vec2(n, 0.0)) / size).rgb;
+  return (hi * 65280.0 + lo * 255.0) / 65535.0;
+}
+
+vec3 lutSample(vec3 e) {
+  float k = uMaskGrid.w - 1.0;
+  vec3 p = clamp(e, 0.0, 1.0) * k;
+  vec3 i0 = floor(p);
+  vec3 f = p - i0;
+  vec3 i1 = min(i0 + 1.0, vec3(k));
+  vec3 c00 = mix(lutEntry(i0.x, i0.y, i0.z), lutEntry(i1.x, i0.y, i0.z), f.x);
+  vec3 c10 = mix(lutEntry(i0.x, i1.y, i0.z), lutEntry(i1.x, i1.y, i0.z), f.x);
+  vec3 c01 = mix(lutEntry(i0.x, i0.y, i1.z), lutEntry(i1.x, i0.y, i1.z), f.x);
+  vec3 c11 = mix(lutEntry(i0.x, i1.y, i1.z), lutEntry(i1.x, i1.y, i1.z), f.x);
+  return mix(mix(c00, c10, f.y), mix(c01, c11, f.y), f.z);
+}
+
 // 13. Post-crop vignette, paint style in the encoded domain.
 vec3 vignette(vec3 e, vec2 uv) {
   float amount = uVignette.x;
@@ -368,8 +394,12 @@ void main() {
   }
   // 9-12. OkLab color stages.
   c = oklabToLinSrgb(colorOps(linSrgbToOklab(c), uColor.y + lA.w));
-  // 13. Encode, vignette, clipping overlay.
-  vec3 e = vignette(srgbEncode(c), uv);
+  // 13. Encode, creative LUT (display-referred), vignette, clipping overlay.
+  vec3 e = srgbEncode(c);
+  if (uVignette2.w > 0.0 && uMaskGrid.w > 1.5) {
+    e = mix(e, lutSample(e), uVignette2.w);
+  }
+  e = vignette(e, uv);
   if (uVignette2.z > 0.5) {
     float m = max(e.r, max(e.g, e.b));
     if (m >= 254.5 / 255.0) {

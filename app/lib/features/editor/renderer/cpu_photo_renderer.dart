@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:lumen/engine/creative_lut_cache.dart';
 import 'package:lumen/platform/background.dart';
 
 import 'dart:ui' as ui;
@@ -268,17 +269,21 @@ Future<RgbaBuffer> _renderInBackground(
   FaceAnalysis? faces,
   FaceAnalysis? warpFaces,
   BackdropInputs swap,
-) => runInBackground(
-  () => renderReference(
-    backdroppedSource(
-      retouchedSource(src, settings, maps, faces),
-      settings.backdrop,
-      people: swap.people,
-      hair: swap.hair,
-      image: swap.image,
+) async {
+  final lut = await CreativeLuts.forSettings(settings);
+  return runInBackground(
+    () => renderReference(
+      backdroppedSource(
+        retouchedSource(src, settings, maps, faces),
+        settings.backdrop,
+        people: swap.people,
+        hair: swap.hair,
+        image: swap.image,
+      ),
+      settings,
+      maskRasters: rasters,
+      faces: warpFaces,
+      creativeLut: lut,
     ),
-    settings,
-    maskRasters: rasters,
-    faces: warpFaces,
-  ),
-);
+  );
+}

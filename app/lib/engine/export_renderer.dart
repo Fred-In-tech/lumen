@@ -52,6 +52,7 @@ import 'package:lumen_core/lumen_core.dart';
 import 'aux_cache.dart';
 import 'backdrop_stage.dart';
 import 'backdrop_textures.dart';
+import 'creative_lut_cache.dart';
 import 'float_source.dart';
 import 'gpu_pass.dart';
 import 'lut_texture.dart';
@@ -281,6 +282,8 @@ class ExportRenderer {
         ? null
         : await WarpTexture.upload(field);
     final lut = await LutTexture.upload(ToneLut.bake(settings));
+    final creative = CreativeLutCache();
+    final creativeTex = await creative.obtain(settings.lut);
     final ui.Image src;
     final AuxTextures ax;
     try {
@@ -302,6 +305,7 @@ class ExportRenderer {
       ax = prepared.aux ?? aux;
     } on Object {
       lut.dispose();
+      creative.dispose();
       warpTex?.dispose();
       if (ownMasks) atlases.dispose();
       rethrow;
@@ -344,6 +348,7 @@ class ExportRenderer {
             warpWidth: warpTex?.field.width ?? 1,
             warpHeight: warpTex?.field.height ?? 1,
             warpRange: warpTex?.field.range ?? 0,
+            lutSize: creativeTex?.size ?? 0,
           );
           var image = runDevelop(
             shaders,
@@ -357,6 +362,7 @@ class ExportRenderer {
             masks0: atlases.atlas0,
             masks1: atlases.atlas1,
             warp: warpTex?.image,
+            creativeLut: creativeTex?.image,
           );
           if (finish) {
             final developed = image;
@@ -387,6 +393,7 @@ class ExportRenderer {
       }
     } finally {
       lut.dispose();
+      creative.dispose();
       warpTex?.dispose();
       if (ownMasks) atlases.dispose();
       if (!identical(src, source)) EngineImages.dispose(src);
@@ -472,6 +479,8 @@ class ExportRenderer {
         ? null
         : await WarpTexture.upload(field);
     final lut = await LutTexture.upload(ToneLut.bake(settings));
+    final creative = CreativeLutCache();
+    final creativeTex = await creative.obtain(settings.lut);
     final maps = retouchTextures?.maps ?? retouchMaps;
     final ru = faceAnalysis == null
         ? null
@@ -494,6 +503,7 @@ class ExportRenderer {
       }
     } on Object {
       lut.dispose();
+      creative.dispose();
       warpTex?.dispose();
       if (ownMasks) atlases.dispose();
       if (!identical(retouch, retouchTextures)) retouch?.dispose();
@@ -528,6 +538,7 @@ class ExportRenderer {
       windowY: window?.y ?? 0,
       windowWidth: window?.width,
       windowHeight: window?.height,
+      lutSize: creativeTex?.size ?? 0,
     );
 
     // A tile's render rectangle: the tile plus the finish apron, clipped.
@@ -634,6 +645,7 @@ class ExportRenderer {
               masks0: atlases.atlas0,
               masks1: atlases.atlas1,
               warp: warpTex?.image,
+              creativeLut: creativeTex?.image,
               float: floatOut,
             );
           } finally {
@@ -699,6 +711,7 @@ class ExportRenderer {
       }
     } finally {
       lut.dispose();
+      creative.dispose();
       warpTex?.dispose();
       if (ownMasks) atlases.dispose();
       if (!identical(retouch, retouchTextures)) retouch?.dispose();

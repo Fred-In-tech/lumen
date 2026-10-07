@@ -1,5 +1,6 @@
 import 'package:lumen_core/lumen_core.dart';
 
+import 'package:lumen/engine/creative_lut_cache.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 import 'package:lumen/platform/background.dart';
@@ -93,17 +94,21 @@ Future<RgbaBuffer> developInBackground(
   RetouchMaps? maps,
   FaceAnalysis? faces, {
   BackdropInputs backdrop = kNoBackdropInputs,
-}) => runInBackground(
-  () => renderReference(
-    backdroppedSource(
-      retouchedSource(src, settings, maps, faces),
-      settings.backdrop,
-      people: backdrop.people,
-      hair: backdrop.hair,
-      image: backdrop.image,
+}) async {
+  final lut = await CreativeLuts.forSettings(settings);
+  return runInBackground(
+    () => renderReference(
+      backdroppedSource(
+        retouchedSource(src, settings, maps, faces),
+        settings.backdrop,
+        people: backdrop.people,
+        hair: backdrop.hair,
+        image: backdrop.image,
+      ),
+      settings,
+      maskRasters: rasters,
+      faces: faces,
+      creativeLut: lut,
     ),
-    settings,
-    maskRasters: rasters,
-    faces: faces,
-  ),
-);
+  );
+}

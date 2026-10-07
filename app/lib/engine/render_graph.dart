@@ -36,6 +36,9 @@
 ///   decodes real highlight headroom and shadow precision; develop and
 ///   finish still write the 8-bit frame. `profile` is the source's
 ///   rendering profile (highlight shoulder, extra Highlights range).
+/// * Creative LUT: `settings.lut` is looked up in `CreativeLuts` and its
+///   atlas uploaded once per LUT (`lutCache`); a LUT that is not in the
+///   library renders as if there were none.
 /// * `renderMaskOverlay(settings, index, {scale, tint})`: one mask's
 ///   coverage as a premultiplied tint (default 50 % red), same size and
 ///   geometry as `render` (draw it over the frame for "show overlay").
@@ -49,6 +52,7 @@ import 'package:lumen_core/lumen_core.dart';
 
 import 'aux_cache.dart';
 import 'backdrop_stage.dart';
+import 'creative_lut_cache.dart';
 import 'gpu_pass.dart';
 import 'lut_texture.dart';
 import 'mask_atlas_cache.dart';
@@ -127,6 +131,9 @@ class RenderGraph implements FrameRenderer {
   set maskRasters(Map<String, MaskRaster> value) => maskCache.rasters = value;
 
   LutTexture? _lut;
+
+  /// The creative LUT atlas (owned by the graph).
+  final CreativeLutCache lutCache = CreativeLutCache();
   ui.Image? _denoised;
   (double, double)? _denoiseKey;
   ui.Image? _retouched;
@@ -239,6 +246,7 @@ class RenderGraph implements FrameRenderer {
   }) async {
     if (_disposed) throw StateError('RenderGraph disposed');
     final lut = await _lutFor(settings);
+    final creative = await lutCache.obtain(settings.lut);
     final masks = await maskCache.obtain(settings.masks);
     final retouch = await retouchCache.obtain(retouchMaps);
     final swap = await backdrop.prepare(settings);
@@ -279,6 +287,7 @@ class RenderGraph implements FrameRenderer {
           warpHeight: warpTex?.field.height ?? 1,
           warpRange: warpTex?.field.range ?? 0,
           profile: profile,
+          lutSize: creative?.size ?? 0,
         ),
       ),
       source: src,
@@ -290,6 +299,7 @@ class RenderGraph implements FrameRenderer {
       masks0: masks.atlas0,
       masks1: masks.atlas1,
       warp: warpTex?.image,
+      creativeLut: creative?.image,
     );
     // Recorded frames keep the texture alive; release a one-off upload.
     if (ownWarp) warpTex?.dispose();
@@ -444,6 +454,7 @@ class RenderGraph implements FrameRenderer {
     if (_disposed) return;
     _disposed = true;
     _releaseLut();
+    lutCache.dispose();
     maskCache.dispose();
     retouchCache.dispose();
     warpCache.dispose();

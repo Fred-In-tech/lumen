@@ -215,7 +215,9 @@ ui.Image get emptyMaskAtlas {
 
 /// Develop uber pass. [floats] from `DevelopUniforms.pack`; [masks0] and
 /// [masks1] are the mask atlases, [warp] the warp field atlas (default for
-/// each: [emptyMaskAtlas]). [source] may be an 8-bit or a float image;
+/// each: [emptyMaskAtlas]), [creativeLut] the atlas of the edit's creative
+/// LUT (`CubeLut.toAtlasRgba`; its size goes in `DevelopContext.lutSize`).
+/// [source] may be an 8-bit or a float image;
 /// [float] selects a float32 target for the (0..1) output instead of the
 /// 8-bit one (precision tests; a future 16-bit export).
 ui.Image runDevelop(
@@ -230,6 +232,7 @@ ui.Image runDevelop(
   ui.Image? masks0,
   ui.Image? masks1,
   ui.Image? warp,
+  ui.Image? creativeLut,
   bool float = false,
 }) => _run(
   shaders.develop,
@@ -242,6 +245,7 @@ ui.Image runDevelop(
     (masks0 ?? emptyMaskAtlas, ui.FilterQuality.none),
     (masks1 ?? emptyMaskAtlas, ui.FilterQuality.none),
     (warp ?? emptyMaskAtlas, ui.FilterQuality.none),
+    (creativeLut ?? emptyMaskAtlas, ui.FilterQuality.none),
   ],
   width,
   height,
