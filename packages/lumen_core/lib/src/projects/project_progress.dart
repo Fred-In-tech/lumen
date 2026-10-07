@@ -15,7 +15,7 @@ enum ProjectStep {
 
 /// Where one step stands. [optional]: nothing to do for it (no portraits
 /// found), so it never blocks the next step.
-enum StepState { notStarted, partial, done, optional }
+enum StepStatus { notStarted, partial, done, optional }
 
 /// One step: [done] of [total] photos, and a sentence for the UI.
 class StepProgress {
@@ -28,14 +28,15 @@ class StepProgress {
   });
 
   final ProjectStep step;
-  final StepState state;
+  final StepStatus state;
   final int done;
   final int total;
 
   /// e.g. "38 of 120 edited".
   final String summary;
 
-  bool get isComplete => state == StepState.done || state == StepState.optional;
+  bool get isComplete =>
+      state == StepStatus.done || state == StepStatus.optional;
 }
 
 /// What to do next: the first unfinished step, with the photos it applies
@@ -75,11 +76,11 @@ String _photos(int n) => n == 1 ? 'photo' : 'photos';
 String _picks(int n) => n == 1 ? 'pick' : 'picks';
 String _portraits(int n) => n == 1 ? 'portrait' : 'portraits';
 
-StepState _state(int done, int total) => total == 0 || done == 0
-    ? StepState.notStarted
+StepStatus _state(int done, int total) => total == 0 || done == 0
+    ? StepStatus.notStarted
     : done >= total
-    ? StepState.done
-    : StepState.partial;
+    ? StepStatus.done
+    : StepStatus.partial;
 
 /// Project progress from its [photos].
 ///
@@ -154,7 +155,7 @@ ProjectProgress computeProjectProgress(
   final steps = [
     StepProgress(
       step: ProjectStep.import,
-      state: n == 0 ? StepState.notStarted : StepState.done,
+      state: n == 0 ? StepStatus.notStarted : StepStatus.done,
       done: n,
       total: n,
       summary: n == 0 ? 'No photos yet' : '$n ${_photos(n)}',
@@ -178,7 +179,7 @@ ProjectProgress computeProjectProgress(
     StepProgress(
       step: ProjectStep.retouch,
       state: portraits.isEmpty
-          ? StepState.optional
+          ? StepStatus.optional
           : _state(portraits.length - unretouched.length, portraits.length),
       done: portraits.length - unretouched.length,
       total: portraits.length,

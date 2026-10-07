@@ -34,7 +34,7 @@ void main() {
   group('computeProjectProgress', () {
     test('an empty project asks for photos', () {
       final p = computeProjectProgress(const []);
-      expect(p.of(ProjectStep.import).state, StepState.notStarted);
+      expect(p.of(ProjectStep.import).state, StepStatus.notStarted);
       expect(p.of(ProjectStep.import).summary, 'No photos yet');
       expect(p.next.step, ProjectStep.import);
       expect(p.next.label, 'Add photos');
@@ -43,9 +43,9 @@ void main() {
 
     test('a fresh import: next is culling every photo', () {
       final p = computeProjectProgress(_many(120));
-      expect(p.of(ProjectStep.import).state, StepState.done);
+      expect(p.of(ProjectStep.import).state, StepStatus.done);
       expect(p.of(ProjectStep.import).summary, '120 photos');
-      expect(p.of(ProjectStep.cull).state, StepState.notStarted);
+      expect(p.of(ProjectStep.cull).state, StepStatus.notStarted);
       expect(p.next.step, ProjectStep.cull);
       expect(p.next.label, 'Cull 120 photos');
       expect(p.next.assetIds, hasLength(120));
@@ -60,12 +60,12 @@ void main() {
       ];
       final partial = computeProjectProgress(photos, cullAccepted: {'c'});
       final cull = partial.of(ProjectStep.cull);
-      expect((cull.state, cull.done, cull.total), (StepState.partial, 3, 4));
+      expect((cull.state, cull.done, cull.total), (StepStatus.partial, 3, 4));
       expect(cull.summary, '3 of 4 culled');
       expect(partial.next.label, 'Cull 1 photo');
       expect(partial.next.assetIds, ['d']);
       final done = computeProjectProgress(photos, cullAccepted: {'c', 'd'});
-      expect(done.of(ProjectStep.cull).state, StepState.done);
+      expect(done.of(ProjectStep.cull).state, StepStatus.done);
     });
 
     test('edit counts picks when there are picks', () {
@@ -105,7 +105,7 @@ void main() {
       ];
       final p = computeProjectProgress(photos, faceCounts: {'b': 2, 'd': 1});
       final r = p.of(ProjectStep.retouch);
-      expect((r.state, r.done, r.total), (StepState.partial, 1, 2));
+      expect((r.state, r.done, r.total), (StepStatus.partial, 1, 2));
       expect(r.summary, '1 of 2 portraits retouched');
       expect(p.next.step, ProjectStep.retouch);
       expect(p.next.label, 'Retouch 1 portrait');
@@ -115,7 +115,7 @@ void main() {
     test('retouch is optional when no faces are known', () {
       final photos = [_e('a', flag: PhotoFlag.pick, edited: true)];
       final p = computeProjectProgress(photos);
-      expect(p.of(ProjectStep.retouch).state, StepState.optional);
+      expect(p.of(ProjectStep.retouch).state, StepStatus.optional);
       expect(p.of(ProjectStep.retouch).summary, 'No faces found yet');
       expect(p.next.step, ProjectStep.export);
       expect(p.next.label, 'Export 1 pick');
@@ -157,7 +157,7 @@ void main() {
           editedAt: DateTime.utc(2026, 10, 4),
         ),
       ]);
-      expect(p.of(ProjectStep.export).state, StepState.notStarted);
+      expect(p.of(ProjectStep.export).state, StepStatus.notStarted);
       expect(p.next.label, 'Export 1 pick');
     });
 
