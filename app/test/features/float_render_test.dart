@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,7 @@ import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/export/export_service.dart';
 import 'package:lumen/features/remove/healed_source.dart';
+import 'package:lumen/import/float_preview_store.dart';
 import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/import_service.dart';
 import 'package:lumen_core/lumen_core.dart';
@@ -79,6 +81,42 @@ class _Source extends MemoryFloatSource {
 
   @override
   Future<void> release() async => released++;
+}
+
+/// A source with a preview cache (like `CachingFloatSource`): [cached] is
+/// what the cache holds; whole-photo renders wait for [gate] (the decode).
+class _CachingSource extends _Source implements PreviewCacheAware {
+  _CachingSource(super.pixels, {super.failing});
+
+  FloatPixels? cached;
+  final Completer<void> gate = Completer<void>();
+  int cacheReads = 0;
+
+  @override
+  Future<FloatPixels?> cachedPreview(int width, int height) async {
+    cacheReads++;
+    return cached;
+  }
+
+  @override
+  Future<FloatPixels> render({
+    required int fullWidth,
+    required int fullHeight,
+    int x = 0,
+    int y = 0,
+    int? width,
+    int? height,
+  }) async {
+    await gate.future;
+    return super.render(
+      fullWidth: fullWidth,
+      fullHeight: fullHeight,
+      x: x,
+      y: y,
+      width: width,
+      height: height,
+    );
+  }
 }
 
 Future<RgbaBuffer> _frame(
@@ -219,6 +257,127 @@ void main() {
       );
       expect(red(plain), isFalse);
       r.dispose();
+    });
+  });
+
+  group('progressive open', () {
+    test('a cached float preview opens at once, without a decode', () async {
+      final source = _CachingSource(hot);
+      source.cached = (await MemoryFloatSource(hot)
+          .render(fullWidth: _w, fullHeight: _h));
+      final r = GpuPhotoRenderer(
+        assetId: 'a',
+        floatSource: (id) async => source,
+      );
+      await r.open(rendition);
+      expect(r.usingFloat, isTrue);
+      expect(source.renders, 0);
+      expect(source.cacheReads, 1);
+      await r.whenSourceSettled();
+      expect(r.sourceVersion.value, 0);
+      expect(r.floatSwapDelay, isNull);
+      expect(_topLevels(await _frame(r, darker)), greaterThan(40));
+      r.dispose();
+    });
+
+    test('not cached: the 8-bit rendition first, then the float preview, '
+        'with the edits made meanwhile', () async {
+      final source = _CachingSource(hot);
+      final r = GpuPhotoRenderer(
+        assetId: 'a',
+        floatSource: (id) async => source,
+      );
+      await r.open(rendition);
+      expect(r.usingFloat, isFalse, reason: 'shown before the decode');
+      final before8 = r.before;
+      final proxy8 = r.analysisProxy;
+      // An edit while the decode runs: the 8-bit frame clips.
+      expect(_topLevels(await _frame(r, darker)), 1);
+      var swaps = 0;
+      r.sourceVersion.addListener(() => swaps++);
+      source.gate.complete();
+      await r.whenSourceSettled();
+      expect(r.usingFloat, isTrue);
+      expect(swaps, 1);
+      expect(r.floatSwapDelay, isNotNull);
+      expect(identical(r.before, before8), isFalse);
+      expect(identical(r.analysisProxy, proxy8), isFalse);
+      expect((r.before!.width, r.before!.height), (_w, _h));
+      // The same edit, now on the float source: no re-request needed.
+      final f = await _frame(r, darker, done: (b) => _topLevels(b) > 40);
+      expect(_topLevels(f), greaterThan(40));
+      // Default look of the swapped-in preview matches the rendition.
+      final plain = await _frame(
+        r,
+        DevelopSettings.defaults,
+        done: (b) => _topLevels(b) < 40,
+      );
+      expect(plain.g(0, _h ~/ 2), closeTo(128, 2));
+      await Future<void>.delayed(Duration.zero);
+      expect(source.released, 1);
+      r.dispose();
+    });
+
+    test('heals made before the swap are recomposed over the float '
+        'source', () async {
+      const box = PixelBox(40, 60, 60, 40);
+      final store = MemoryPatchStore();
+      await store.save(
+        'a',
+        'retouch/h.png',
+        RgbaBuffer.filled(box.width, box.height, 230, 20, 40),
+      );
+      final source = _CachingSource(hot);
+      final r = GpuPhotoRenderer(
+        assetId: 'a',
+        floatSource: (id) async => source,
+      )..setHealer(HealedSourceCache((ref) => store.load('a', ref)));
+      await r.open(rendition);
+      final op = HealOp.forPatch(
+        id: 'h',
+        bbox: box,
+        srcWidth: _w,
+        srcHeight: _h,
+        engine: 'patchmatch@1',
+        ai: false,
+        strokes: const [],
+      );
+      // The patch, darkened by the edit: clearly red.
+      bool red(RgbaBuffer b) => b.r(70, 80) > 3 * b.g(70, 80) + 30;
+      final edit = darker.copyWith(heal: [op]);
+      await _frame(r, edit, done: red);
+      source.gate.complete();
+      await r.whenSourceSettled();
+      expect(r.usingFloat, isTrue);
+      // (Headless Skia composites the patches into an 8-bit target, so
+      // headroom under heals is checked on device, not here.)
+      final f = await _frame(r, edit, done: red);
+      expect(red(f), isTrue);
+      r.dispose();
+    });
+
+    test('a failed decode keeps the 8-bit path; disposing mid-decode is '
+        'safe', () async {
+      final failing = _CachingSource(hot, failing: true);
+      final r = GpuPhotoRenderer(
+        assetId: 'a',
+        floatSource: (id) async => failing,
+      );
+      await r.open(rendition);
+      failing.gate.complete();
+      await r.whenSourceSettled();
+      expect(r.usingFloat, isFalse);
+      expect(r.sourceVersion.value, 0);
+      expect(_topLevels(await _frame(r, darker)), 1);
+      r.dispose();
+
+      final slow = _CachingSource(hot);
+      final d = GpuPhotoRenderer(assetId: 'a', floatSource: (id) async => slow);
+      await d.open(rendition);
+      d.dispose();
+      slow.gate.complete();
+      await d.whenSourceSettled();
+      expect(d.usingFloat, isFalse);
     });
   });
 

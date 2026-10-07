@@ -30,6 +30,11 @@ class EditorSession {
   final CatalogRepository repo;
   final ValueNotifier<bool> ready = ValueNotifier(false);
   final ValueNotifier<Histogram?> histogram = ValueNotifier(null);
+
+  /// Increments when the renderer swaps its source after [open] (a RAW
+  /// opened on its 8-bit rendition gets its float preview): [before],
+  /// stats and style previews are then new.
+  final ValueNotifier<int> sourceVersion = ValueNotifier(0);
   ImageStats? _stats;
   CatalogEntry? entry;
   Timer? _thumbTimer;
@@ -42,7 +47,19 @@ class EditorSession {
     await renderer.open(bytes);
     if (_disposed) return;
     renderer.output.addListener(_scheduleHistogram);
+    if (renderer case final ProgressiveSource p) {
+      p.sourceVersion.addListener(_onSourceSwapped);
+    }
     ready.value = true;
+  }
+
+  /// The analysis proxy changed: stats and style previews computed from
+  /// the old one are dropped (the histogram follows the next frame).
+  void _onSourceSwapped() {
+    if (_disposed) return;
+    _stats = null;
+    _stylePreviews = null;
+    sourceVersion.value++;
   }
 
   void render(DevelopSettings settings, {bool interactive = false}) {
@@ -174,9 +191,13 @@ class EditorSession {
     _thumbTimer?.cancel();
     _histTimer?.cancel();
     renderer.output.removeListener(_scheduleHistogram);
+    if (renderer case final ProgressiveSource p) {
+      p.sourceVersion.removeListener(_onSourceSwapped);
+    }
     renderer.dispose();
     ready.dispose();
     histogram.dispose();
+    sourceVersion.dispose();
   }
 }
 

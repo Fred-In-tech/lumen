@@ -30,6 +30,7 @@ import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/features/remove/remove_service.dart';
 import 'package:lumen/features/remove/remove_shortcuts.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
+import 'package:lumen/import/float_sources.dart';
 
 final _log = Logger('EditorScreen');
 
@@ -113,6 +114,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
     old?.dispose();
     try {
       await session.open();
+      // The float preview swapped in: `before` is a new image.
+      session.sourceVersion.addListener(() {
+        if (mounted && identical(_session, session)) setState(() {});
+      });
+      unawaited(_prepareNeighbours(session));
       final s = await ref.read(editorProvider(_assetId).future);
       if (referencedPatchRefs(s.doc).isNotEmpty) _healed.add(_assetId);
       _pushHealer(session, ref.read(healedSourceProvider(_assetId)));
@@ -124,6 +130,41 @@ class _EditorScreenState extends ConsumerState<EditorScreen>
       session.render(_renderSettings(s));
     } on Exception catch (e) {
       if (mounted) setState(() => _openError = e);
+    }
+  }
+
+  /// How many photos on each side of the open one get their float preview
+  /// cached in idle time (culling flips through them next).
+  static const _warmRadius = 10;
+
+  /// Filmstrip prefetch (docs/HIGH_BIT_DEPTH.md, "Preview cache"): once the
+  /// open photo has its float preview, the previous and next photos' are
+  /// loaded into memory (decoded first when not cached), then the cache
+  /// entries of the photos around them are built in the background.
+  Future<void> _prepareNeighbours(EditorSession session) async {
+    try {
+      if (session.renderer case final ProgressiveSource p) {
+        await p.whenSourceSettled();
+      }
+      if (!mounted || !identical(_session, session)) return;
+      final ids = widget.assetIds;
+      final i = ids.indexOf(session.assetId);
+      if (i < 0) return;
+      final floats = ref.read(floatSourcesProvider);
+      final longEdge = ref.read(previewLongEdgeProvider);
+      await floats.prefetch([
+        if (i + 1 < ids.length) ids[i + 1],
+        if (i > 0) ids[i - 1],
+      ], previewLongEdge: longEdge);
+      final around = <String>[
+        for (var d = 2; d <= _warmRadius; d++) ...[
+          if (i + d < ids.length) ids[i + d],
+          if (i - d >= 0) ids[i - d],
+        ],
+      ];
+      await floats.warm(around, previewLongEdge: longEdge);
+    } on Exception catch (e) {
+      _log.fine('neighbour previews not prepared: $e');
     }
   }
 

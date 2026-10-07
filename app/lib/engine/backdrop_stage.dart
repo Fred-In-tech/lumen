@@ -45,7 +45,8 @@ class BackdropStage {
   final ShaderLibrary shaders;
 
   /// The upstream image is float: pass B renders into a float32 target.
-  final bool float;
+  /// Set once by `RenderGraph.promoteToFloat` (after `release`).
+  bool float;
 
   /// Uploaded textures of [assets] (owned).
   final BackdropTexturesCache textures = BackdropTexturesCache();

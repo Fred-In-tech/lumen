@@ -75,11 +75,15 @@ class RenderGraph implements FrameRenderer {
     required AuxTextures aux,
     this.assetId = '',
     ({int width, int height})? originalSize,
-    this.float = false,
-    this.profile = HbdProfile.none,
-  }) : _source = source,
-       // The public name `aux` stays the named parameter (a private field
-       // cannot be an initializing formal of a named parameter).
+    bool float = false,
+    HbdProfile profile = HbdProfile.none,
+  }) : _float = float,
+       _source = source,
+       // The public names `aux` and `profile` stay the named parameters (a
+       // private field cannot be an initializing formal of a named
+       // parameter).
+       // ignore: prefer_initializing_formals
+       _profile = profile,
        // ignore: prefer_initializing_formals
        _aux = aux,
        originalSize =
@@ -93,10 +97,12 @@ class RenderGraph implements FrameRenderer {
   final ShaderLibrary shaders;
 
   /// The source is a float32 image (the float editing path).
-  final bool float;
+  bool get float => _float;
+  bool _float;
 
   /// Rendering profile of a float source.
-  final HbdProfile profile;
+  HbdProfile get profile => _profile;
+  HbdProfile _profile;
 
   /// Preview-resolution source (borrowed). Swap with [replaceSource].
   ui.Image get source => _source;
@@ -172,6 +178,21 @@ class RenderGraph implements FrameRenderer {
     _releaseRetouched();
     backdrop.release();
   }
+
+  /// Switches to a float source of the same size: the photo opened on its
+  /// 8-bit preview and its float preview has arrived (progressive open,
+  /// docs/HIGH_BIT_DEPTH.md). Runs after the renders in flight; later
+  /// renders develop [next] with [profile]. [next] and [aux] stay borrowed.
+  Future<void> promoteToFloat(
+    ui.Image next, {
+    required AuxTextures aux,
+    required HbdProfile profile,
+  }) => _exclusive(() async {
+    replaceSource(next, aux: aux);
+    _float = true;
+    _profile = profile;
+    backdrop.float = true;
+  });
 
   /// Output size for [settings] at [scale].
   ({int width, int height}) outputSize(DevelopSettings settings, double scale) {

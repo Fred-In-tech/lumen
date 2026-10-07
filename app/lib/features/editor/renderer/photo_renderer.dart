@@ -34,6 +34,18 @@ abstract interface class PhotoRenderer {
   void dispose();
 }
 
+/// Optional renderer capability: the source can change after `open`
+/// (the progressive open of a RAW swaps its float preview in). When
+/// [sourceVersion] increments, `before` and `analysisProxy` are new and
+/// anything derived from them (stats, style previews) is stale. Check with
+/// `renderer is ProgressiveSource`.
+abstract interface class ProgressiveSource {
+  ValueListenable<int> get sourceVersion;
+
+  /// Completes when no swap is pending any more (done or given up).
+  Future<void> whenSourceSettled();
+}
+
 /// Optional renderer capability: one mask's coverage as a premultiplied
 /// tint in the same geometry as [PhotoRenderer.output] (the Masks "Show
 /// overlay"). Check with `renderer is MaskOverlayRenderer`; renderers

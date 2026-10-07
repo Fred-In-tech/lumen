@@ -20,6 +20,7 @@ import 'package:lumen/features/editor/renderer/cpu_photo_renderer.dart';
 import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart';
 import 'package:lumen/features/remove/healed_source.dart';
+import 'package:lumen/import/float_preview_store.dart';
 import 'package:lumen/import/photo_decoder.dart';
 
 export 'gpu_source_renderer.dart';
@@ -38,9 +39,16 @@ final _log = Logger('GpuPhotoRenderer');
 /// float preview developed with default settings (the same picture as the
 /// JPEG rendition, pixel-aligned with the frames). Any failure on the way
 /// keeps the 8-bit path.
+///
+/// Progressive open: when the float source keeps its preview in the
+/// preview cache ([PreviewCacheAware]) but this photo's is not cached yet,
+/// the photo opens at once on the 8-bit rendition and the float preview is
+/// swapped in when its decode lands ([sourceVersion] increments; [before],
+/// the analysis proxy, heals and the last settings follow).
 class GpuPhotoRenderer
     implements
         PhotoRenderer,
+        ProgressiveSource,
         MaskOverlayRenderer,
         MaskRasterSink,
         RetouchSink,
@@ -62,6 +70,27 @@ class GpuPhotoRenderer
 
   /// True when the open photo is edited on the float path.
   bool get usingFloat => _floatImage != null;
+
+  final ValueNotifier<int> _sourceVersion = ValueNotifier(0);
+
+  @override
+  ValueListenable<int> get sourceVersion => _sourceVersion;
+
+  /// The float preview being swapped in (progressive open), else null.
+  Future<void>? _promotion;
+
+  /// Completes when the progressive open has swapped the float preview in
+  /// (or given up). Immediately when there is nothing to swap.
+  @override
+  Future<void> whenSourceSettled() => _promotion ?? Future.value();
+
+  /// Time from the end of [open] to the float preview on screen (null:
+  /// no swap happened).
+  Duration? floatSwapDelay;
+
+  /// 8-bit previews replaced by the float one: widgets built before the
+  /// swap may still draw them, so they live until [dispose].
+  final List<ui.Image> _retired = [];
 
   /// The graph's unhealed source: the float preview, else the 8-bit one.
   ui.Image? get _base => _floatImage ?? _source;
@@ -128,7 +157,10 @@ class GpuPhotoRenderer
     }
     final size = await probeSize(original);
     final preview = decodedSizeFor(size.width, size.height, previewLongEdge);
-    final float = await _openFloat(shaders, size, preview);
+    final candidate = await _floatCandidate(shaders, size);
+    final float = candidate == null
+        ? null
+        : await _openFloat(candidate, preview);
     _floatImage = float?.image;
     final decoded = float == null
         ? await decodePhoto(original, maxLongEdge: previewLongEdge)
@@ -165,7 +197,8 @@ class GpuPhotoRenderer
     )..faces = _warpFaces ?? _faces;
     _swap =
         BackdropService(
-          preview: () async => _sourceRgba ??= await rgbaFromImage(source),
+          preview: () async =>
+              _sourceRgba ??= await rgbaFromImage(_source ?? source),
           onAssets: (assets) {
             if (_disposed) return;
             graph.backdropAssets = assets;
@@ -183,16 +216,17 @@ class GpuPhotoRenderer
     final proxyImg = await resizeImage(source, 512);
     _proxy = await rgbaFromImage(proxyImg);
     proxyImg.dispose();
+    if (float == null && candidate is PreviewCacheAware) {
+      _promotion = _promote(candidate!, preview);
+    }
   }
 
-  /// The float preview of this photo at [preview] (the size the 8-bit
-  /// decode of the [pixelSource]-sized rendition would have, so masks and
-  /// maps line up either way), or null when the photo has no float source,
-  /// the device fails the float probe or the decode fails.
-  Future<({ui.Image image, FloatSource source})?> _openFloat(
+  /// The float source of this photo when it has one, the device passes
+  /// the float probe and it is the same upright picture as the
+  /// [pixelSource]-sized rendition; else null (the 8-bit path).
+  Future<FloatSource?> _floatCandidate(
     ShaderLibrary shaders,
     ({int width, int height}) pixelSource,
-    ({int width, int height}) preview,
   ) async {
     final loader = floatSource;
     if (loader == null) return null;
@@ -214,10 +248,103 @@ class GpuPhotoRenderer
         );
         return null;
       }
+      return source;
+    } on Exception catch (e) {
+      _log.warning('float source unavailable, using the 8-bit path: $e');
+      return null;
+    }
+  }
+
+  /// Swaps the float preview in after an open on the 8-bit rendition: the
+  /// decode (which also fills the preview cache), then the same graph
+  /// develops the float source. Edits made meanwhile ([_last]) are
+  /// re-rendered on it; heals are recomposed over the float source.
+  Future<void> _promote(
+    FloatSource source,
+    ({int width, int height}) preview,
+  ) async {
+    final opened = Stopwatch()..start();
+    ui.Image? image;
+    AuxTextures? aux;
+    try {
       final px = await source.render(
         fullWidth: preview.width,
         fullHeight: preview.height,
       );
+      if (_disposed) return;
+      image = await uploadFloat(px.rgba, preview.width, preview.height);
+      if (_disposed) return;
+      aux = await AuxTextures.build(image, float: true);
+      final graph = _graph;
+      if (_disposed || graph == null) return;
+      // Heals in progress were composed over the 8-bit source: drop them,
+      // the re-render below composes them over the float one.
+      _healGen++;
+      _requestedHeal = null;
+      _appliedHeal = const [];
+      await graph.promoteToFloat(image, aux: aux, profile: source.profile);
+      if (_disposed) return;
+      final oldAux = _aux;
+      _floatImage = image;
+      _aux = aux;
+      image = null;
+      aux = null;
+      _releaseHealed();
+      oldAux?.dispose();
+      final before = await graph.render(DevelopSettings.defaults);
+      if (_disposed) {
+        EngineImages.dispose(before);
+        return;
+      }
+      final old = _source;
+      if (old != null) _retired.add(old);
+      _source = before;
+      _sourceRgba = null;
+      final proxyImg = await resizeImage(before, 512);
+      final proxy = await rgbaFromImage(proxyImg);
+      proxyImg.dispose();
+      if (_disposed) return;
+      _proxy = proxy;
+      unawaited(source.release());
+      floatSwapDelay = opened.elapsed;
+      _log.info(
+        'float preview swapped in for $assetId after '
+        '${opened.elapsedMilliseconds} ms',
+      );
+      _sourceVersion.value++;
+      final last = _last;
+      if (last != null) update(last);
+    } on Exception catch (e) {
+      _log.warning('float preview unavailable, staying on the 8-bit path: $e');
+    } finally {
+      EngineImages.dispose(image);
+      aux?.dispose();
+    }
+  }
+
+  /// The float preview of this photo at [preview] (the size the 8-bit
+  /// decode of the [pixelSource]-sized rendition would have, so masks and
+  /// maps line up either way), or null when the photo has no float source,
+  /// the device fails the float probe or the decode fails.
+  ///
+  /// A [PreviewCacheAware] source answers only from its preview cache here
+  /// (null on a miss: the caller opens progressively); other sources
+  /// decode.
+  Future<({ui.Image image, FloatSource source})?> _openFloat(
+    FloatSource source,
+    ({int width, int height}) preview,
+  ) async {
+    try {
+      final px = source is PreviewCacheAware
+          ? await (source as PreviewCacheAware).cachedPreview(
+              preview.width,
+              preview.height,
+            )
+          : await source.render(
+              fullWidth: preview.width,
+              fullHeight: preview.height,
+            );
+      if (px == null) return null;
       final image = await uploadFloat(px.rgba, preview.width, preview.height);
       // The preview is on the GPU: the decoder's cache (the RAW decode at
       // this size) is not needed again until an export, which opens its own.
@@ -456,6 +583,9 @@ class GpuPhotoRenderer
     EngineImages.dispose(_source);
     EngineImages.dispose(_floatImage);
     _floatImage = null;
+    _retired.forEach(EngineImages.dispose);
+    _retired.clear();
     _output.dispose();
+    _sourceVersion.dispose();
   }
 }

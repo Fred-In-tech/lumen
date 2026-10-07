@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/app/providers.dart';
 import 'package:lumen/features/batch/batch_auto_edit.dart';
+import 'package:lumen/import/float_sources.dart';
 import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/import_service.dart';
 import 'package:lumen/import/import_sources.dart';
@@ -62,6 +65,15 @@ Future<List<ImportResult>> importFiles(
       kind: failed.isNotEmpty && imported.isEmpty
           ? ToastKind.error
           : ToastKind.success,
+    );
+  }
+  if (imported.isNotEmpty) {
+    // Float previews of imported RAWs, built in the background one at a
+    // time: their first open in the editor is then instant.
+    unawaited(
+      ref
+          .read(floatSourcesProvider)
+          .warm(imported, previewLongEdge: ref.read(previewLongEdgeProvider)),
     );
   }
   final settings = ref.read(settingsProvider).value;
