@@ -12,7 +12,9 @@ import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_session.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
 
-/// The 9 AI styles as tiles; each runs the AI with that style.
+/// The 9 AI styles as tiles, each previewed on the open photo (the photo
+/// itself shows until its preview renders); each runs the AI with that
+/// style.
 class StylesGrid extends ConsumerWidget {
   const StylesGrid({
     super.key,
@@ -24,19 +26,6 @@ class StylesGrid extends ConsumerWidget {
   final EditorSession session;
   final int columns;
   final bool horizontal;
-
-  /// Two-colour swatch per style (tiles before a preview renders, Home cards).
-  static const swatches = {
-    AiStyle.natural: [Color(0xFF8C9A7B), Color(0xFFD9C7A5)],
-    AiStyle.vibrant: [Color(0xFF2EC4B6), Color(0xFFFF9F1C)],
-    AiStyle.moody: [Color(0xFF1B2631), Color(0xFF5D6D7E)],
-    AiStyle.cinematic: [Color(0xFF0F4C5C), Color(0xFFE36414)],
-    AiStyle.film: [Color(0xFF9A8C73), Color(0xFFE9D8A6)],
-    AiStyle.goldenHour: [Color(0xFFF4A259), Color(0xFFBC4B51)],
-    AiStyle.cleanBright: [Color(0xFFF1F1EE), Color(0xFFC9D6DF)],
-    AiStyle.bw: [Color(0xFF111111), Color(0xFFDDDDDD)],
-    AiStyle.portraitSoft: [Color(0xFFE8B4A0), Color(0xFFF6E2D3)],
-  };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) =>
@@ -61,8 +50,6 @@ class StylesGrid extends ConsumerWidget {
     );
     Widget tile(AiStyle style) {
       final selected = current == style.id;
-      final colors =
-          swatches[style] ?? const [Color(0xFF444444), Color(0xFF888888)];
       return Semantics(
         button: true,
         selected: selected,
@@ -104,14 +91,22 @@ class StylesGrid extends ConsumerWidget {
                                   gaplessPlayback: true,
                                 );
                               }
-                              return DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: colors,
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                ),
+                              // The photo itself until its styled
+                              // preview lands (never a made-up swatch).
+                              final before = session.renderer.before;
+                              return Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  ColoredBox(color: t.surface2),
+                                  if (before != null)
+                                    Opacity(
+                                      opacity: 0.55,
+                                      child: RawImage(
+                                        image: before,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                ],
                               );
                             },
                           ),

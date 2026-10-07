@@ -93,6 +93,11 @@ flutter:
   # On-device face models bundled in the binary (Apache-2.0, see docs/MODEL_LICENSES.md).
   assets:
     - assets/models/
+    # CC0 sample photos for look previews (credits: assets/samples/README.md).
+    - assets/samples/portrait_pink.jpg
+    - assets/samples/portrait_moody.jpg
+    - assets/samples/wedding_couple.jpg
+    - assets/samples/sunset_landscape.jpg
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -10,6 +10,8 @@ import 'package:lumen/data/memory_catalog_repository.dart';
 import 'package:lumen/data/preference_repositories.dart';
 import 'package:lumen/features/cull/cull_providers.dart';
 import 'package:lumen/features/cull/cull_store.dart';
+import 'package:lumen/features/looks/look.dart';
+import 'package:lumen/features/looks/look_previews.dart';
 import 'package:lumen/features/library/library_actions.dart';
 import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/import_sources.dart';
@@ -78,15 +80,31 @@ List<Override> appOverrides(
   MemoryCatalogRepository repo, {
   MemorySettingsRepository? settings,
   List<ImportFile> pick = const [],
+  MemoryPresetRepository? presets,
 }) => [
   catalogRepositoryProvider.overrideWithValue(repo),
-  presetRepositoryProvider.overrideWithValue(MemoryPresetRepository()),
+  presetRepositoryProvider.overrideWithValue(
+    presets ?? MemoryPresetRepository(),
+  ),
   settingsRepositoryProvider.overrideWithValue(
     settings ?? MemorySettingsRepository(),
   ),
   cullStoreProvider.overrideWith((ref) async => MemoryCullStore()),
   importSourceProvider.overrideWithValue(FakeImportSource(pick)),
+  // Widget tests do not render look previews (isolates would compete
+  // with the import work the tests wait for).
+  lookPreviewServiceProvider.overrideWithValue(NoLookPreviews()),
 ];
+
+/// Look cards without renders: the sample area stays neutral.
+class NoLookPreviews extends LookPreviewService {
+  @override
+  Future<Uint8List?> before(LookPreviewPhoto photo) => Future.value();
+
+  @override
+  Future<Uint8List?> preview(Look look, LookPreviewPhoto photo) =>
+      Future.value();
+}
 
 /// Pumps the whole app at [size] (default desktop 1440×900).
 Future<ProviderContainer> pumpApp(

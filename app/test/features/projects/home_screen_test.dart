@@ -20,7 +20,9 @@ void main() {
     expect(find.textContaining('developed.'), findsOneWidget);
     expect(find.text('Choose photos'), findsOneWidget);
     expect(find.text('Active projects'), findsNothing);
-    expect(find.text('Looks & presets'), findsNothing);
+    // Looks can be imported before the first shoot (samples show them).
+    expect(find.text('Looks & presets'), findsOneWidget);
+    expect(find.text('Import presets & LUTs'), findsOneWidget);
     expect(find.text('Welcome back'), findsOneWidget);
     expect(find.text('Import your first shoot to begin.'), findsOneWidget);
   });
@@ -49,8 +51,9 @@ void main() {
     await tester.tap(find.byTooltip('Next'));
     await tester.pumpAndSettle();
     expect(find.text('Auto Retouch that keeps skin texture.'), findsOneWidget);
-    // Looks: dashed card first, then AI styles as cards.
-    expect(find.text('Create a preset'), findsOneWidget);
+    // Looks: the import card first, then AI styles as cards.
+    expect(find.text('Import presets & LUTs'), findsOneWidget);
+    expect(find.text('Create a preset'), findsNothing);
     expect(find.text('Moody'), findsOneWidget);
 
     await tester.tap(find.text('View all').first);

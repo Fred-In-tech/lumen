@@ -152,7 +152,7 @@ class _PhoneEditorState extends ConsumerState<PhoneEditor> {
         touch: true,
       ),
       _Tab.remove => RemovePanel(assetId: id, touch: true),
-      _Tab.presets => PresetsPanel(assetId: id),
+      _Tab.presets => PresetsPanel(assetId: id, session: widget.session),
     };
   }
 

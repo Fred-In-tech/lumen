@@ -119,7 +119,7 @@ class DevelopPanel extends ConsumerWidget {
                         Sp.s4,
                         0,
                       ),
-                      child: PresetsPanel(assetId: id),
+                      child: PresetsPanel(assetId: id, session: session),
                     ),
                   ],
                 },

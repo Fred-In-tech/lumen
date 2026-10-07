@@ -15,6 +15,8 @@ import 'package:lumen/features/home/hero_visuals.dart';
 import 'package:lumen/features/home/home_sidebar.dart';
 import 'package:lumen/features/home/looks.dart';
 import 'package:lumen/features/library/empty_library.dart';
+import 'package:lumen/features/looks/look_import_flow.dart';
+import 'package:lumen/features/looks/looks_drop_zone.dart';
 import 'package:lumen/features/projects/project_actions.dart';
 import 'package:lumen/features/projects/project_card.dart';
 import 'package:lumen/features/projects/project_import.dart';
@@ -195,24 +197,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                 ],
               ),
-              const SizedBox(height: Sp.s8),
-              _SectionHeader(
-                title: 'Looks & presets',
-                onViewAll: () => ref
-                    .read(shellLocationProvider.notifier)
-                    .go(const LooksLocation()),
-              ),
-              const SizedBox(height: Sp.s3),
-              _CardRow(
-                height: 236,
+            ],
+            const SizedBox(height: Sp.s8),
+            _SectionHeader(
+              title: 'Looks & presets',
+              onViewAll: () => ref
+                  .read(shellLocationProvider.notifier)
+                  .go(const LooksLocation()),
+            ),
+            const SizedBox(height: Sp.s3),
+            LooksDropZone(
+              builder: (context, dragging) => _CardRow(
+                height: 252,
                 children: [
                   SizedBox(
                     width: 176,
                     child: DashedCard(
-                      icon: LucideIcons.slidersHorizontal,
-                      label: 'Create a preset',
-                      caption: 'From a photo you edited',
-                      onTap: () => createPresetFlow(context, ref),
+                      icon: LucideIcons.fileUp,
+                      label: 'Import presets & LUTs',
+                      caption: 'Lightroom .xmp, .lrtemplate, .zip or .cube',
+                      highlight: dragging,
+                      onTap: () => pickAndImportLooks(context, ref),
                     ),
                   ),
                   for (final look in homeLooks(presets))
@@ -222,7 +227,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                 ],
               ),
-            ],
+            ),
           ],
         );
         if (wide) {
@@ -266,9 +271,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onDragDone: (details) async {
           setState(() => _dragging = false);
           final files = await readXFiles(details.files);
-          // A project card under the pointer claims the drop for itself.
+          // A project card or the looks row under the pointer claims the
+          // drop for itself.
           await DropClaim.unlessClaimed(() async {
-            if (shell.mounted) {
+            if (!shell.mounted) return;
+            await importDroppedLooks(shell, shellRef, details.files);
+            if (files.isNotEmpty && shell.mounted) {
               await importWithDestination(shell, shellRef, files);
             }
           });
