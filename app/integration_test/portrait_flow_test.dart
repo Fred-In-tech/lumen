@@ -12,7 +12,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:image/image.dart' as img;
 import 'package:integration_test/integration_test.dart';
 import 'package:lumen/app/lumen_app.dart';
 import 'package:lumen/app/providers.dart';
@@ -25,10 +24,13 @@ import 'package:lumen/features/editor/photo_canvas.dart';
 import 'package:lumen/features/library/library_actions.dart';
 import 'package:lumen/features/portrait/portrait_state.dart';
 import 'package:lumen_core/lumen_core.dart';
+
+import 'support/import_flow.dart';
+
 import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/import_sources.dart';
 
-import '../test/ai/ondevice/synthetic_portrait.dart';
+import 'support/sample_photos.dart';
 
 class _FakeImportSource implements ImportSource {
   _FakeImportSource(this.files);
@@ -36,39 +38,6 @@ class _FakeImportSource implements ImportSource {
 
   @override
   Future<List<ImportFile>> pick({required bool mobile}) async => files;
-}
-
-/// The drawn sample portrait with a few red acne spots on the cheeks.
-Uint8List samplePortraitJpeg() {
-  final (buf, face) = syntheticPortrait(width: 1200, height: 900, scale: 520);
-  final rnd = math.Random(7);
-  for (var k = 0; k < 9; k++) {
-    final side = k.isEven ? -1 : 1;
-    final cx = face.cx + side * (0.14 + rnd.nextDouble() * 0.1) * face.scale;
-    final cy = face.cy + (0.05 + rnd.nextDouble() * 0.12) * face.scale;
-    final r = 4 + rnd.nextDouble() * 4;
-    for (var y = (cy - r).floor(); y <= (cy + r).ceil(); y++) {
-      for (var x = (cx - r).floor(); x <= (cx + r).ceil(); x++) {
-        final d = math.sqrt(math.pow(x - cx, 2) + math.pow(y - cy, 2)) / r;
-        if (d > 1) continue;
-        final a = (1 - d * d) * 0.55;
-        final i = (y * buf.width + x) * 4;
-        buf.data[i] = (buf.data[i] * (1 - a) + 205 * a).round();
-        buf.data[i + 1] = (buf.data[i + 1] * (1 - a) + 70 * a).round();
-        buf.data[i + 2] = (buf.data[i + 2] * (1 - a) + 70 * a).round();
-      }
-    }
-  }
-  final im = img.Image.fromBytes(
-    width: buf.width,
-    height: buf.height,
-    bytes: buf.data.buffer,
-    numChannels: 4,
-    order: img.ChannelOrder.rgba,
-  );
-  return Uint8List.fromList(
-    img.encodeJpg(im.convert(numChannels: 3), quality: 95),
-  );
 }
 
 final _shotKey = GlobalKey();
@@ -154,7 +123,7 @@ void main() {
       tester.element(find.byType(LumenApp)),
     );
 
-    await tester.tap(find.text('Import'));
+    await importToNewProject(tester, name: 'Portrait session');
     await _pumpUntil(
       tester,
       () => (container.read(libraryProvider).value?.length ?? 0) == 1,

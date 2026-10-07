@@ -14,6 +14,8 @@ import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/memory_catalog_repository.dart';
 import 'package:lumen/data/preference_repositories.dart';
 
+import 'support/import_flow.dart';
+
 Uint8List _jpeg(int seed) {
   final im = img.Image(width: 64, height: 48);
   for (var y = 0; y < 48; y++) {
@@ -65,12 +67,18 @@ void main() {
       tester.element(find.byType(LumenApp)),
     );
 
-    Future<void> drop(List<Map<String, Object?>> items) async {
+    Future<void> drop(
+      List<Map<String, Object?>> items, {
+      bool askWhere = false,
+    }) async {
       await tester.runAsync(() async {
         await _native('entered', [400.0, 400.0]);
         await _native('updated', [410.0, 410.0]);
         await _native('performOperation_macos', items);
       });
+      // On Home a drop asks where the photos go; inside a project it
+      // imports there directly.
+      if (askWhere) await confirmImportDestination(tester);
       final end = DateTime.now().add(const Duration(seconds: 30));
       while (DateTime.now().isBefore(end)) {
         await tester.runAsync(
@@ -87,7 +95,7 @@ void main() {
     expectedCount = 1;
     await drop([
       {'path': single.path, 'isDirectory': false},
-    ]);
+    ], askWhere: true);
     expect(container.read(libraryProvider).value!.map((e) => e.fileName), [
       'single.jpg',
     ]);
@@ -102,6 +110,13 @@ void main() {
         .map((e) => e.fileName)
         .toSet();
     expect(names, {'single.jpg', 'a.jpg', 'b.jpg', 'c.jpg'});
+    // Both drops landed in the project the first one created.
+    final projects = container
+        .read(libraryProvider)
+        .value!
+        .map((e) => e.projectId);
+    expect(projects.toSet(), hasLength(1));
+    expect(projects.first, isNotNull);
     dir.deleteSync(recursive: true);
   });
 }

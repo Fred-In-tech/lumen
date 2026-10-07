@@ -22,6 +22,8 @@ import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/import_sources.dart';
 import 'package:lumen_core/lumen_core.dart';
 
+import 'support/import_flow.dart';
+
 import 'dart:convert' show base64Decode;
 
 import 'format_fixtures.dart';
@@ -129,7 +131,7 @@ void main() {
     await _screenshot(tester, '01_library_empty');
 
     // Import (auto-edit on import is on by default).
-    await tester.tap(find.text('Import'));
+    await importToNewProject(tester, name: 'Test shoot');
     final container = ProviderScope.containerOf(
       tester.element(find.byType(LumenApp)),
     );
@@ -163,7 +165,8 @@ void main() {
     expect(darkDoc.history.entries.single.kind, HistoryKind.ai);
 
     // Re-importing the same files does not duplicate.
-    await tester.tap(find.text('Import'));
+    // From the project page "Add photos" imports straight into it.
+    await tester.tap(find.text('Add photos'));
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(seconds: 1)),
     );

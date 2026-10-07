@@ -31,6 +31,9 @@ import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/import_sources.dart';
 import 'package:lumen/import/photo_decoder.dart';
 import 'package:lumen_core/lumen_core.dart';
+
+import 'support/import_flow.dart';
+
 import 'package:path/path.dart' as p;
 
 const _samplePath = String.fromEnvironment('LUMEN_RAW_SAMPLE');
@@ -139,7 +142,7 @@ void main() {
 
       // Import: the real `lumen/raw` channel develops the file.
       final watch = Stopwatch()..start();
-      await tester.tap(find.text('Import'));
+      await importToNewProject(tester);
       await _pumpUntil(
         tester,
         () => (container.read(libraryProvider).value?.length ?? 0) == 1,
