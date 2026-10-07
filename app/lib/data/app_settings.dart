@@ -1,3 +1,5 @@
+import 'package:lumen_core/lumen_core.dart';
+
 /// User preferences persisted in `settings.json`.
 class AppSettings {
   const AppSettings({
@@ -13,6 +15,9 @@ class AppSettings {
     this.exportKeepMetadata = true,
     this.onboardingDone = false,
     this.canvasSurround = 'graphite',
+    this.exportPresets = const [],
+    this.exportPresetId,
+    this.exportLast,
   });
 
   factory AppSettings.fromJson(Object? json) {
@@ -33,7 +38,21 @@ class AppSettings {
       exportKeepMetadata: json['exportKeepMetadata'] != false,
       onboardingDone: json['onboardingDone'] == true,
       canvasSurround: json['canvasSurround'] as String? ?? 'graphite',
+      exportPresets: _presets(json['exportPresets']),
+      exportPresetId: json['exportPresetId'] as String?,
+      exportLast: json['exportLast'] is Map
+          ? ExportPreset.fromJson((json['exportLast'] as Map).cast())
+          : null,
     );
+  }
+
+  static List<ExportPreset> _presets(Object? json) {
+    if (json is! List) return const [];
+    return List.unmodifiable([
+      for (final p in json)
+        if (p is Map && p['id'] is String && (p['id'] as String).isNotEmpty)
+          ExportPreset.fromJson(p.cast()),
+    ]);
   }
 
   /// Null means "use the platform default" (localhost / 10.0.2.2 on Android).
@@ -58,6 +77,15 @@ class AppSettings {
   final bool onboardingDone;
   final String canvasSurround;
 
+  /// The user's own export presets (built-ins: `kBuiltinExportPresets`).
+  final List<ExportPreset> exportPresets;
+
+  /// The preset picked last (null: custom settings, [exportLast]).
+  final String? exportPresetId;
+
+  /// The export settings used last (what "Custom" starts from).
+  final ExportPreset? exportLast;
+
   AppSettings copyWith({
     String? gatewayUrl,
     String? gatewayToken,
@@ -72,6 +100,10 @@ class AppSettings {
     bool? exportKeepMetadata,
     bool? onboardingDone,
     String? canvasSurround,
+    List<ExportPreset>? exportPresets,
+    String? exportPresetId,
+    bool clearExportPresetId = false,
+    ExportPreset? exportLast,
   }) => AppSettings(
     gatewayUrl: gatewayUrl ?? this.gatewayUrl,
     gatewayToken: gatewayToken ?? this.gatewayToken,
@@ -89,6 +121,11 @@ class AppSettings {
     exportKeepMetadata: exportKeepMetadata ?? this.exportKeepMetadata,
     onboardingDone: onboardingDone ?? this.onboardingDone,
     canvasSurround: canvasSurround ?? this.canvasSurround,
+    exportPresets: exportPresets ?? this.exportPresets,
+    exportPresetId: clearExportPresetId
+        ? null
+        : (exportPresetId ?? this.exportPresetId),
+    exportLast: exportLast ?? this.exportLast,
   );
 
   Map<String, Object?> toJson() => {
@@ -104,5 +141,8 @@ class AppSettings {
     'exportKeepMetadata': exportKeepMetadata,
     'onboardingDone': onboardingDone,
     'canvasSurround': canvasSurround,
+    'exportPresets': [for (final p in exportPresets) p.toJson()],
+    'exportPresetId': exportPresetId,
+    'exportLast': exportLast?.toJson(),
   };
 }
