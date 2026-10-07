@@ -106,13 +106,16 @@ class EmptyLibrary extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: Sp.s4),
-          _AutoEditToggle(
-            value: settings?.autoEditOnImport ?? true,
-            onChanged: (v) => ref
-                .read(settingsProvider.notifier)
-                .change((s) => s.copyWith(autoEditOnImport: v)),
-          ),
+          // Home shows this switch in its side column already.
+          if (!embedded) ...[
+            const SizedBox(height: Sp.s4),
+            _AutoEditToggle(
+              value: settings?.autoEditOnImport ?? true,
+              onChanged: (v) => ref
+                  .read(settingsProvider.notifier)
+                  .change((s) => s.copyWith(autoEditOnImport: v)),
+            ),
+          ],
         ],
       ),
     );

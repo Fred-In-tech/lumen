@@ -53,7 +53,7 @@ class _HeroCarouselState extends State<HeroCarousel> {
     final slide = widget.slides[_i];
     return LayoutBuilder(
       builder: (context, c) {
-        final narrow = c.maxWidth < 640;
+        final narrow = c.maxWidth < 560;
         final text = _SlideText(slide: slide, narrow: narrow);
         final visual = AspectRatio(
           aspectRatio: 4 / 3,
@@ -76,6 +76,10 @@ class _HeroCarouselState extends State<HeroCarousel> {
             children: [
               AnimatedSwitcher(
                 duration: Motion.of(context, Motion.base),
+                layoutBuilder: (current, previous) => Stack(
+                  alignment: Alignment.topLeft,
+                  children: [...previous, ?current],
+                ),
                 child: narrow
                     ? KeyedSubtree(key: ValueKey(_i), child: text)
                     : Row(

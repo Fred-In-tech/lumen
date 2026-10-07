@@ -421,15 +421,23 @@ class _CardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The row fades out at the right edge: there is more to scroll to.
     return SizedBox(
-      height: height + Sp.s4,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        clipBehavior: Clip.none,
-        padding: const EdgeInsets.only(bottom: Sp.s4),
-        itemCount: children.length,
-        separatorBuilder: (_, _) => const SizedBox(width: Sp.s4),
-        itemBuilder: (_, i) => children[i],
+      height: height + Sp.s4 + Sp.s1,
+      child: ShaderMask(
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (rect) => LinearGradient(
+          colors: const [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+          stops: [1 - 48 / rect.width, 1],
+        ).createShader(rect),
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          // Room for the hover lift above and the shadow below.
+          padding: const EdgeInsets.only(top: Sp.s1, bottom: Sp.s4),
+          itemCount: children.length,
+          separatorBuilder: (_, _) => const SizedBox(width: Sp.s4),
+          itemBuilder: (_, i) => children[i],
+        ),
       ),
     );
   }

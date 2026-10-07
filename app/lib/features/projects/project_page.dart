@@ -135,7 +135,10 @@ class _ProgressPanel extends ConsumerWidget {
           ? null
           : () => runNextStep(context, ref, summary),
     );
-    final stepper = ProgressStepper(progress: summary.progress, detailed: true);
+    final stepper = ProgressStepper(
+      progress: summary.progress,
+      detailed: !phone,
+    );
     return Container(
       padding: const EdgeInsets.fromLTRB(Sp.s3, Sp.s4, Sp.s4, Sp.s4),
       decoration: BoxDecoration(
