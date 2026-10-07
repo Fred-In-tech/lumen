@@ -70,12 +70,16 @@ CPU fallback, export EXIF, and every device without the float path use it.
 | `floatInfo` | `input` (path) | `width`, `height` (full, upright), `shoulderKnee`, `highlightGain` |
 | `floatRender` | `input`, `fullWidth`, `fullHeight`, `x`, `y`, `width`, `height` | `pixels`: little-endian float32 RGBA, extended sRGB (encoded), alpha 1, upright, rows top to bottom; `ms`: decoder time |
 | `floatRelease` | `input` | drops the cached decoder of that file |
+| `floatRender` + `cachePath` | as above | as above; a whole-photo render is also written to the preview cache file (after the reply) |
+| `floatPreviewRead` | `cachePath`, `width`, `height` | the cached preview as `pixels` (as `floatRender`), `ms`, and `fullWidth`, `fullHeight`, `shoulderKnee`, `highlightGain`; nil on a miss. Never decodes the original |
+| `floatPreviewBuild` | `input`, `cachePath`, `fullWidth`, `fullHeight` | decodes and writes the cache file without sending pixels: `bytes`, `ms` |
 
 `floatRender` renders the photo scaled to `fullWidth × fullHeight` and
 returns one window of it. The preview asks for the whole photo at preview
 size; the export asks for one window per output tile at export size.
-Pixels cross the channel as one `Float32List`; nothing is written to disk.
-The original is read by path inside the app container.
+Pixels cross the channel as one `Float32List`. The original is read by
+path inside the app container. The only thing written is the preview cache
+(see "Preview cache").
 
 **RAW rendering.** `CIRAWFilter` with Apple's defaults (camera white
 balance, default boost and tone curve: the look of the JPEG rendition) and
@@ -113,14 +117,130 @@ converted to extended sRGB float (Lanczos when scaled down). A generated
 new size is a fresh RAW decode: about 0.6 s for the 45 MP CR3; the same
 size again takes 20–80 ms; a full-resolution window about 90 ms. Calls run
 on the serial RAW queue inside a `userInitiated` activity, so a hidden
-window is not throttled by App Nap. These are the times on an otherwise
-idle machine. With other heavy jobs running (load average 8–12 during
-development), and for a few seconds right after importing a 45 MP RAW, the
-same decodes took 2–4 s.
+window is not throttled by App Nap; each call has its own autorelease pool
+(`autoreleaseFrequency: .workItem`), so the CoreImage / RawCamera objects
+of a decode are freed when it ends instead of when the worker thread
+idles. Preview cache reads run on a concurrent queue of their own and
+background builds on a serial `utility` queue, so neither waits behind,
+nor delays, a decode a user waits for.
+
+**Why the decode time varied (0.6–5 s).** Measured with a standalone
+Swift harness on the CR3 (preview size, 10 decodes in a row, CPU time from
+`getrusage`): a fast decode is 0.57 s wall / 1.56 s CPU; a slow one is
+2.2–3 s wall / **7.3–10 s CPU** for the same work, and `sample` puts
+that time inside Apple's RawCamera decoder (its worker threads). It is
+not the CIContext: one shared context with a fixed working space (what
+the app already had), a fresh context per decode, `clearCaches()` after
+each, the software renderer and a half-float working format all show the
+same bimodal times; objects piling up without an autorelease pool did not
+reproduce it reliably either. The slow mode follows machine load (load
+averages of 10–60 from parallel builds during development): with the
+cores busy, RawCamera's parallel decode burns 4–6× the CPU and takes
+3–4× as long. It cannot be fixed from the app; the preview cache takes
+the decode out of every open after the first, background builds run at
+`utility` priority one at a time, and the per-call autorelease pools keep
+memory flat across many decodes.
 
 Sensor bit depth: ImageIO reports only the decode depth (16) for RAW, and
 for CR3 the 8-bit depth of the embedded JPEG, so it is not used. The value
 shown comes from the file's own raw directory where one exists.
+
+## Preview cache (opening RAW fast)
+
+Culling flips through hundreds of RAWs; one RAW decode per open (0.6 s
+idle, several seconds under load) was too slow. The float preview of each
+photo is therefore cached on disk the first time it is decoded.
+
+**Format** (`FloatPreviewFile` in the Runner, both platforms): a 64-byte
+header (magic `LFP1`, format version, preview size, the original's full
+size, shoulder knee, highlight gain, a stamp of the OS build, payload
+size, codec), then the preview's RGB as half floats (alpha is always 1 and
+is not stored), bytes split into a low and a high plane, LZ4-compressed
+with Apple's Compression framework. Every step is an Accelerate (vImage)
+call. Measured on the 1708 × 2560 preview of the 45 MP CR3 (release-mode
+harness unless noted):
+
+| | Size | Encode | Decode |
+|---|---|---|---|
+| float32 RGBA (what the channel carries) | 70 MB | | |
+| half RGBA, raw | 35 MB | | |
+| half RGB, LZ4 | 24.8 MB | 31 ms | 5 ms |
+| half RGB, LZFSE | 19.5 MB | 264 ms | 41 ms |
+| **half RGB, byte planes, LZ4 (used)** | **16.3–17.2 MB** | 29 ms (142 ms whole file in a debug build) | 6 ms (85 ms whole file in a debug build) |
+| half RGB, byte planes, LZFSE | 15.1 MB | 174 ms | 31 ms |
+
+Half floats keep 11 significant bits over the whole extended range: the
+cached preview differs from a fresh decode by at most 0.00096 (0.25/255 at
+display white, 0.05 % relative), below anything develop or an 8-bit frame
+can show. An entry from another OS build (Apple's RAW rendering may change
+with system updates) or another format version is a miss.
+
+**Where.** `<app caches>/float_previews/<assetId>.v<version>.<w>x<h>.lfp`
+(`FileFloatPreviewCache`, `app/lib/import/float_preview_cache_io.dart`):
+outside the catalog and its originals, excluded from backups. Writes go to
+a temporary name and are renamed, so a reader never sees half a file. The
+Dart side names the files, reads only headers and keeps the folder under
+`kFloatPreviewCacheMaxBytes` (2 GB, about 125 photos of 45 MP): recency is
+the file's modification time (set on every read), eviction is least
+recently used first and never touches a preview held in memory; leftover
+temporary files and other versions are deleted. Losing the folder only
+costs decodes. The web and platforms without the float decoder use
+`NoFloatPreviewCache`.
+
+**Memory** (`FloatPreviewStore`, `app/lib/import/float_preview_store.dart`):
+the last three previews stay in memory (the open photo and its two
+filmstrip neighbours, 70 MB each). `FloatSources.open` returns a
+`CachingFloatSource`: its width, height and profile come from a cache
+header when there is one (no native call), a whole-photo render is served
+from memory, then disk, then a decode that writes the entry; export
+windows always go to the decoder. Concurrent loads of one preview share
+one decode, and a load waits for a background build of the same preview
+instead of decoding it a second time.
+
+**Progressive open** (`GpuPhotoRenderer`): when the preview is cached the
+photo opens on it at once. When it is not, the photo opens on the 8-bit
+rendition (as fast as a JPEG), the decode runs, and the float preview is
+swapped into the same render graph (`RenderGraph.promoteToFloat`, after
+the renders in flight): `before`, the analysis proxy and the 8-bit pixels
+of heals and backdrop mattes are rebuilt from it, heals are recomposed
+over it, the last settings (edits made during the decode) are rendered
+again, and `sourceVersion` increments, so the session drops its stats and
+style previews and the editor rebuilds with the new `before` (the
+histogram follows the next frame). The two pictures differ by 1.24/255 on
+average (0.94 % of channels by more than 8/255, mostly edges: different
+resamplers), so the swap shows no jump in tone. The 8-bit `before` it
+replaces lives until the renderer is disposed (a widget built before the
+swap may still draw it).
+
+**Background work.** After an import, `FloatSources.warm` builds the
+entries of the imported photos. In the editor, once the open photo has
+its float preview, `prefetch` loads the previous and next photos into
+memory (building their entries first when needed) and `warm` builds the
+entries of the ten photos on each side. One build at a time, newest
+prefetch first, at `utility` priority, without sending pixels back;
+pending prefetches are replaced when the user moves on.
+
+**Measured** (`app/integration_test/float_preview_cache_test.dart`, 45 MP
+Canon R5 CR3, preview 1708 × 2560, M1 Max, debug build; load average
+59–68 from parallel builds, so an idle machine is faster):
+
+| | Before | Now |
+|---|---|---|
+| Open, first frame on screen | 0.9–1.0 s idle, 3.8–4.9 s loaded (waited for the decode) | **0.30–0.44 s** (the rendition), every open |
+| Open, float frame on screen, first time | same | 1.06 s (3.1 s at load 68): the decode, then the swap |
+| Open, float frame, cached (new session, from disk) | same | **198–238 ms** (244–321 ms at load 68) |
+| Filmstrip step, neighbour prefetched (in memory) | same | **116–136 ms** (168–180 ms at load 68) |
+| Prefetch of a cached neighbour into memory | | 90–95 ms, in the background |
+| Background build of one entry | | 0.78–0.84 s (1.5–9.9 s at load 68), after the import, one at a time |
+| Import | 1.8–5.4 s | unchanged (builds start after it) |
+| Cache entry | | 16.3 MB per photo |
+
+A cached open spends about 90 ms reading the entry (file, LZ4, half →
+float in the debug native code, plus the channel hand-over), 20 ms
+uploading, 75 ms on the aux maps and the default-settings `before`, and
+the rest on the first frame. Fresh preview decodes in a row measured
+615–634 ms at load 59 and 683–3047 ms at load 68 (see "Why the decode
+time varied").
 
 ## What each pass does differently
 
@@ -266,7 +386,7 @@ light bulb and a white curtain in frame), preview 1708 × 2560:
 | Highlights −100, same block | **113 levels, sd 39.8** | 55 levels, sd 7.8 |
 | Exposure −2, brightest blocks (curtain) | 20–23 levels, sd 6.0 | 9–11 levels, sd 2.2–2.4 |
 | Highlights −100, brightest blocks | 22–27 levels, sd 6.9 | 10–16 levels, sd 2.7–3.4 |
-| Open | 0.9–1.0 s in three runs, 3.8–4.9 s in four (one RAW decode at preview size; the decode time varied with machine load) | 0.2 s (JPEG rendition) |
+| Open | first frame 0.2–0.4 s (the rendition), float preview swapped in after one RAW decode (about 1 s); 0.2 s when the float preview is cached (see "Preview cache"). Before the cache: 0.9–1.0 s in three runs, 3.8–4.9 s in four | 0.2 s (JPEG rendition) |
 | Slider drag frame (interactive, half size) | 1.2–2.1 ms | 1.3–2.1 ms |
 | Full-quality frame | 2.8–5.1 ms | 2.9–5.4 ms |
 
@@ -295,6 +415,8 @@ Synthetic checks (CPU twin and GPU agree):
 | Windowed export equals the single pass | `app/test/engine/float_export_test.dart` | same |
 | Renderer and export wiring, fallbacks, channel contract, sources, info panel, bit depth | `app/test/features/float_render_test.dart`, `float_sources_test.dart`, `app/test/import/bit_depth_test.dart` | default `flutter test` (the probe is forced on where needed) |
 | On the real GPU | `app/integration_test/float_engine_on_device_test.dart` | `flutter test integration_test/float_engine_on_device_test.dart -d macos` |
+| Preview cache: names, header, LRU eviction; memory / disk / decode order, prefetch, background builds; progressive open and the swap | `app/test/import/float_preview_cache_test.dart`, `float_preview_store_test.dart`, `app/test/features/float_render_test.dart`, `editor_session_swap_test.dart` | default `flutter test` |
+| Preview cache on the real file (timings, size, precision) | `app/integration_test/float_preview_cache_test.dart` | `-d macos --dart-define=LUMEN_RAW_SAMPLE=<path inside the app container>` |
 | Real files | `app/integration_test/float_raw_test.dart` | `-d macos --dart-define=LUMEN_RAW_SAMPLE=<path inside the app container>` |
 
 Default headless `flutter test` (Skia) has no float render targets: the
@@ -328,10 +450,19 @@ float engine suites mark themselves skipped there, they do not fail.
   retouch, backdrop) caches one more image of that size. Half-float upload
   would halve the source; half-float render targets are not available from
   Dart.
-- **Open is slower** by one RAW decode (about 0.7 s for 45 MP on an idle
-  machine; 3–4 s were measured under load and right after importing the
-  file). The frame appears when the decode is done; there is no 8-bit
-  preview shown first.
+- **The first open of a RAW not yet cached** shows the 8-bit rendition
+  for one RAW decode (about 0.7 s idle, seconds under load) before the
+  float preview is swapped in; slider edits made meanwhile are re-rendered
+  on it. Imported photos and the filmstrip neighbours are built in the
+  background, so this is mostly the case for older catalogs and big jumps.
+- **The preview cache holds about 125 photos of 45 MP** (2 GB, LRU). A
+  cull through more photos than that decodes the oldest again. Entries
+  are keyed by asset id (the hash of the original), preview size, format
+  version and OS build; edits do not change them.
+- **Aux maps are recomputed on every open** (about 50 ms in an isolate);
+  they could be cached with the preview.
+- **Memory**: the preview store keeps up to three float32 previews
+  (210 MB at 2560 px) on top of the GPU texture of the open one.
 - **TIFF** import is not supported (the decoder would handle 16-bit TIFF).
 - The shoulder constants were measured on one Canon CR3 and one ProRAW DNG.
   Other cameras go through the same `CIRAWFilter` rendering, but were not

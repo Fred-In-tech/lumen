@@ -34,6 +34,7 @@ import 'package:lumen/features/editor/renderer/renderer_factory.dart';
 import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/export/export_service.dart';
 import 'package:lumen/features/info/photo_info.dart';
+import 'package:lumen/import/float_preview_cache_io.dart';
 import 'package:lumen/import/float_sources.dart';
 import 'package:lumen/import/import_file.dart';
 import 'package:lumen/import/import_service.dart';
@@ -173,9 +174,18 @@ List<(int, int)> _brightestBlocks(RgbaBuffer b, int size, int count) {
   return best;
 }
 
+/// The catalog under test, with the float preview cache in a folder of
+/// its own (never the app's real caches).
 ProviderContainer _container(FileCatalogRepository catalog) =>
     ProviderContainer(
-      overrides: [catalogRepositoryProvider.overrideWithValue(catalog)],
+      overrides: [
+        catalogRepositoryProvider.overrideWithValue(catalog),
+        floatPreviewCacheProvider.overrideWithValue(
+          FileFloatPreviewCache(
+            () async => p.join(catalog.root, '.float_previews'),
+          ),
+        ),
+      ],
     );
 
 void main() {
@@ -226,6 +236,8 @@ void main() {
     final onBytes = GpuPhotoRenderer(assetId: entry.assetId);
     await onFloat.open(source);
     await onBytes.open(source);
+    // Not cached yet: the float preview follows the rendition.
+    await onFloat.whenSourceSettled();
     expect(onFloat.usingFloat, isTrue);
     expect(onBytes.usingFloat, isFalse);
     final s = DevelopSettings.defaults.withValue(P.exposure, 3);
@@ -345,7 +357,12 @@ void main() {
       final open8 = sw.elapsedMilliseconds;
       sw = Stopwatch()..start();
       await onFloat.open(bytes);
+      final firstF = sw.elapsedMilliseconds;
+      // Not cached yet: the rendition shows first, the float preview
+      // follows (progressive open).
+      await onFloat.whenSourceSettled();
       final openF = sw.elapsedMilliseconds;
+      _r('open on the rendition first: $firstF ms, float preview in');
       expect(
         onFloat.usingFloat,
         isTrue,
