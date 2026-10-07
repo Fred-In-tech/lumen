@@ -215,7 +215,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: DashedCard(
                       icon: LucideIcons.fileUp,
                       label: 'Import presets & LUTs',
-                      caption: 'Lightroom .xmp, .lrtemplate, .zip or .cube',
+                      caption: '.xmp · .lrtemplate · .zip · .cube',
                       highlight: dragging,
                       onTap: () => pickAndImportLooks(context, ref),
                     ),

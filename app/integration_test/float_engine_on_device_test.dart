@@ -10,6 +10,7 @@ import 'package:lumen/engine/gpu_pass.dart';
 import 'package:lumen/engine/hbd_capability.dart';
 import 'package:lumen/engine/shader_library.dart';
 
+import '../test/engine/creative_lut_parity_test.dart' as creative_lut;
 import '../test/engine/float_export_test.dart' as float_export;
 import '../test/engine/float_path_test.dart' as path;
 
@@ -29,4 +30,7 @@ void main() {
 
   group('float path on device', path.main);
   group('float export on device', float_export.main);
+  // The creative LUT stage (one more sampler in develop.frag): 8-bit,
+  // tiled export and float path against the CPU twin on Metal.
+  group('creative LUT on device', creative_lut.main);
 }

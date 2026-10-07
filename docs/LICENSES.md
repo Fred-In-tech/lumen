@@ -30,6 +30,8 @@ exact version pin, and for native binaries a scan of linked libraries and import
   `docs/MODEL_LICENSES.md`.
 - `dbus` (MPL-2.0) is pulled in only for Linux builds by `desktop_drop` / `file_picker_linux`
   and is used unmodified, which MPL permits in a proprietary product.
+- **Sample photos:** `app/assets/samples/` holds four CC0 photos (Wikimedia Commons) used for
+  look previews in an empty library; authors and sources in `app/assets/samples/README.md`.
 - **Icons:** `lucide_icons_flutter` (MIT wrapper) around Lucide icons (ISC).
 - **Fonts:** the UI asks for Geist / Instrument Serif (SIL OFL 1.1) and falls back to the
   platform UI fonts when the font files are not bundled. If bundled, ship `OFL.txt` with them.

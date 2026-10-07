@@ -125,7 +125,7 @@ class LooksPage extends ConsumerWidget {
                   DashedCard(
                     icon: LucideIcons.fileUp,
                     label: 'Import presets & LUTs',
-                    caption: '.xmp, .lrtemplate, .zip or .cube',
+                    caption: '.xmp · .lrtemplate · .zip · .cube',
                     highlight: dragging,
                     onTap: () => pickAndImportLooks(context, ref),
                   ),

@@ -36,7 +36,8 @@ If you're asked for a token, the project is private at the moment. Ask Freddy to
    The strip at the bottom and the arrow keys move through the photos of that project only.
 4. Switch to **Manual** at the top for every slider, plus masks, remove, crop and presets. Hold `\` to see the before photo. Press `I` for the photo's camera details.
 5. Click **Export picks** on the project page (or **Export** in the editor) to save your photos. Pick a preset (Web, Full size JPEG, Print TIFF 16-bit, Instagram) or set format, size, sharpening, file name and an optional watermark yourself, then **Save as preset**.
-6. Home shows your shoots in progress, this week's numbers and the looks you can give a whole project. Your photos from before projects are in **Unsorted** (and in **All photos**): select some and use **Move to…** to put them in a project. Add your name in **Settings** and Home greets you by it.
+6. Bring your own looks: on Home click **Import presets & LUTs** (or drop the files on the Looks row) and pick Lightroom presets (`.xmp`, `.lrtemplate`, or a `.zip` of them) and `.cube` LUTs. A summary tells you what was imported and which Lightroom settings have no equivalent here (camera profiles, lens corrections, masks…). Every look shows a sample of what it does on one of your photos; press and hold a sample to see the photo without it. **Use on a project…** applies it to a whole shoot. In the editor's Presets tab a LUT has an **Amount** slider.
+7. Home shows your shoots in progress, this week's numbers and the looks you can give a whole project. Your photos from before projects are in **Unsorted** (and in **All photos**): select some and use **Move to…** to put them in a project. Add your name in **Settings** and Home greets you by it.
 
 The "Describe an edit" box needs an AI server that isn't part of this test build, so it uses a basic offline edit instead.
 
