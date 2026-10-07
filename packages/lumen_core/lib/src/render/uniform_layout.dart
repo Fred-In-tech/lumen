@@ -35,6 +35,7 @@ class DevelopContext {
     this.windowY = 0,
     this._windowWidth,
     this._windowHeight,
+    this.lutSize = 0,
   });
 
   /// Size of the image this pass renders (a tile during export).
@@ -85,6 +86,11 @@ class DevelopContext {
   final int? _windowHeight;
   int get windowWidth => _windowWidth ?? sourceWidth;
   int get windowHeight => _windowHeight ?? sourceHeight;
+
+  /// Grid size N of the creative LUT bound to this pass (its atlas is
+  /// 2N × N²); 0 when none is bound (no LUT, or its file is missing), which
+  /// turns the LUT stage off whatever the settings say.
+  final int lutSize;
 }
 
 /// One uniform of `develop.frag`, in declaration order.
@@ -135,6 +141,12 @@ abstract final class DevelopIndex {
 
   /// `uGradeParams.w`: extra Highlights EV per stop above white (0 = off).
   static const highlightGain = gradeParams + 3;
+
+  /// `uMaskGrid.w`: grid size N of the bound creative LUT (0 = none).
+  static const lutSize = maskGrid + 3;
+
+  /// `uVignette2.w`: creative LUT amount 0..1 (0 = stage off).
+  static const lutAmount = vignette2 + 3;
 }
 
 /// Packs [DevelopSettings] into the `develop.frag` float uniforms.
@@ -278,11 +290,12 @@ abstract final class DevelopUniforms {
       n(P.vignetteRoundness),
       n(P.vignetteFeather),
     ]);
+    final lut = s.lut;
     put(DevelopIndex.vignette2, [
       n(P.vignetteHighlights),
       ctx.fullWidth / ctx.fullHeight,
       ctx.showClipping ? 1 : 0,
-      0,
+      lut != null && ctx.lutSize > 1 ? lut.amount / 100 : 0,
     ]);
     _packMasks(f, s.masks, ctx);
     f
@@ -320,5 +333,6 @@ abstract final class DevelopUniforms {
     f[DevelopIndex.maskGrid] = ctx.maskWidth.toDouble();
     f[DevelopIndex.maskGrid + 1] = ctx.maskHeight.toDouble();
     f[DevelopIndex.maskGrid + 2] = active ? n.toDouble() : 0;
+    f[DevelopIndex.lutSize] = ctx.lutSize.toDouble();
   }
 }

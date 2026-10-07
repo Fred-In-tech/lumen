@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 
 import '../inpaint/heal_op.dart';
 import 'backdrop_change.dart';
+import 'creative_lut.dart';
 import 'geometry.dart';
 import 'liquify.dart';
 import 'mask.dart';
@@ -24,6 +25,7 @@ class DevelopSettings {
     this.heal = const [],
     this.liquify = const [],
     this.backdrop = BackdropChange.none,
+    this.lut,
   });
 
   factory DevelopSettings.fromJson(Object? json) {
@@ -57,6 +59,7 @@ class DevelopSettings {
       heal: parseHealOps(json['heal']),
       liquify: parseLiquify(json['liquify']),
       backdrop: BackdropChange.fromJson(json['backdrop']),
+      lut: LutRef.fromJson(json['lut']),
     );
   }
 
@@ -79,6 +82,9 @@ class DevelopSettings {
 
   /// Backdrop changer / background blur.
   final BackdropChange backdrop;
+
+  /// Creative 3D LUT (by reference) and its amount; null = none.
+  final LutRef? lut;
 
   /// Non-default scalar values (read-only view).
   Map<ParamId, double> get nonDefaultValues => Map.unmodifiable(_values);
@@ -112,6 +118,7 @@ class DevelopSettings {
       heal: heal,
       liquify: liquify,
       backdrop: backdrop,
+      lut: lut,
     );
   }
 
@@ -134,6 +141,21 @@ class DevelopSettings {
     heal: heal == null ? this.heal : List.unmodifiable(heal),
     liquify: liquify == null ? this.liquify : List.unmodifiable(liquify),
     backdrop: backdrop ?? this.backdrop,
+    lut: lut,
+  );
+
+  /// Returns a copy with [next] as the creative LUT (null removes it).
+  DevelopSettings withLut(LutRef? next) => DevelopSettings(
+    values: _values,
+    curves: curves,
+    treatment: treatment,
+    geometry: geometry,
+    masks: masks,
+    portrait: portrait,
+    heal: heal,
+    liquify: liquify,
+    backdrop: backdrop,
+    lut: next,
   );
 
   /// Returns a copy with every scalar in [ids] reset to its default.
@@ -150,7 +172,8 @@ class DevelopSettings {
       portrait.isDefault &&
       heal.isEmpty &&
       liquify.isEmpty &&
-      backdrop == BackdropChange.none;
+      backdrop == BackdropChange.none &&
+      lut == null;
 
   /// Scalar params whose values differ between this and [other].
   Set<ParamId> changedParams(DevelopSettings other) => {
@@ -168,6 +191,7 @@ class DevelopSettings {
     if (heal.isNotEmpty) 'heal': [for (final h in heal) h.toJson()],
     if (liquify.isNotEmpty) 'liquify': [for (final l in liquify) l.toJson()],
     if (backdrop != BackdropChange.none) 'backdrop': backdrop.toJson(),
+    if (lut case final l?) 'lut': l.toJson(),
   };
 
   @override
@@ -181,7 +205,8 @@ class DevelopSettings {
       other.portrait == portrait &&
       const ListEquality<HealOp>().equals(other.heal, heal) &&
       const ListEquality<LiquifyStroke>().equals(other.liquify, liquify) &&
-      other.backdrop == backdrop;
+      other.backdrop == backdrop &&
+      other.lut == lut;
 
   @override
   int get hashCode => Object.hash(
@@ -194,6 +219,7 @@ class DevelopSettings {
     const ListEquality<HealOp>().hash(heal),
     const ListEquality<LiquifyStroke>().hash(liquify),
     backdrop,
+    lut,
   );
 
   @override

@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import '../color/luminance.dart';
 import '../color/oklab.dart';
 import '../color/srgb.dart';
+import '../looks/cube_lut.dart';
 import 'aux_maps.dart';
 import 'color_ops.dart';
 import 'engine_constants.dart';
@@ -29,6 +30,7 @@ class DevelopKernel {
     this.aux, [
     MaskAtlases? masks,
     this.warp,
+    this.creativeLut,
   ]) : floatSrc = null,
        _w = src.width,
        _h = src.height,
@@ -48,6 +50,7 @@ class DevelopKernel {
     this.aux, [
     MaskAtlases? masks,
     this.warp,
+    this.creativeLut,
   ]) : src = null,
        floatSrc = source,
        _w = source.width,
@@ -71,6 +74,11 @@ class DevelopKernel {
 
   /// Backward warp field, sampled when `uWarpInfo.w` is set.
   final WarpField? warp;
+
+  /// Creative LUT of the edit (the texture bound as `uLut`), applied when
+  /// `uMaskGrid.w` (its size) and `uVignette2.w` (amount) are set.
+  final CubeLut? creativeLut;
+  final Float64List _lutOut = Float64List(3);
   final bool _colorActive;
   final bool _hasLocal;
   final Float64List _cov = Float64List(kMaxRenderedMasks);
@@ -320,17 +328,30 @@ class DevelopKernel {
       g = c.g;
       b = c.b;
     }
-    // 13. Encode, vignette, clipping overlay.
+    // 13. Encode, creative LUT, vignette, clipping overlay.
     _e
       ..[0] = _fastEncode(r)
       ..[1] = _fastEncode(g)
       ..[2] = _fastEncode(b);
+    _applyCreativeLut();
     applyVignette(_e, u, v, f);
     if (f[DevelopIndex.vignette2 + 2] > 0.5) _clipOverlay(_e);
     for (var c = 0; c < 3; c++) {
       out[c] = _e[c].clamp(0.0, 1.0);
     }
     out[3] = 1;
+  }
+
+  /// 13a. Creative LUT in the display-referred encoded domain (what a
+  /// `.cube` look expects), mixed by its amount (`lutSample` in the shader).
+  void _applyCreativeLut() {
+    final lut = creativeLut;
+    final amount = f[DevelopIndex.lutAmount];
+    if (lut == null || amount <= 0 || f[DevelopIndex.lutSize] < 1.5) return;
+    lut.sample(_e[0], _e[1], _e[2], _lutOut);
+    for (var c = 0; c < 3; c++) {
+      _e[c] += (_lutOut[c] - _e[c]) * amount;
+    }
   }
 
   static const _texTaps = [

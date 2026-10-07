@@ -4,6 +4,7 @@ import '../model/develop_settings.dart';
 import '../model/param_registry.dart';
 import 'aux_maps.dart';
 import 'develop_kernel.dart';
+import '../looks/cube_lut.dart';
 import 'float_buffer.dart';
 import 'geometry_mapping.dart';
 import 'mask_rasterizer.dart';
@@ -51,6 +52,7 @@ RgbaBuffer renderReference(
   Map<String, MaskRaster> maskRasters = const {},
   WarpField? warp,
   FaceAnalysis? faces,
+  CubeLut? creativeLut,
 }) {
   final job = _prepare(
     settings,
@@ -66,6 +68,7 @@ RgbaBuffer renderReference(
     maskRasters: maskRasters,
     warp: warp,
     faces: faces,
+    lut: _lutFor(settings, creativeLut),
   );
   final kernel = DevelopKernel(
     source,
@@ -74,6 +77,7 @@ RgbaBuffer renderReference(
     job.aux,
     job.masks,
     job.warp,
+    _lutFor(settings, creativeLut),
   );
   final out = RgbaBuffer(job.width, job.height);
   final px = Float64List(4);
@@ -118,6 +122,7 @@ FloatBuffer renderReferenceFloat(
   Map<String, MaskRaster> maskRasters = const {},
   WarpField? warp,
   FaceAnalysis? faces,
+  CubeLut? creativeLut,
 }) {
   if (window != null && aux == null && needsAuxMaps(settings)) {
     throw ArgumentError('a windowed render needs the aux maps of the photo');
@@ -146,6 +151,7 @@ FloatBuffer renderReferenceFloat(
             height: source.height,
           ),
     tile: tile,
+    lut: _lutFor(settings, creativeLut),
   );
   final kernel = DevelopKernel.float(
     source,
@@ -154,6 +160,7 @@ FloatBuffer renderReferenceFloat(
     job.aux,
     job.masks,
     job.warp,
+    _lutFor(settings, creativeLut),
   );
   final out = FloatBuffer(job.width, job.height);
   final px = Float64List(4);
@@ -168,6 +175,14 @@ FloatBuffer renderReferenceFloat(
     }
   }
   return out;
+}
+
+/// [lut] when it is the one [settings] reference, else null (a missing or
+/// mismatched LUT renders without the stage, like the GPU).
+CubeLut? _lutFor(DevelopSettings settings, CubeLut? lut) {
+  final ref = settings.lut;
+  if (lut == null || ref == null || ref.amount <= 0) return null;
+  return lut.contentHash == ref.hash ? lut : null;
 }
 
 typedef _Job = ({
@@ -193,6 +208,7 @@ _Job _prepare(
   HbdProfile profile = HbdProfile.none,
   OutputTile? window,
   OutputTile? tile,
+  CubeLut? lut,
 }) {
   final field =
       warp ??
@@ -243,6 +259,7 @@ _Job _prepare(
       windowY: window?.y ?? 0,
       windowWidth: window?.width,
       windowHeight: window?.height,
+      lutSize: lut?.size ?? 0,
     ),
   );
   return (

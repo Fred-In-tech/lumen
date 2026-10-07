@@ -1,6 +1,7 @@
 // Barrel for this workstream. Add exports here.
 export 'history.dart';
 export 'builtin_presets.dart';
+export 'creative_lut.dart';
 export 'catalog_entry.dart';
 export 'catalog_index.dart';
 export 'edit_document.dart';

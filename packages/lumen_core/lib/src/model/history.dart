@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 
 import '../inpaint/heal_op.dart';
 import 'backdrop_change.dart';
+import 'creative_lut.dart';
 import 'liquify.dart';
 import '../model/develop_settings.dart';
 import 'geometry.dart';
@@ -28,7 +29,7 @@ enum HistoryKind {
 /// One reversible change: [path] goes from [from] to [to] (JSON values).
 ///
 /// Paths: `values.<paramId>`, `curves.<channel>`, `treatment`, `geometry`,
-/// `masks`, `portrait`, `heal`, `liquify`, `backdrop`.
+/// `masks`, `portrait`, `heal`, `liquify`, `backdrop`, `lut`.
 class HistoryOp {
   const HistoryOp(this.path, this.from, this.to);
 
@@ -74,6 +75,7 @@ DevelopSettings _apply(DevelopSettings s, String path, Object? v) {
     'heal' => s.copyWith(heal: parseHealOps(v)),
     'liquify' => s.copyWith(liquify: parseLiquify(v)),
     'backdrop' => s.copyWith(backdrop: BackdropChange.fromJson(v)),
+    'lut' => s.withLut(LutRef.fromJson(v)),
     _ => s,
   };
 }
@@ -128,6 +130,9 @@ List<HistoryOp> _diffOps(DevelopSettings a, DevelopSettings b) {
   }
   if (a.backdrop != b.backdrop) {
     ops.add(HistoryOp('backdrop', a.backdrop.toJson(), b.backdrop.toJson()));
+  }
+  if (a.lut != b.lut) {
+    ops.add(HistoryOp('lut', a.lut?.toJson(), b.lut?.toJson()));
   }
   return ops;
 }
