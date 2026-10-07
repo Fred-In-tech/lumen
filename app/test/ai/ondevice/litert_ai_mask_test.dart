@@ -24,7 +24,8 @@ const _seg = ModelManifest.selfieMulticlass;
 String _asset(ModelSpec s) => 'assets/models/${s.fileName}';
 String _dev(ModelSpec s) => '../.dev_models/${s.fileName}';
 
-final Object _skip =
+/// Why the real-model tests skip here (false: they run).
+final Object skipReason =
     Platform.environment['TFLITE_LIB_PATH'] == null ||
         Platform.environment['LITERT_LIB_PATH'] == null
     ? 'LiteRT host libraries not configured (run tool/verify.sh)'
@@ -112,7 +113,7 @@ void main() {
       expect(_cover(people, 1290, 200, 2560, 1707), lessThan(0.5));
       expect(_cover(skin, 60, 60, 2560, 1707), lessThan(0.5));
     },
-    skip: _skip,
+    skip: skipReason,
     timeout: const Timeout(Duration(minutes: 3)),
   );
 }

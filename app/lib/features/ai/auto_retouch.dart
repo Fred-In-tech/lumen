@@ -10,6 +10,8 @@ import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/portrait/retouch_build.dart';
+import 'package:lumen/features/portrait/retouch_parsing.dart';
+import 'package:lumen/features/portrait/retouch_tiles.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/platform/background.dart';
 
@@ -75,9 +77,13 @@ class StoredAutoRetouchPlanner implements AutoRetouchPlanner {
     required this.catalog,
     required this.faceService,
     this.patches,
+    this.parsing,
   });
 
   final CatalogRepository catalog;
+
+  /// Face parsing when cached or the model is on the device (null: none).
+  final FaceParsingService? parsing;
   final Future<FaceAnalysisService> Function() faceService;
   final PatchStoreGetter? patches;
 
@@ -109,10 +115,16 @@ class StoredAutoRetouchPlanner implements AutoRetouchPlanner {
         faces: faces,
         patches: patches,
       );
+      // The same per-face tiles (and parsing) the editor's maps use, so
+      // the measured needs match what the sliders will act on.
+      final tiles = await loadFaceTiles(catalog, assetId, faces);
+      final parsed = await parsing?.parse(assetId, tiles, download: false);
       final needs = await _measureInBackground(
         pixels,
         faces,
         settings.portrait.spots,
+        tilesWithoutHeals(tiles, settings.heal, faces),
+        parsed,
       );
       return (needs: needs, note: null);
     } on Exception catch (e) {
@@ -143,10 +155,14 @@ Future<RetouchNeeds> _measureInBackground(
   RgbaBuffer pixels,
   FaceAnalysis faces,
   PortraitSpots spots,
+  List<FaceTileImage> tiles,
+  List<FaceParsingPlanes>? parsing,
 ) => runInBackground(() {
   final maps = computeRetouchMaps(
     pixels,
     faces,
+    tiles: tiles,
+    parsing: parsing,
     overrides: BlemishOverrides(keepAt: spots.keep, removeAt: spots.remove),
   );
   return measureRetouchNeeds(maps, pixels, faces);
@@ -157,5 +173,6 @@ final autoRetouchPlannerProvider = Provider<AutoRetouchPlanner>(
     catalog: ref.watch(catalogRepositoryProvider),
     faceService: () => ref.read(faceAnalysisServiceProvider.future),
     patches: () => ref.read(patchStoreProvider.future),
+    parsing: ref.watch(faceParsingServiceProvider),
   ),
 );

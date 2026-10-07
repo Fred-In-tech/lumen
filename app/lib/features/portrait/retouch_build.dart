@@ -11,6 +11,8 @@ import 'package:lumen/app/providers.dart';
 import 'package:lumen/data/catalog_repository.dart';
 import 'package:lumen/data/patch_store.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
+import 'package:lumen/features/portrait/retouch_parsing.dart';
+import 'package:lumen/features/portrait/retouch_tiles.dart';
 import 'package:lumen/features/remove/healed_source.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/platform/background.dart';
@@ -18,25 +20,69 @@ import 'package:lumen/platform/background.dart';
 final _log = Logger('RetouchBuild');
 
 /// Builds the retouch maps off the UI isolate. Top-level so the isolate
-/// closure only captures plain data. [backdrop] (person / hair / clothes
-/// rasters) adds the image-scope backdrop and clothing maps; [skinPen] applies the Manual Tuning
-/// Pen (the editor applies it separately with `applySkinPen`, so pen
-/// strokes never re-run this).
+/// closure only captures plain data. [tiles] are full-resolution face
+/// crops (`retouch_tiles.dart`; faces without one use the decode),
+/// [parsing] the per-face segmentation (null: heuristic skin masks).
+/// [backdrop] (person / hair / clothes rasters) adds the image-scope
+/// backdrop and clothing maps; [skinPen] applies the Manual Tuning Pen
+/// (the editor applies it separately with `applySkinPen`, so pen strokes
+/// never re-run this).
 Future<RetouchMaps> computeRetouchMapsInBackground(
   RgbaBuffer pixels,
   FaceAnalysis faces,
   PortraitSpots spots, {
+  List<FaceTileImage> tiles = const [],
+  List<FaceParsingPlanes>? parsing,
   BackdropInput? backdrop,
   List<BrushStroke> skinPen = const [],
-}) => runInBackground(
-  () => computeRetouchMaps(
-    pixels,
-    faces,
-    overrides: BlemishOverrides(keepAt: spots.keep, removeAt: spots.remove),
-    backdrop: backdrop,
-    skinPen: skinPen,
-  ),
-);
+}) async {
+  final overrides = BlemishOverrides(
+    keepAt: spots.keep,
+    removeAt: spots.remove,
+  );
+  // Each face is built in its own isolate (faces are independent), the
+  // backdrop next to them; the atlas is packed in one more.
+  final inputs = faces.faces.isEmpty
+      ? const <FaceTileImage>[]
+      : await runInBackground(
+          () => retouchTileInputs(pixels, faces, tiles: tiles),
+        );
+  final built = Future.wait([
+    for (final t in inputs)
+      runInBackground(
+        () => computeFaceTileMaps(
+          faces,
+          t,
+          parsing: parsing,
+          overrides: overrides,
+        ),
+      ),
+  ]);
+  final bd = backdrop == null
+      ? null
+      : runInBackground(() => computeBackdropMaps(pixels, backdrop));
+  final done = (await built).whereType<FaceTileMaps>().toList();
+  final backdropMaps = await bd;
+  return runInBackground(
+    () => assembleRetouchMaps(done, backdrop: backdropMaps, skinPen: skinPen),
+  );
+}
+
+/// [tiles] without the faces a visible heal op of [heal] touches: those
+/// faces are analysed on the healed decode (where the heal is drawn).
+List<FaceTileImage> tilesWithoutHeals(
+  List<FaceTileImage> tiles,
+  List<HealOp> heal,
+  FaceAnalysis faces,
+) {
+  if (tiles.isEmpty) return tiles;
+  final healed = facesWithHeals(heal, faces);
+  if (healed.isEmpty) return tiles;
+  return [
+    for (final t in tiles)
+      if (!healed.contains(t.plan.faceId)) t,
+  ];
+}
 
 /// Which image-scope rasters a photo's edits need.
 typedef ImageRasterRequest = ({bool backdrop, bool clothes});
@@ -176,9 +222,14 @@ class StoredRetouchLoader {
     required this.faceService,
     this.patches,
     this.backdrop,
+    this.parsing,
   });
 
   final CatalogRepository catalog;
+
+  /// Face parsing (cached, or run when the model is already on the
+  /// device: export never starts a model download). Null: heuristic masks.
+  final FaceParsingService? parsing;
   final Future<FaceAnalysisService> Function() faceService;
   final PatchStoreGetter? patches;
 
@@ -214,10 +265,14 @@ class StoredRetouchLoader {
         faces: faces,
         patches: patches,
       );
+      final tiles = await loadFaceTiles(catalog, assetId, faces);
+      final parsed = await parsing?.parse(assetId, tiles, download: false);
       final maps = await computeRetouchMapsInBackground(
         pixels,
         faces,
         settings.portrait.spots,
+        tiles: tilesWithoutHeals(tiles, settings.heal, faces),
+        parsing: parsed,
         skinPen: settings.portrait.skinPen,
         backdrop: want == null
             ? null
@@ -245,6 +300,7 @@ final storedRetouchLoaderProvider = Provider<StoredRetouchLoader>(
     catalog: ref.watch(catalogRepositoryProvider),
     faceService: () => ref.read(faceAnalysisServiceProvider.future),
     patches: () => ref.read(patchStoreProvider.future),
+    parsing: ref.watch(faceParsingServiceProvider),
     backdrop: (id, want) => loadBackdropRasters(
       ref.read(aiMaskSourceProvider),
       ref.read(aiMaskRasterLoaderProvider),

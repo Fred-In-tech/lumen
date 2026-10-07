@@ -8,6 +8,8 @@ import 'package:lumen/ai/ondevice/ai_raster_store_io.dart';
 import 'package:lumen/ai/ondevice/disk_space_probe_io.dart';
 import 'package:lumen/ai/ondevice/face_cache.dart';
 import 'package:lumen/ai/ondevice/face_cache_io.dart';
+import 'package:lumen/ai/ondevice/face_parsing_cache.dart';
+import 'package:lumen/ai/ondevice/face_parsing_cache_io.dart';
 import 'package:lumen/ai/ondevice/inference_backend.dart';
 import 'package:lumen/ai/ondevice/litert_backend_io.dart';
 import 'package:lumen/ai/ondevice/model_store.dart';
@@ -51,6 +53,15 @@ Future<FaceCache> openFaceCache() async {
 Future<AiRasterStore> openAiRasterStore() async {
   final support = await getApplicationSupportDirectory();
   return FileAiRasterStore(
+    p.join(support.path, kBrand.storageId),
+    platform: PlatformInfo.current(),
+  );
+}
+
+/// Face parsing next to the face cache (`…/assets/<id>/cache/parsing.bin`).
+Future<FaceParsingCache> openFaceParsingCache() async {
+  final support = await getApplicationSupportDirectory();
+  return FileFaceParsingCache(
     p.join(support.path, kBrand.storageId),
     platform: PlatformInfo.current(),
   );

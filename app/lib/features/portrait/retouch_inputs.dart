@@ -9,6 +9,7 @@ import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_module.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
 import 'package:lumen/features/portrait/retouch_build.dart';
+import 'package:lumen/features/portrait/retouch_parsing.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 
 /// What the renderer needs to retouch faces: the per-photo maps and the face
@@ -68,10 +69,21 @@ final retouchBaseMapsProvider = FutureProvider.family<RetouchInputs?, String>((
           assetId,
           want: want,
         );
+  // Full-resolution face crops (decoded once per photo); the parsing is
+  // watched, not awaited: until it arrives (model download, first run)
+  // the masks are the heuristic ones, then the maps are rebuilt with it.
+  final tiles = faces.faces.isEmpty
+      ? const <FaceTileImage>[]
+      : await ref.watch(faceTilesProvider(assetId).future);
+  final parsing = faces.faces.isEmpty
+      ? null
+      : ref.watch(faceParsingProvider(assetId)).value;
   final maps = await computeRetouchMapsInBackground(
     pixels,
     faces,
     spots,
+    tiles: tilesWithoutHeals(tiles, heal, faces),
+    parsing: parsing,
     backdrop: backdrop,
   );
   return maps.isUsable || want != null ? (maps: maps, faces: faces) : null;
