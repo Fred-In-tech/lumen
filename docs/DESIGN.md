@@ -44,6 +44,19 @@ The user asked for a lighter, simpler look after using the app. Where this secti
 | Shape | Face shape, Liquify |
 | Scene | Background swap, Background, Clothing |
 
+### Home and projects (2026-10-07)
+
+The app opens on **Home**, not on the photo grid. Same Studio look: grey workspace, white floating cards (`Rad.lg`, `Elevation.e1`), one blue action colour, serif for page titles and section heads only, Lucide icons. Imagen's home page was the reference for the structure, not the look (no dark theme).
+
+- **Shell:** a left rail (84 px, white, hairline right edge) with icon + label tiles: Home, Projects, All photos, Looks, and Settings at the bottom; the selected tile is `accentTint` with `accent` icon and label. On macOS the rail starts below the window buttons. Under 600 px: a bottom tab bar (Home, Projects, Import, Settings) and no rail. A 2 px progress line runs along the top while an import or a batch edit works.
+- **Home (desktop, content ≥ 1080 px):** main column + a 320 px side column. Main: the date (micro caps) and the **Import** button; a hero card (one slide at a time, dots and arrows, never auto-advancing) with a serif headline, one sentence and one primary button that does the thing (Import RAW photos, Retouch a portrait, Cull a shoot) beside a painted illustration (no fake screenshots, no numbers); **Active projects** (dashed "New project" card first, then project cards, unfinished first, Unsorted last, a fade at the right edge); **Looks & presets** (dashed "Create a preset", then the user's presets and the AI styles, each with "Use on a project…"). Side column: "Welcome back" (with the Settings name: "Welcome back, Sam") and a status line, **This week** (imported, edited, exported in the last 7 days), Auto-edit on import with its switch, and quick links (Import a shoot, Quick start guide, Check for updates, Send feedback). Narrower: the greeting moves to the top and the side column goes under the main one. A new library shows one welcoming import card instead of empty rows.
+- **Project card:** a cover mosaic (cover large, two more photos), name, shoot date · count, the five-step stepper (ticked when done, a partial arc while under way, dashed ring when there is nothing to do, the connector lit as far as the steps are done in a row, the current step's label in `accent`), and the next step as a full-width secondary button. Hover lifts 2 px with `e2`. Right-click or "…": Open, Rename, Set cover, Delete. Files dragged over it turn the edge `accent` and drop into that project.
+- **Projects page:** breadcrumb, serif title, count, New project; pill search field and Sort (Recent, Name, Date); a grid of cards with the dashed New project card first and Unsorted last.
+- **Project page:** breadcrumb (Home › Projects › Name), title with "…" menu, date · count, Add photos and Export picks (Export all when nothing is picked); a white progress panel with each step's count line ("38 of 120 edited") and the next step as the primary button; then the familiar grid with a flat cull strip aligned to the page margin. Phones: the compact stepper and the current step's count line.
+- **Import destination dialog:** three option cards with a radio dot: New project (name field prefilled "12 Oct 2026 · IMG_4021", focused), Add to a project (dropdown, only when projects exist), Unsorted; the primary button names the count ("Import 120 photos").
+- **Delete project dialog:** two choices that name the count ("Keep the 120 photos": they move to Unsorted; "Delete the 120 photos too": red edge), and the danger button says what will happen ("Delete project and 120 photos").
+- **Screenshots:** `docs/verification/projects/`.
+
 ---
 
 ## 1. Principles and visual direction
