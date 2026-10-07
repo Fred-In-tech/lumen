@@ -37,7 +37,9 @@
 ///   overlay → denoise → retouch → backdrop on the window and develops the
 ///   tile from it (`uSrcWin`). `floatSourceSize` is the size the source is
 ///   rendered at (its "virtual" full size); `FloatExportStats` reports the
-///   windows and the estimated peak GPU memory.
+///   windows and the estimated peak GPU memory. `output:` reads the final
+///   pass back as 8-bit (default), as float quantized with dither to 8 bits
+///   (`dithered8`) or kept at 16 bits (`rgb16`, `ExportPixels.rgb16`).
 library;
 
 import 'dart:math' as math;
@@ -78,13 +80,29 @@ class CancelToken {
 }
 
 class ExportPixels {
-  const ExportPixels(this.width, this.height, this.rgba);
+  const ExportPixels(this.width, this.height, this.rgba, {this.rgb16});
 
   final int width;
   final int height;
 
-  /// Opaque RGBA8888, row-major.
+  /// Opaque RGBA8888, row-major (empty when [rgb16] holds the frame).
   final Uint8List rgba;
+
+  /// 16-bit RGB, row-major, for [FloatTileOutput.rgb16] exports.
+  final Uint16List? rgb16;
+}
+
+/// What a float export reads back from the final pass of each tile.
+enum FloatTileOutput {
+  /// The 8-bit tile target (rounded on the GPU).
+  bytes,
+
+  /// A float32 tile, quantized to 8 bits with dither on the CPU (no
+  /// banding in smooth float gradients).
+  dithered8,
+
+  /// A float32 tile, kept at 16 bits per channel (16-bit TIFF / PNG).
+  rgb16,
 }
 
 /// What a windowed float export used (reported once, at the end).
@@ -402,6 +420,7 @@ class ExportRenderer {
     BackdropAssets? backdropAssets,
     RgbaBuffer? healOverlay,
     void Function(FloatExportStats stats)? onStats,
+    FloatTileOutput output = FloatTileOutput.bytes,
   }) async {
     final virt = floatSourceSize(
       source.width,
@@ -550,7 +569,14 @@ class ExportRenderer {
       largestWindow = largest(ts);
     }
 
-    final frame = Uint8List(size.width * size.height * 4);
+    final floatOut = output != FloatTileOutput.bytes;
+    // The one full-size buffer of the export: tiles stream into it.
+    final frame = output == FloatTileOutput.rgb16
+        ? Uint8List(0)
+        : Uint8List(size.width * size.height * 4);
+    final frame16 = output == FloatTileOutput.rgb16
+        ? Uint16List(size.width * size.height * 3)
+        : null;
     final tilesX = (size.width / ts).ceil();
     final tilesY = (size.height / ts).ceil();
     final decode = Stopwatch(), work = Stopwatch();
@@ -608,6 +634,7 @@ class ExportRenderer {
               masks0: atlases.atlas0,
               masks1: atlases.atlas1,
               warp: warpTex?.image,
+              float: floatOut,
             );
           } finally {
             // The recorded pass keeps the texture alive until it is drawn.
@@ -631,13 +658,42 @@ class ExportRenderer {
                 ),
               ),
               image: developed,
+              float: floatOut,
             );
             EngineImages.dispose(developed);
           }
-          final bytes = await readRgba(image);
-          EngineImages.dispose(image);
-          work.stop();
-          _blit(bytes, rw, tile.x - r.x, tile.y - r.y, tile, frame, size.width);
+          final offX = tile.x - r.x, offY = tile.y - r.y;
+          if (floatOut) {
+            final floats = await readFloat(image);
+            EngineImages.dispose(image);
+            work.stop();
+            if (frame16 != null) {
+              blitFloatTile16(
+                floats,
+                rw,
+                offX,
+                offY,
+                tile,
+                frame16,
+                size.width,
+              );
+            } else {
+              blitFloatTile8Dithered(
+                floats,
+                rw,
+                offX,
+                offY,
+                tile,
+                frame,
+                size.width,
+              );
+            }
+          } else {
+            final bytes = await readRgba(image);
+            EngineImages.dispose(image);
+            work.stop();
+            _blit(bytes, rw, offX, offY, tile, frame, size.width);
+          }
           onProgress?.call((ty * tilesX + tx + 1) / (tilesX * tilesY));
         }
       }
@@ -661,12 +717,12 @@ class ExportRenderer {
         largestWindow: largestWindow,
         peakGpuBytes:
             2 * floatImageBytes(largestWindow) +
-            (finish ? 2 : 1) * tilePixels * 4 * 4 ~/ 3,
+            (finish ? 2 : 1) * tilePixels * (floatOut ? 16 : 4) * 4 ~/ 3,
         decodeMs: decode.elapsedMilliseconds,
         renderMs: work.elapsedMilliseconds,
       ),
     );
-    return ExportPixels(size.width, size.height, frame);
+    return ExportPixels(size.width, size.height, frame, rgb16: frame16);
   }
 
   /// Heal overlay → denoise → retouch → backdrop over one float source

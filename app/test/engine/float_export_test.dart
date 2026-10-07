@@ -30,6 +30,7 @@ void main() {
     HbdProfile profile = HbdProfile.rawExtended,
     CancelToken? cancel,
     void Function(double)? onProgress,
+    FloatTileOutput output = FloatTileOutput.bytes,
   }) async {
     final shaders = await ShaderLibrary.load();
     final source = MemoryFloatSource(scene, profile: profile);
@@ -47,6 +48,7 @@ void main() {
         cancel: cancel,
         onProgress: onProgress,
         onStats: (v) => stats = v,
+        output: output,
       );
       return (px: px, stats: stats!, source: source);
     } finally {
@@ -110,6 +112,43 @@ void main() {
     expect(r.source.largestWindow, r.stats.largestWindow);
     expect(r.stats.peakGpuBytes, greaterThan(0));
     expect('${r.stats}', contains('20 tiles'));
+    expect(EngineImages.live, 0);
+  });
+
+  test('16-bit output: the same picture with more than 256 levels, '
+      'dithered 8-bit within one level of the exact value', () async {
+    if (!await floatPathOrSkip()) return;
+    final s = DevelopSettings.defaults.withValues({
+      P.exposure: -0.8,
+      P.highlights: -60,
+      P.sharpenAmount: 40,
+    });
+    final bytes = await export(s);
+    final deep = await export(s, output: FloatTileOutput.rgb16);
+    final dith = await export(s, output: FloatTileOutput.dithered8);
+    final rgb = deep.px.rgb16!;
+    expect(deep.px.rgba, isEmpty);
+    expect(rgb.length, bytes.px.width * bytes.px.height * 3);
+    var worst16 = 0, worstD = 0;
+    final levels = <int>{};
+    for (var i = 0, j = 0; j < rgb.length; i += 4, j += 3) {
+      for (var c = 0; c < 3; c++) {
+        final b = bytes.px.rgba[i + c];
+        final d16 = (rgb[j + c] / 257 - b).abs().round();
+        if (d16 > worst16) worst16 = d16;
+        final dd = (dith.px.rgba[i + c] - b).abs();
+        if (dd > worstD) worstD = dd;
+      }
+      levels.add(rgb[j + 1]);
+    }
+    result(
+      '16-bit export: ${levels.length} green levels, max |16/257 - 8| '
+      '$worst16, dithered max $worstD; ${deep.stats}',
+    );
+    expect(worst16, lessThanOrEqualTo(1));
+    expect(worstD, lessThanOrEqualTo(2));
+    expect(levels.length, greaterThan(256));
+    expect(deep.stats.peakGpuBytes, greaterThan(bytes.stats.peakGpuBytes));
     expect(EngineImages.live, 0);
   });
 

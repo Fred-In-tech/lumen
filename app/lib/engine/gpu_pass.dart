@@ -269,16 +269,19 @@ ui.Image runMaskOverlay(
 );
 
 /// Finish pass over [image]. [floats] from `FinishUniforms.pack`.
+/// [float]: render into a float32 target (16-bit export).
 ui.Image runFinish(
   ShaderLibrary shaders, {
   required Float32List floats,
   required ui.Image image,
+  bool float = false,
 }) => _run(
   shaders.finish,
   floats,
   [(image, ui.FilterQuality.none)],
   image.width,
   image.height,
+  targetFor(float: float),
 );
 
 /// Denoise pre-pass over [image]. [floats] from `DenoiseUniforms.pack`.

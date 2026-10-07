@@ -1,5 +1,6 @@
 import 'package:lumen/platform/background.dart';
 
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:logging/logging.dart';
@@ -11,6 +12,7 @@ import 'package:lumen/features/editor/renderer/image_bridge.dart';
 import 'package:lumen/features/editor/renderer/photo_renderer.dart'
     show BackdropInputs, kNoBackdropInputs;
 import 'package:lumen/features/export/export_encoder.dart';
+import 'package:lumen/features/export/export_watermark.dart';
 import 'package:lumen/features/masks/ai_mask_rasters.dart' show aiMaskRefsKey;
 import 'package:lumen/features/export/source_render.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
@@ -21,34 +23,99 @@ import 'package:lumen/import/photo_decoder.dart';
 
 final _log = Logger('ExportService');
 
-/// Options chosen in the export dialog.
+/// Options chosen in the export dialog (one preset).
 class ExportOptions {
   const ExportOptions({
     this.format = ExportFormat.jpeg,
     this.quality = 90,
     this.longEdge,
+    this.size = const ExportSizeLimit.none(),
+    this.sharpen = OutputSharpen.none,
+    this.watermark,
+    this.naming = kDefaultNaming,
+    this.presetName = '',
     this.keepMetadata = true,
   });
 
+  /// The options of [preset].
+  factory ExportOptions.fromPreset(ExportPreset preset) => ExportOptions(
+    format: preset.format,
+    quality: preset.quality,
+    size: preset.size,
+    sharpen: preset.sharpen,
+    watermark: preset.watermark,
+    naming: preset.naming,
+    presetName: preset.name,
+    keepMetadata: preset.keepMetadata,
+  );
+
   final ExportFormat format;
   final int quality;
+
+  /// Long edge cap in pixels (null: none); applied with [size].
   final int? longEdge;
+  final ExportSizeLimit size;
+  final OutputSharpen sharpen;
+  final Watermark? watermark;
+
+  /// File name template (see `exportBaseName`).
+  final String naming;
+  final String presetName;
   final bool keepMetadata;
 }
 
 /// One finished export.
 class ExportedFile {
-  const ExportedFile({
+  /// A file held in one buffer.
+  ExportedFile({
     required this.fileName,
-    required this.bytes,
+    required Uint8List bytes,
     required this.width,
     required this.height,
     this.note,
+    this.sixteenBitDetail,
+  }) : chunks = [bytes];
+
+  /// A file that is the concatenation of [chunks] (a 16-bit TIFF: header
+  /// plus the pixel frame, never copied into one buffer).
+  ExportedFile.chunked({
+    required this.fileName,
+    required this.chunks,
+    required this.width,
+    required this.height,
+    this.note,
+    this.sixteenBitDetail,
   });
+
   final String fileName;
-  final Uint8List bytes;
+  final List<Uint8List> chunks;
   final int width;
   final int height;
+
+  /// For 16-bit files: true when the pixels came from a float source (more
+  /// than 256 levels are real), false when an 8-bit photo was widened.
+  final bool? sixteenBitDetail;
+
+  /// This file under another name.
+  ExportedFile renamed(String name) => ExportedFile.chunked(
+    fileName: name,
+    chunks: chunks,
+    width: width,
+    height: height,
+    note: note,
+    sixteenBitDetail: sixteenBitDetail,
+  );
+
+  /// Total file size.
+  int get length => chunks.fold(0, (n, c) => n + c.length);
+
+  /// The whole file in one buffer (copies when chunked).
+  Uint8List get bytes {
+    if (chunks.length == 1) return chunks.single;
+    final b = BytesBuilder(copy: false);
+    chunks.forEach(b.add);
+    return b.toBytes();
+  }
 
   /// Something the export had to leave out (e.g. portrait retouch when face
   /// analysis is unavailable). The file is still complete.
@@ -76,6 +143,8 @@ class FloatExportRequest {
     this.faces,
     this.backdrop = kNoBackdropInputs,
     this.patches,
+    this.sixteenBit = false,
+    this.dither = false,
   });
 
   final String assetId;
@@ -90,14 +159,28 @@ class FloatExportRequest {
   final FaceAnalysis? faces;
   final BackdropInputs backdrop;
   final PatchStoreGetter? patches;
+
+  /// Read the final pass back at 16 bits per channel.
+  final bool sixteenBit;
+
+  /// 8-bit output: quantize the float result with dither.
+  final bool dither;
 }
 
 /// Exports a photo from its float source (camera RAW, 16-bit PNG, 10-bit
 /// HEIC) so the file gets the highlight headroom and precision the editor
-/// showed. Returns null when the photo has no float source on this device:
-/// the export then takes the 8-bit path.
-typedef FloatExportRenderer = Future<RgbaBuffer?> Function(
+/// showed: a [Raster16] when [FloatExportRequest.sixteenBit], else a
+/// [Raster8] (dithered when asked). Returns null when the photo has no
+/// float source on this device: the export then takes the 8-bit path.
+typedef FloatExportRenderer = Future<ExportRaster?> Function(
   FloatExportRequest request,
+);
+
+/// Renders watermark text [heightPx] tall (see `rasterizeWatermark`).
+typedef WatermarkRasterizer = Future<WatermarkMask> Function(
+  String text,
+  double heightPx,
+  int maxWidth,
 );
 
 /// Reference-pipeline full-res render (CPU, isolate). Correct on every platform.
@@ -151,8 +234,11 @@ class ExportService {
     this.retouch,
     this.backdrop,
     this.floatExport,
+    this.watermarkRasterizer = rasterizeWatermark,
+    DateTime Function()? clock,
     SourceRenderer? sourceRenderer,
   }) : _render = renderer ?? cpuFullResRender,
+       _clock = clock ?? DateTime.now,
        _renderSource = sourceRenderer ?? const CpuSourceRenderer();
 
   final CatalogRepository _catalog;
@@ -172,14 +258,26 @@ class ExportService {
 
   /// Float export (null: every photo exports on the 8-bit path).
   final FloatExportRenderer? floatExport;
+
+  /// Draws watermark text (null: watermarks are skipped).
+  final WatermarkRasterizer? watermarkRasterizer;
+  final DateTime Function() _clock;
   final SourceRenderer _renderSource;
 
-  Future<ExportedFile> exportOne(String assetId, ExportOptions o) async {
+  /// Renders, finishes (output sharpening, watermark) and encodes one
+  /// photo. [seq] of [total] feed the `{seq}` naming token.
+  Future<ExportedFile> exportOne(
+    String assetId,
+    ExportOptions options, {
+    int seq = 1,
+    int total = 1,
+  }) async {
     final entry = await _catalog.get(assetId);
     if (entry == null) throw const CatalogException('Photo not found');
     final original = await _catalog.readPixelSource(assetId);
     final doc = await _catalog.loadEdit(assetId);
     final settings = doc.settings;
+    final o = _withLongEdge(options, entry, settings);
     final rasters = await loadAiMaskRasters(
       maskLoader,
       assetId,
@@ -202,31 +300,31 @@ class ExportService {
         faces: faces.faces,
         backdrop: swap,
         patches: patches,
+        sixteenBit: o.format.sixteenBit,
+        dither: !o.format.sixteenBit,
       ),
     );
-    final RgbaBuffer pixels;
+    final ExportRaster raster;
     if (floated != null) {
-      pixels = floated;
-    } else if (heal || rasters.isNotEmpty || faces.maps != null || swapped) {
-      final source = await decodeHealedSource(
-        original,
-        assetId: assetId,
-        ops: settings.heal,
-        patches: patches,
-        maxLongEdge: _renderSource.decodeLongEdge(o.longEdge),
-      );
-      pixels = await _renderSource.render(source, settings, (
-        assetId: assetId,
-        maskRasters: rasters,
-        retouchMaps: faces.maps,
-        faces: faces.faces,
-        backdrop: swap,
-      ), longEdge: o.longEdge);
+      raster = floated;
     } else {
-      pixels = await _render(original, settings, o.longEdge, assetId: assetId);
+      raster = Raster8(
+        await _render8(
+          original,
+          assetId,
+          settings,
+          o,
+          heal: heal,
+          rasters: rasters,
+          faces: faces,
+          swap: swap,
+          swapped: swapped,
+        ),
+      );
     }
-    final bytes = await encodeExport(
-      pixels,
+    await _finish(raster, o);
+    final chunks = await encodeRaster(
+      raster,
       format: o.format,
       quality: o.quality,
       // Sniffed, not entry.format: a RAW photo's pixel source is its JPEG
@@ -234,12 +332,108 @@ class ExportService {
       sourceJpeg: sniffFormat(original) == PhotoFormat.jpeg ? original : null,
       keepMetadata: o.keepMetadata,
     );
-    return ExportedFile(
-      fileName: exportFileName(entry.fileName, o.format),
-      bytes: bytes,
-      width: pixels.width,
-      height: pixels.height,
+    return ExportedFile.chunked(
+      fileName: exportFileNameFor(
+        o.naming,
+        original: entry.fileName,
+        format: o.format,
+        date: entry.exif.capturedAt ?? _clock(),
+        seq: seq,
+        total: total,
+        preset: o.presetName,
+      ),
+      chunks: chunks,
+      width: raster.width,
+      height: raster.height,
       note: faces.note,
+      sixteenBitDetail: o.format.sixteenBit
+          ? raster is Raster16 && raster.fromFloat
+          : null,
     );
+  }
+
+  /// [o] with its size limit resolved to a long edge for this photo's
+  /// output size (after crop).
+  ExportOptions _withLongEdge(
+    ExportOptions o,
+    CatalogEntry entry,
+    DevelopSettings settings,
+  ) {
+    if (o.size.isNone || entry.width < 1 || entry.height < 1) return o;
+    final out = outputSizeFor(entry.width, entry.height, settings.geometry);
+    final le = o.size.longEdgeFor(out.width, out.height);
+    final capped = le == null
+        ? o.longEdge
+        : (o.longEdge == null ? le : math.min(le, o.longEdge!));
+    return ExportOptions(
+      format: o.format,
+      quality: o.quality,
+      longEdge: capped,
+      sharpen: o.sharpen,
+      watermark: o.watermark,
+      naming: o.naming,
+      presetName: o.presetName,
+      keepMetadata: o.keepMetadata,
+    );
+  }
+
+  /// Output sharpening, then the watermark, in place.
+  Future<void> _finish(ExportRaster raster, ExportOptions o) async {
+    final (List<int> data, int channels, int max) = switch (raster) {
+      Raster8(:final pixels) => (pixels.data, 4, 255),
+      Raster16(:final rgb) => (rgb, 3, 65535),
+    };
+    final w = raster.width, h = raster.height;
+    await sharpenInPlaceAsync(data, w, h, channels, max, o.sharpen);
+    final mark = o.watermark;
+    final draw = watermarkRasterizer;
+    if (mark == null || draw == null) return;
+    final short = math.min(w, h);
+    final mask = await draw(
+      mark.text,
+      math.max(6.0, mark.size * short),
+      math.max(1, w - 2 * (short * 0.03).round()),
+    );
+    blendWatermark(
+      data,
+      w,
+      h,
+      channels,
+      max,
+      mask,
+      mark.position,
+      opacity: mark.opacity,
+      margin: (short * 0.03).round(),
+    );
+  }
+
+  Future<RgbaBuffer> _render8(
+    Uint8List original,
+    String assetId,
+    DevelopSettings settings,
+    ExportOptions o, {
+    required bool heal,
+    required Map<String, MaskRaster> rasters,
+    required StoredRetouch faces,
+    required BackdropInputs swap,
+    required bool swapped,
+  }) async {
+    if (heal || rasters.isNotEmpty || faces.maps != null || swapped) {
+      final source = await decodeHealedSource(
+        original,
+        assetId: assetId,
+        ops: settings.heal,
+        patches: patches,
+        maxLongEdge: _renderSource.decodeLongEdge(o.longEdge),
+      );
+      return _renderSource.render(source, settings, (
+        assetId: assetId,
+        maskRasters: rasters,
+        retouchMaps: faces.maps,
+        faces: faces.faces,
+        backdrop: swap,
+      ), longEdge: o.longEdge);
+    }
+    return _render(original, settings, o.longEdge, assetId: assetId);
   }
 }

@@ -10,6 +10,7 @@ import 'package:lumen/engine/float_source.dart';
 import 'package:lumen/engine/hbd_capability.dart';
 import 'package:lumen/engine/shader_library.dart';
 import 'package:lumen/features/editor/renderer/gpu_source_renderer.dart';
+import 'package:lumen/features/export/export_encoder.dart';
 import 'package:lumen/features/export/export_service.dart';
 import 'package:lumen/features/remove/healed_source.dart';
 import 'package:lumen/data/patch_store.dart';
@@ -29,7 +30,7 @@ FloatExportStats? lastFloatExportStats;
 FloatExportRenderer gpuFloatExport(FloatSourceLoader loader) =>
     (request) => _export(loader, request);
 
-Future<RgbaBuffer?> _export(
+Future<ExportRaster?> _export(
   FloatSourceLoader loader,
   FloatExportRequest r,
 ) async {
@@ -106,12 +107,19 @@ Future<RgbaBuffer?> _export(
       retouchMaps: r.retouchMaps,
       backdropAssets: assets,
       healOverlay: overlay,
+      output: r.sixteenBit
+          ? FloatTileOutput.rgb16
+          : (r.dither ? FloatTileOutput.dithered8 : FloatTileOutput.bytes),
       onStats: (stats) {
         lastFloatExportStats = stats;
         _log.info('float export of ${r.assetId}: $stats');
       },
     );
-    return RgbaBuffer(px.width, px.height, px.rgba);
+    final rgb16 = px.rgb16;
+    if (rgb16 != null) {
+      return Raster16(px.width, px.height, rgb16, fromFloat: true);
+    }
+    return Raster8(RgbaBuffer(px.width, px.height, px.rgba));
   } on FloatSourceException catch (e) {
     _log.warning('float export failed, using the 8-bit path: $e');
     return null;
