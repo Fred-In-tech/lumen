@@ -27,6 +27,10 @@ import 'package:lumen/features/remove/remove_canvas.dart';
 import 'package:lumen/features/remove/remove_panel.dart';
 import 'package:lumen/features/remove/remove_ui_state.dart';
 import 'package:lumen_core/lumen_core.dart';
+import 'package:lumen/features/home/home_screen.dart';
+import 'package:lumen/features/shell/shell_location.dart';
+
+import '../support/project_fixtures.dart';
 
 List<Override> _overrides() => [
   catalogRepositoryProvider.overrideWithValue(MemoryCatalogRepository()),
@@ -266,6 +270,44 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Export 2 photos'), findsOneWidget);
         expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final size in const [Size(375, 812), Size(768, 1024), Size(1440, 900)]) {
+    testWidgets(
+      'no overflow at ${size.width.toInt()}×${size.height.toInt()}: Home, '
+      'Projects, a project, All photos, Looks',
+      (tester) async {
+        final empty = MemoryCatalogRepository();
+        await pumpApp(tester, empty, size: size);
+        expect(find.byType(HomeScreen), findsOneWidget);
+        expect(tester.takeException(), isNull, reason: 'empty Home');
+
+        final (repo, wedding, _) = await twoProjectLibrary();
+        final c = await pumpApp(tester, repo, size: size);
+        expect(find.text('Active projects'), findsOneWidget);
+        expect(tester.takeException(), isNull, reason: 'Home');
+        // Phones get a bottom tab bar and no rail.
+        final phone = size.width < 600;
+        expect(find.text('All photos'), phone ? findsNothing : findsWidgets);
+
+        for (final (name, to) in <(String, ShellLocation)>[
+          ('Projects', const ProjectsLocation()),
+          ('project', ProjectLocation(wedding)),
+          ('Unsorted', const ProjectLocation(null)),
+          ('All photos', const AllPhotosLocation()),
+          ('Looks', const LooksLocation()),
+        ]) {
+          c.read(shellLocationProvider.notifier).go(to);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: name);
+        }
+        c.read(shellLocationProvider.notifier).go(ProjectLocation(wedding));
+        await tester.pumpAndSettle();
+        c.read(selectionProvider.notifier).selectAll(['w1', 'w2']);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: 'batch bar');
       },
     );
   }

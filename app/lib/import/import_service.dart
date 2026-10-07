@@ -53,19 +53,21 @@ class ImportService {
   static String assetIdFor(List<int> bytes) =>
       sha256.convert(bytes).toString().substring(0, 32);
 
+  /// Imports [files] one by one into [projectId] (null: Unsorted).
   Future<List<ImportResult>> importAll(
     List<ImportFile> files, {
+    String? projectId,
     void Function(int done, int total)? onProgress,
   }) async {
     final results = <ImportResult>[];
     for (var i = 0; i < files.length; i++) {
-      results.add(await importOne(files[i]));
+      results.add(await importOne(files[i], projectId: projectId));
       onProgress?.call(i + 1, files.length);
     }
     return results;
   }
 
-  Future<ImportResult> importOne(ImportFile file) async {
+  Future<ImportResult> importOne(ImportFile file, {String? projectId}) async {
     final format = sniffFormat(file.bytes, fileName: file.name);
     if (!format.isSupported) {
       return ImportFailed(
@@ -97,6 +99,7 @@ class ImportService {
         exif: exif,
         // Read from the file header; RAW that does not declare it stays null.
         bitDepth: sniffBitDepth(file.bytes, format),
+        projectId: projectId,
       );
       // Thumbnail first, so the library never shows the entry without one.
       await _writeThumb(entry, pixels);

@@ -17,10 +17,21 @@ import 'package:lumen/widgets/toast.dart';
 /// Library culling strip: filter chips with counts, the pending-suggestion
 /// review (Accept / Dismiss) and the Smart Cull button with progress.
 class CullBar extends ConsumerWidget {
-  const CullBar({super.key, required this.entries});
+  const CullBar({
+    super.key,
+    required this.entries,
+    this.flat = false,
+    this.inset = Sp.s3,
+  });
 
   /// All library entries (unfiltered, library order).
   final List<CatalogEntry> entries;
+
+  /// No band of its own: sits on the page under a page header.
+  final bool flat;
+
+  /// Left and right padding (aligns with the page content).
+  final double inset;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -40,11 +51,13 @@ class CullBar extends ConsumerWidget {
         .length;
     return Container(
       height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: Sp.s3),
-      decoration: BoxDecoration(
-        color: t.surface1,
-        border: Border(bottom: BorderSide(color: t.line)),
-      ),
+      padding: EdgeInsets.symmetric(horizontal: inset),
+      decoration: flat
+          ? null
+          : BoxDecoration(
+              color: t.surface1,
+              border: Border(bottom: BorderSide(color: t.line)),
+            ),
       child: Row(
         children: [
           Expanded(

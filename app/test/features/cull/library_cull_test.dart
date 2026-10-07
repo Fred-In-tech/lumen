@@ -10,7 +10,7 @@ import 'package:lumen/design/theme.dart';
 import 'package:lumen/features/cull/cull_providers.dart';
 import 'package:lumen/features/cull/cull_store.dart';
 import 'package:lumen/features/cull/library_filter.dart';
-import 'package:lumen/features/library/library_screen.dart';
+import 'package:lumen/features/library/all_photos_page.dart';
 import 'package:lumen_core/lumen_core.dart';
 
 CatalogEntry _entry(String id, {String flag = 'none', int minute = 0}) =>
@@ -101,7 +101,10 @@ Future<(ProviderContainer, MemoryCatalogRepository)> _pump(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: c,
-      child: MaterialApp(theme: buildLumenTheme(), home: const LibraryScreen()),
+      child: MaterialApp(
+        theme: buildLumenTheme(),
+        home: const Scaffold(body: AllPhotosPage()),
+      ),
     ),
   );
   await tester.pumpAndSettle();

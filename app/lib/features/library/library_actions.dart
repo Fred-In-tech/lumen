@@ -30,33 +30,52 @@ final importProgressProvider =
       ImportProgressNotifier.new,
     );
 
-/// Imports [files], reports a toast, and triggers auto-edit-on-import.
+/// Imports [files] into [projectId] (null: Unsorted), reports a toast, and
+/// triggers auto-edit-on-import. Photos already in the library stay where
+/// they are, except Unsorted ones, which join [projectId].
 Future<List<ImportResult>> importFiles(
   BuildContext context,
   WidgetRef ref,
-  List<ImportFile> files,
-) async {
+  List<ImportFile> files, {
+  String? projectId,
+}) async {
   if (files.isEmpty) return const [];
   final progress = ref.read(importProgressProvider.notifier)
     ..set((done: 0, total: files.length));
-  final results = await ref
-      .read(importServiceProvider)
-      .importAll(
-        files,
-        onProgress: (done, total) => progress.set((done: done, total: total)),
-      );
-  progress.set(null);
+  final List<ImportResult> results;
+  try {
+    results = await ref
+        .read(importServiceProvider)
+        .importAll(
+          files,
+          projectId: projectId,
+          onProgress: (done, total) => progress.set((done: done, total: total)),
+        );
+  } finally {
+    progress.set(null);
+  }
   final imported = results
       .whereType<Imported>()
       .map((r) => r.entry.assetId)
       .toList();
-  final dupes = results.whereType<Duplicate>().length;
+  final duplicates = results.whereType<Duplicate>().toList();
+  final dupes = duplicates.length;
+  final adopt = [
+    for (final d in duplicates)
+      if (d.entry.projectId == null) d.entry.assetId,
+  ];
+  if (projectId != null && adopt.isNotEmpty) {
+    await ref.read(catalogRepositoryProvider).movePhotos(adopt, projectId);
+  }
   final failed = results.whereType<ImportFailed>().toList();
   if (context.mounted) {
     final parts = [
       if (imported.isNotEmpty)
         '${imported.length} ${imported.length == 1 ? 'photo' : 'photos'} imported',
-      if (dupes > 0) '$dupes already in your library',
+      if (dupes > 0)
+        projectId != null && adopt.isNotEmpty
+            ? '$dupes already in your library (Unsorted ones moved here)'
+            : '$dupes already in your library',
       if (failed.isNotEmpty) '${failed.length} couldn’t be opened',
     ];
     showToast(
@@ -85,12 +104,10 @@ Future<List<ImportResult>> importFiles(
   return results;
 }
 
-/// Opens the picker and imports the chosen files.
-Future<void> pickAndImport(BuildContext context, WidgetRef ref) async {
+/// Opens the picker; the chosen files (empty when cancelled).
+Future<List<ImportFile>> pickImportFiles(WidgetRef ref) {
   final mobile = ref.read(platformInfoProvider).isMobile;
-  final files = await ref.read(importSourceProvider).pick(mobile: mobile);
-  if (!context.mounted) return;
-  await importFiles(context, ref, files);
+  return ref.read(importSourceProvider).pick(mobile: mobile);
 }
 
 /// Removes the selected photos from the library.

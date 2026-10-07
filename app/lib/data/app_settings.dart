@@ -18,6 +18,7 @@ class AppSettings {
     this.exportPresets = const [],
     this.exportPresetId,
     this.exportLast,
+    this.displayName,
   });
 
   factory AppSettings.fromJson(Object? json) {
@@ -43,6 +44,7 @@ class AppSettings {
       exportLast: json['exportLast'] is Map
           ? ExportPreset.fromJson((json['exportLast'] as Map).cast())
           : null,
+      displayName: cleanDisplayName(json['displayName']),
     );
   }
 
@@ -86,6 +88,17 @@ class AppSettings {
   /// The export settings used last (what "Custom" starts from).
   final ExportPreset? exportLast;
 
+  /// How Home greets the user ("Welcome back, Sam"); null: no name.
+  final String? displayName;
+
+  /// A trimmed name of at most 40 characters, or null when blank.
+  static String? cleanDisplayName(Object? v) {
+    if (v is! String) return null;
+    final s = v.trim();
+    if (s.isEmpty) return null;
+    return s.length > 40 ? s.substring(0, 40) : s;
+  }
+
   AppSettings copyWith({
     String? gatewayUrl,
     String? gatewayToken,
@@ -104,6 +117,8 @@ class AppSettings {
     String? exportPresetId,
     bool clearExportPresetId = false,
     ExportPreset? exportLast,
+    String? displayName,
+    bool clearDisplayName = false,
   }) => AppSettings(
     gatewayUrl: gatewayUrl ?? this.gatewayUrl,
     gatewayToken: gatewayToken ?? this.gatewayToken,
@@ -126,6 +141,9 @@ class AppSettings {
         ? null
         : (exportPresetId ?? this.exportPresetId),
     exportLast: exportLast ?? this.exportLast,
+    displayName: clearDisplayName
+        ? null
+        : cleanDisplayName(displayName) ?? this.displayName,
   );
 
   Map<String, Object?> toJson() => {
@@ -144,5 +162,6 @@ class AppSettings {
     'exportPresets': [for (final p in exportPresets) p.toJson()],
     'exportPresetId': exportPresetId,
     'exportLast': exportLast?.toJson(),
+    'displayName': displayName,
   };
 }

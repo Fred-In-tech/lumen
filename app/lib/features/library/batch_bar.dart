@@ -17,6 +17,7 @@ import 'package:lumen/features/export/export_dialog.dart';
 import 'package:lumen/features/library/library_actions.dart';
 import 'package:lumen/features/masks/ai_mask_source.dart';
 import 'package:lumen/features/portrait/retouch_build.dart';
+import 'package:lumen/features/projects/move_menu.dart';
 import 'package:lumen/features/remove/remove_providers.dart';
 import 'package:lumen/features/sync/settings_clipboard.dart';
 import 'package:lumen/widgets/ai_glyph.dart';
@@ -203,6 +204,7 @@ class BatchBar extends ConsumerWidget {
               },
             ),
           _HeadshotMenu(ids: ids),
+          MoveToProjectMenu(ids: ids),
           LumenButton(
             label: 'Export',
             kind: ButtonKind.ghost,

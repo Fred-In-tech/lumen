@@ -4,6 +4,7 @@ import 'package:lumen_core/lumen_core.dart';
 
 import 'package:lumen/ai/ai_providers.dart';
 import 'package:lumen/app/providers.dart';
+import 'package:lumen/data/app_settings.dart';
 import 'package:lumen/design/tokens.dart';
 import 'package:lumen/design/type.dart';
 import 'package:lumen/widgets/buttons.dart';
@@ -22,6 +23,7 @@ class _SettingsDialog extends ConsumerStatefulWidget {
 class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
   late final TextEditingController _url;
   late final TextEditingController _token;
+  late final TextEditingController _name;
   bool _auto = true;
   bool _retouch = true;
   bool _remeasure = true;
@@ -35,6 +37,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
       text: s?.gatewayUrl ?? ref.read(platformInfoProvider).defaultGatewayUrl,
     );
     _token = TextEditingController(text: s?.gatewayToken ?? '');
+    _name = TextEditingController(text: s?.displayName ?? '');
     _auto = s?.autoEditOnImport ?? true;
     _retouch = s?.retouchFacesAutomatically ?? true;
     _remeasure = s?.remeasureRetouchOnSync ?? true;
@@ -45,6 +48,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
   void dispose() {
     _url.dispose();
     _token.dispose();
+    _name.dispose();
     super.dispose();
   }
 
@@ -59,6 +63,8 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
             retouchFacesAutomatically: _retouch,
             remeasureRetouchOnSync: _remeasure,
             defaultStyle: _style,
+            displayName: _name.text,
+            clearDisplayName: AppSettings.cleanDisplayName(_name.text) == null,
           ),
         );
     ref.invalidate(gatewayStatusProvider);
@@ -92,7 +98,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
       backgroundColor: t.surface2,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(Sp.s6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -103,6 +109,18 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                 style: LumenType.title().copyWith(color: t.textPrimary),
               ),
               const SizedBox(height: Sp.s5),
+              Text(
+                'Your name (optional)',
+                style: LumenType.label().copyWith(color: t.textSecondary),
+              ),
+              const SizedBox(height: Sp.s1),
+              TextField(
+                key: const ValueKey('settings-display-name'),
+                controller: _name,
+                style: LumenType.body().copyWith(color: t.textPrimary),
+                decoration: deco('Home says “Welcome back, …”'),
+              ),
+              const SizedBox(height: Sp.s3),
               Text(
                 'AI gateway URL',
                 style: LumenType.label().copyWith(color: t.textSecondary),

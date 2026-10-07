@@ -10,6 +10,7 @@ import 'package:lumen/features/ai/auto_panel.dart';
 import 'package:lumen/features/ai/prompt_bar.dart';
 import 'package:lumen/features/crop/crop_overlay.dart';
 import 'package:lumen/features/develop/develop_panel.dart';
+import 'package:lumen/features/projects/project_providers.dart';
 import 'package:lumen/features/editor/editor_controller.dart';
 import 'package:lumen/features/editor/editor_mode.dart';
 import 'package:lumen/features/editor/editor_module.dart';
@@ -164,12 +165,16 @@ class _TopBar extends ConsumerWidget {
           Expanded(
             child: Row(
               children: [
-                LumenButton(
-                  label: 'Library',
-                  icon: const Icon(LucideIcons.chevronLeft),
-                  kind: ButtonKind.ghost,
-                  tooltip: 'Back to the library  G',
-                  onPressed: onClose,
+                Flexible(
+                  child: LumenButton(
+                    label: ref.watch(
+                      editorBackLabelProvider(assetIds.join('\n')),
+                    ),
+                    icon: const Icon(LucideIcons.chevronLeft),
+                    kind: ButtonKind.ghost,
+                    tooltip: 'Back  G',
+                    onPressed: onClose,
+                  ),
                 ),
                 const SizedBox(width: Sp.s2),
                 Flexible(

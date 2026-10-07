@@ -25,7 +25,8 @@ class StylesGrid extends ConsumerWidget {
   final int columns;
   final bool horizontal;
 
-  static const _swatches = {
+  /// Two-colour swatch per style (tiles before a preview renders, Home cards).
+  static const swatches = {
     AiStyle.natural: [Color(0xFF8C9A7B), Color(0xFFD9C7A5)],
     AiStyle.vibrant: [Color(0xFF2EC4B6), Color(0xFFFF9F1C)],
     AiStyle.moody: [Color(0xFF1B2631), Color(0xFF5D6D7E)],
@@ -61,7 +62,7 @@ class StylesGrid extends ConsumerWidget {
     Widget tile(AiStyle style) {
       final selected = current == style.id;
       final colors =
-          _swatches[style] ?? const [Color(0xFF444444), Color(0xFF888888)];
+          swatches[style] ?? const [Color(0xFF444444), Color(0xFF888888)];
       return Semantics(
         button: true,
         selected: selected,
