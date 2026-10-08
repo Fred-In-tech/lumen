@@ -1,6 +1,6 @@
 /// The version testers see (Settings, Home "Check for updates"). Matches
 /// `version:` in pubspec.yaml; `test/app_info_test.dart` keeps them equal.
-const kAppVersion = '1.2.0';
+const kAppVersion = '1.3.0';
 
 /// Where the tester guide lives (Quick start).
 const kInstallGuideUrl =
